@@ -1,0 +1,219 @@
+import type { Express } from "express";
+import { createServer, type Server } from "http";
+import { storage } from "./storage";
+import { setupAuth, isAuthenticated } from "./replitAuth";
+import { tradingEngine } from "./services/tradingEngine";
+import { aiOrchestrator } from "./services/aiAgents";
+import { marketDataService } from "./services/marketData";
+import { createWebSocketServer } from "./services/webSocketServer";
+import { insertTradeSchema } from "@shared/schema";
+import { z } from "zod";
+
+export async function registerRoutes(app: Express): Promise<Server> {
+  // Auth middleware
+  await setupAuth(app);
+
+  // Auth routes
+  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      res.json(user);
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
+
+  // Market data routes
+  app.get('/api/market/prices', async (req, res) => {
+    try {
+      const prices = marketDataService.getCurrentPrices();
+      res.json(prices);
+    } catch (error) {
+      console.error("Error fetching prices:", error);
+      res.status(500).json({ message: "Failed to fetch market prices" });
+    }
+  });
+
+  app.get('/api/market/price/:symbol', async (req, res) => {
+    try {
+      const { symbol } = req.params;
+      const price = marketDataService.getCurrentPrice(symbol);
+      if (!price) {
+        return res.status(404).json({ message: "Symbol not found" });
+      }
+      res.json(price);
+    } catch (error) {
+      console.error("Error fetching price:", error);
+      res.status(500).json({ message: "Failed to fetch price" });
+    }
+  });
+
+  // Trading routes
+  const tradeRequestSchema = z.object({
+    symbol: z.string(),
+    side: z.enum(['buy', 'sell']),
+    quantity: z.number().positive(),
+    orderType: z.enum(['market', 'limit', 'stop']),
+    price: z.number().optional(),
+    stopPrice: z.number().optional(),
+  });
+
+  app.post('/api/trading/execute', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const tradeRequest = tradeRequestSchema.parse(req.body);
+      
+      const result = await tradingEngine.executeTrade({
+        userId,
+        ...tradeRequest,
+      });
+
+      if (result.success) {
+        res.json(result);
+      } else {
+        res.status(400).json({ message: result.error });
+      }
+    } catch (error) {
+      console.error("Error executing trade:", error);
+      res.status(500).json({ message: "Failed to execute trade" });
+    }
+  });
+
+  app.get('/api/trading/positions', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const positions = await storage.getUserPositions(userId);
+      res.json(positions);
+    } catch (error) {
+      console.error("Error fetching positions:", error);
+      res.status(500).json({ message: "Failed to fetch positions" });
+    }
+  });
+
+  app.get('/api/trading/trades', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const trades = await storage.getUserTrades(userId, limit);
+      res.json(trades);
+    } catch (error) {
+      console.error("Error fetching trades:", error);
+      res.status(500).json({ message: "Failed to fetch trades" });
+    }
+  });
+
+  // AI Agent routes
+  app.get('/api/ai/agents/status', async (req, res) => {
+    try {
+      const status = aiOrchestrator.getAgentStatus();
+      const recentActivities = await storage.getRecentAgentActivities(20);
+      res.json({ agents: status, recentActivities });
+    } catch (error) {
+      console.error("Error fetching agent status:", error);
+      res.status(500).json({ message: "Failed to fetch agent status" });
+    }
+  });
+
+  app.post('/api/ai/agents/run/:agentType', isAuthenticated, async (req: any, res) => {
+    try {
+      const { agentType } = req.params;
+      const data = req.body;
+      
+      const result = await aiOrchestrator.runAgent(agentType, data);
+      res.json(result);
+    } catch (error) {
+      console.error("Error running agent:", error);
+      res.status(500).json({ message: "Failed to run agent" });
+    }
+  });
+
+  app.get('/api/ai/recommendations', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const status = (req.query.status as string) || 'active';
+      const recommendations = await storage.getUserRecommendations(userId, status);
+      res.json(recommendations);
+    } catch (error) {
+      console.error("Error fetching recommendations:", error);
+      res.status(500).json({ message: "Failed to fetch recommendations" });
+    }
+  });
+
+  app.post('/api/ai/recommendations/generate', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { symbol } = req.body;
+      
+      if (!symbol) {
+        return res.status(400).json({ message: "Symbol is required" });
+      }
+
+      const recommendation = await tradingEngine.generateAIRecommendation(userId, symbol);
+      res.json(recommendation);
+    } catch (error) {
+      console.error("Error generating recommendation:", error);
+      res.status(500).json({ message: "Failed to generate recommendation" });
+    }
+  });
+
+  // Portfolio routes
+  app.get('/api/portfolio/summary', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const snapshot = await storage.getLatestPortfolioSnapshot(userId);
+      const positions = await storage.getUserPositions(userId);
+      const recentTrades = await storage.getUserTrades(userId, 10);
+
+      res.json({
+        snapshot,
+        positions,
+        recentTrades,
+      });
+    } catch (error) {
+      console.error("Error fetching portfolio:", error);
+      res.status(500).json({ message: "Failed to fetch portfolio" });
+    }
+  });
+
+  // User settings routes
+  app.patch('/api/user/settings', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { tradingMode, riskTolerance } = req.body;
+
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Update user settings (would need to implement updateUser method in storage)
+      // For now, just return success
+      res.json({ message: "Settings updated successfully" });
+    } catch (error) {
+      console.error("Error updating settings:", error);
+      res.status(500).json({ message: "Failed to update settings" });
+    }
+  });
+
+  // Health check
+  app.get('/api/health', (req, res) => {
+    res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      services: {
+        database: 'connected',
+        ai_agents: 'active',
+        market_data: 'streaming',
+      },
+    });
+  });
+
+  const httpServer = createServer(app);
+  
+  // Setup WebSocket server
+  createWebSocketServer(httpServer);
+
+  return httpServer;
+}

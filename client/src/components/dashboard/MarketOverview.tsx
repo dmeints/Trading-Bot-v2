@@ -1,0 +1,63 @@
+import { useTradingStore } from '@/stores/tradingStore';
+import { Card } from '@/components/ui/card';
+
+export default function MarketOverview() {
+  const { marketPrices } = useTradingStore();
+
+  const majorSymbols = ['BTC/USD', 'ETH/USD', 'SOL/USD'];
+
+  const getMarketSentiment = () => {
+    const prices = Object.values(marketPrices);
+    if (prices.length === 0) return 'Neutral';
+    
+    const avgChange = prices.reduce((sum, price) => sum + price.change24h, 0) / prices.length;
+    if (avgChange > 2) return 'Bullish';
+    if (avgChange < -2) return 'Bearish';
+    return 'Neutral';
+  };
+
+  const sentiment = getMarketSentiment();
+
+  return (
+    <Card className="bg-gray-800 border-gray-700 p-4 h-full">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-white">Market Overview</h2>
+        <div className="flex items-center space-x-6">
+          {majorSymbols.map(symbol => {
+            const price = marketPrices[symbol];
+            if (!price) return null;
+
+            const isPositive = price.change24h >= 0;
+
+            return (
+              <div key={symbol} className="text-center" data-testid={`market-data-${symbol.replace('/', '-')}`}>
+                <div className="text-sm text-gray-400">{symbol}</div>
+                <div className={`text-lg font-semibold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+                  ${price.price.toLocaleString()}
+                </div>
+                <div className={`text-xs ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+                  {isPositive ? '+' : ''}{price.change24h.toFixed(2)}%
+                </div>
+              </div>
+            );
+          })}
+          
+          <div className={`px-3 py-2 rounded-lg ${
+            sentiment === 'Bullish' ? 'bg-green-600/20' :
+            sentiment === 'Bearish' ? 'bg-red-600/20' :
+            'bg-blue-600/20'
+          }`} data-testid="market-sentiment">
+            <div className={`text-xs ${
+              sentiment === 'Bullish' ? 'text-green-400' :
+              sentiment === 'Bearish' ? 'text-red-400' :
+              'text-blue-400'
+            }`}>
+              Market Sentiment
+            </div>
+            <div className="text-sm font-semibold text-white">{sentiment}</div>
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}

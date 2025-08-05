@@ -1,0 +1,304 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: hsl(0, 0%, 100%);
+  --foreground: hsl(20, 14.3%, 4.1%);
+  --muted: hsl(60, 4.8%, 95.9%);
+  --muted-foreground: hsl(25, 5.3%, 44.7%);
+  --popover: hsl(0, 0%, 100%);
+  --popover-foreground: hsl(20, 14.3%, 4.1%);
+  --card: hsl(0, 0%, 100%);
+  --card-foreground: hsl(20, 14.3%, 4.1%);
+  --border: hsl(20, 5.9%, 90%);
+  --input: hsl(20, 5.9%, 90%);
+  --primary: hsl(207, 90%, 54%);
+  --primary-foreground: hsl(211, 100%, 99%);
+  --secondary: hsl(60, 4.8%, 95.9%);
+  --secondary-foreground: hsl(24, 9.8%, 10%);
+  --accent: hsl(60, 4.8%, 95.9%);
+  --accent-foreground: hsl(24, 9.8%, 10%);
+  --destructive: hsl(0, 84.2%, 60.2%);
+  --destructive-foreground: hsl(60, 9.1%, 97.8%);
+  --ring: hsl(20, 14.3%, 4.1%);
+  --radius: 0.5rem;
+  
+  /* Skippy Theme Variables */
+  --skippy-blue: hsl(199, 89%, 48%);
+  --skippy-dark: hsl(220, 13%, 9%);
+  --skippy-gray: hsl(215, 16%, 17%);
+  --skippy-light: hsl(214, 13%, 25%);
+}
+
+.dark {
+  --background: hsl(220, 13%, 9%);
+  --foreground: hsl(0, 0%, 98%);
+  --muted: hsl(215, 16%, 17%);
+  --muted-foreground: hsl(217, 10%, 64%);
+  --popover: hsl(220, 13%, 9%);
+  --popover-foreground: hsl(0, 0%, 98%);
+  --card: hsl(215, 16%, 17%);
+  --card-foreground: hsl(0, 0%, 98%);
+  --border: hsl(217, 16%, 26%);
+  --input: hsl(217, 16%, 26%);
+  --primary: hsl(199, 89%, 48%);
+  --primary-foreground: hsl(220, 13%, 9%);
+  --secondary: hsl(215, 16%, 17%);
+  --secondary-foreground: hsl(0, 0%, 98%);
+  --accent: hsl(215, 16%, 17%);
+  --accent-foreground: hsl(0, 0%, 98%);
+  --destructive: hsl(0, 76%, 50%);
+  --destructive-foreground: hsl(0, 0%, 98%);
+  --ring: hsl(217, 10%, 64%);
+  --radius: 0.5rem;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  /* Skippy specific styles */
+  .skippy-gradient {
+    background: linear-gradient(135deg, hsl(220, 13%, 9%) 0%, hsl(220, 30%, 18%) 50%, hsl(220, 13%, 9%) 100%);
+  }
+
+  .skippy-blue {
+    color: hsl(199, 89%, 48%);
+  }
+
+  .bg-skippy-blue {
+    background-color: hsl(199, 89%, 48%);
+  }
+
+  .bg-skippy-dark {
+    background-color: hsl(220, 13%, 9%);
+  }
+
+  .bg-skippy-gray {
+    background-color: hsl(215, 16%, 17%);
+  }
+
+  .bg-skippy-light {
+    background-color: hsl(214, 13%, 25%);
+  }
+
+  .border-skippy-blue {
+    border-color: hsl(199, 89%, 48%);
+  }
+
+  .text-skippy-blue {
+    color: hsl(199, 89%, 48%);
+  }
+
+  /* Trading specific colors */
+  .text-profit {
+    color: hsl(142, 71%, 45%);
+  }
+
+  .text-loss {
+    color: hsl(0, 84%, 60%);
+  }
+
+  .bg-profit {
+    background-color: hsl(142, 71%, 45%, 0.1);
+  }
+
+  .bg-loss {
+    background-color: hsl(0, 84%, 60%, 0.1);
+  }
+
+  /* Chart colors */
+  .chart-green {
+    stroke: hsl(142, 71%, 45%);
+    fill: hsl(142, 71%, 45%);
+  }
+
+  .chart-red {
+    stroke: hsl(0, 84%, 60%);
+    fill: hsl(0, 84%, 60%);
+  }
+
+  .chart-blue {
+    stroke: hsl(199, 89%, 48%);
+    fill: hsl(199, 89%, 48%);
+  }
+
+  /* Custom scrollbar */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(214, 13%, 25%) hsl(215, 16%, 17%);
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: hsl(215, 16%, 17%);
+    border-radius: 3px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: hsl(214, 13%, 25%);
+    border-radius: 3px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: hsl(217, 16%, 35%);
+  }
+
+  /* Animation utilities */
+  .animate-pulse-slow {
+    animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  .animate-fade-in {
+    animation: fadeIn 0.5s ease-in-out;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Trading status indicators */
+  .status-active {
+    @apply bg-green-500;
+  }
+
+  .status-inactive {
+    @apply bg-gray-500;
+  }
+
+  .status-error {
+    @apply bg-red-500;
+  }
+
+  .status-warning {
+    @apply bg-amber-500;
+  }
+
+  /* Confidence level indicators */
+  .confidence-high {
+    @apply text-green-400 bg-green-500/20;
+  }
+
+  .confidence-medium {
+    @apply text-amber-400 bg-amber-500/20;
+  }
+
+  .confidence-low {
+    @apply text-red-400 bg-red-500/20;
+  }
+
+  /* Trading mode indicators */
+  .mode-paper {
+    @apply bg-amber-500/20 text-amber-400 border-amber-500/30;
+  }
+
+  .mode-live {
+    @apply bg-green-500/20 text-green-400 border-green-500/30;
+  }
+
+  /* Card hover effects */
+  .card-hover {
+    @apply transition-all duration-200 hover:border-skippy-blue/50 hover:shadow-lg hover:shadow-skippy-blue/10;
+  }
+
+  /* Button variants */
+  .btn-skippy {
+    @apply bg-skippy-blue hover:bg-skippy-blue/90 text-white font-medium transition-colors;
+  }
+
+  .btn-profit {
+    @apply bg-green-600 hover:bg-green-700 text-white font-medium transition-colors;
+  }
+
+  .btn-loss {
+    @apply bg-red-600 hover:bg-red-700 text-white font-medium transition-colors;
+  }
+
+  /* Grid layout utilities */
+  .dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    grid-template-rows: repeat(6, 1fr);
+    gap: 1rem;
+    height: 100%;
+  }
+
+  /* Text truncation utilities */
+  .truncate-2-lines {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .truncate-3-lines {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
+
+/* Custom component styles */
+@layer components {
+  .agent-card {
+    @apply bg-skippy-light rounded-lg p-3 border border-green-500/30 hover:border-green-500/50 transition-all duration-200;
+  }
+
+  .market-indicator {
+    @apply flex items-center space-x-1 px-2 py-1 rounded text-xs font-medium;
+  }
+
+  .market-indicator.bullish {
+    @apply bg-green-500/20 text-green-400;
+  }
+
+  .market-indicator.bearish {
+    @apply bg-red-500/20 text-red-400;
+  }
+
+  .market-indicator.neutral {
+    @apply bg-gray-500/20 text-gray-400;
+  }
+
+  .trading-panel {
+    @apply bg-skippy-gray border border-gray-700 rounded-lg p-4;
+  }
+
+  .price-display {
+    @apply font-mono text-lg font-semibold;
+  }
+
+  .price-display.positive {
+    @apply text-green-400;
+  }
+
+  .price-display.negative {
+    @apply text-red-400;
+  }
+
+  .nav-link {
+    @apply flex items-center space-x-3 px-3 py-2 rounded-lg text-gray-400 hover:bg-skippy-light hover:text-white transition-colors;
+  }
+
+  .nav-link.active {
+    @apply bg-blue-500/20 text-blue-400;
+  }
+}

@@ -3,6 +3,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useTradingStore } from '@/stores/tradingStore';
+import { useToast } from '@/hooks/use-toast';
 import { TrendingUp, TrendingDown } from 'lucide-react';
 
 interface Recommendation {
@@ -19,7 +20,8 @@ interface Recommendation {
 }
 
 export default function AIRecommendations() {
-  const { recommendations } = useTradingStore();
+  const { recommendations, setSelectedSymbol } = useTradingStore();
+  const { toast } = useToast();
 
   const { data: fetchedRecommendations, isLoading } = useQuery({
     queryKey: ['/api/ai/recommendations'],
@@ -47,6 +49,14 @@ export default function AIRecommendations() {
     if (risk === 0) return null;
     
     return (reward / risk).toFixed(2);
+  };
+
+  const handleRecommendationClick = (recommendation: Recommendation) => {
+    setSelectedSymbol(recommendation.symbol);
+    toast({
+      title: "Symbol Selected",
+      description: `Switched to ${recommendation.symbol} based on AI recommendation`,
+    });
   };
 
   if (isLoading) {

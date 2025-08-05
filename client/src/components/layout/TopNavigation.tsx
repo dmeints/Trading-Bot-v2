@@ -2,14 +2,20 @@ import { useAuth } from '@/hooks/useAuth';
 import { useTradingStore } from '@/stores/tradingStore';
 import { Button } from '@/components/ui/button';
 import { Brain, FlaskConical } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 export default function TopNavigation() {
   const { user } = useAuth();
-  const { tradingMode, portfolioSnapshot } = useTradingStore();
+  const { tradingMode, portfolioSnapshot, setTradingMode } = useTradingStore();
+  const { toast } = useToast();
 
   const handleModeToggle = () => {
-    // TODO: Implement mode switching
-    console.log('Toggle trading mode');
+    const newMode = tradingMode === 'paper' ? 'live' : 'paper';
+    setTradingMode(newMode);
+    toast({
+      title: "Trading Mode Changed",
+      description: `Switched to ${newMode === 'paper' ? 'Paper Trading' : 'Live Trading'} mode`,
+    });
   };
 
   return (

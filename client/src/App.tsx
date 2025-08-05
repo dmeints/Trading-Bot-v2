@@ -6,6 +6,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
 import Landing from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
+import Trading from "@/pages/trading";
+import Portfolio from "@/pages/portfolio";
+import Settings from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -18,6 +21,9 @@ function Router() {
       ) : (
         <>
           <Route path="/" component={Dashboard} />
+          <Route path="/trading" component={Trading} />
+          <Route path="/portfolio" component={Portfolio} />
+          <Route path="/settings" component={Settings} />
         </>
       )}
       <Route component={NotFound} />

@@ -1,9 +1,11 @@
 import { useTradingStore } from '@/stores/tradingStore';
 import { Card } from '@/components/ui/card';
 import { BarChart3, TrendingUp, Wallet, Settings, Activity } from 'lucide-react';
+import { useLocation } from 'wouter';
 
 export default function SidebarNavigation() {
   const { agentStatus, agentActivities } = useTradingStore();
+  const [location, setLocation] = useLocation();
 
   const agentDisplayNames: Record<string, string> = {
     market_analyst: 'Market Analyst',
@@ -54,38 +56,54 @@ export default function SidebarNavigation() {
       
       <div className="p-4 border-t border-gray-700">
         <div className="space-y-2">
-          <a 
-            href="#" 
-            className="flex items-center space-x-3 px-3 py-2 rounded-lg bg-blue-600/20 text-blue-400"
+          <button 
+            onClick={() => setLocation('/')}
+            className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors ${
+              location === '/' 
+                ? 'bg-blue-600/20 text-blue-400' 
+                : 'text-gray-400 hover:bg-gray-700 hover:text-white'
+            }`}
             data-testid="link-dashboard"
           >
             <BarChart3 className="w-4 h-4" />
             <span className="text-sm font-medium">Dashboard</span>
-          </a>
-          <a 
-            href="#" 
-            className="flex items-center space-x-3 px-3 py-2 rounded-lg text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"
+          </button>
+          <button 
+            onClick={() => setLocation('/trading')}
+            className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors ${
+              location === '/trading' 
+                ? 'bg-blue-600/20 text-blue-400' 
+                : 'text-gray-400 hover:bg-gray-700 hover:text-white'
+            }`}
             data-testid="link-trading"
           >
             <TrendingUp className="w-4 h-4" />
             <span className="text-sm font-medium">Trading</span>
-          </a>
-          <a 
-            href="#" 
-            className="flex items-center space-x-3 px-3 py-2 rounded-lg text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"
+          </button>
+          <button 
+            onClick={() => setLocation('/portfolio')}
+            className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors ${
+              location === '/portfolio' 
+                ? 'bg-blue-600/20 text-blue-400' 
+                : 'text-gray-400 hover:bg-gray-700 hover:text-white'
+            }`}
             data-testid="link-portfolio"
           >
             <Wallet className="w-4 h-4" />
             <span className="text-sm font-medium">Portfolio</span>
-          </a>
-          <a 
-            href="#" 
-            className="flex items-center space-x-3 px-3 py-2 rounded-lg text-gray-400 hover:bg-gray-700 hover:text-white transition-colors"
+          </button>
+          <button 
+            onClick={() => setLocation('/settings')}
+            className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors ${
+              location === '/settings' 
+                ? 'bg-blue-600/20 text-blue-400' 
+              : 'text-gray-400 hover:bg-gray-700 hover:text-white'
+            }`}
             data-testid="link-settings"
           >
             <Settings className="w-4 h-4" />
             <span className="text-sm font-medium">Settings</span>
-          </a>
+          </button>
         </div>
       </div>
     </aside>

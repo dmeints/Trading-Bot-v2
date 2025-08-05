@@ -1,8 +1,9 @@
 import { useTradingStore } from '@/stores/tradingStore';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 
 export default function MarketOverview() {
-  const { marketPrices } = useTradingStore();
+  const { marketPrices, selectedSymbol, setSelectedSymbol } = useTradingStore();
 
   const majorSymbols = ['BTC/USD', 'ETH/USD', 'SOL/USD'];
 
@@ -30,7 +31,17 @@ export default function MarketOverview() {
             const isPositive = price.change24h >= 0;
 
             return (
-              <div key={symbol} className="text-center" data-testid={`market-data-${symbol.replace('/', '-')}`}>
+              <Button
+                key={symbol}
+                variant="ghost"
+                onClick={() => setSelectedSymbol(symbol)}
+                className={`text-center p-3 h-auto flex-col space-y-1 transition-colors ${
+                  selectedSymbol === symbol 
+                    ? 'bg-blue-600/20 border border-blue-500/30' 
+                    : 'hover:bg-gray-700/50'
+                }`}
+                data-testid={`market-data-${symbol.replace('/', '-')}`}
+              >
                 <div className="text-sm text-gray-400">{symbol}</div>
                 <div className={`text-lg font-semibold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
                   ${price.price.toLocaleString()}
@@ -38,7 +49,7 @@ export default function MarketOverview() {
                 <div className={`text-xs ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
                   {isPositive ? '+' : ''}{price.change24h.toFixed(2)}%
                 </div>
-              </div>
+              </Button>
             );
           })}
           

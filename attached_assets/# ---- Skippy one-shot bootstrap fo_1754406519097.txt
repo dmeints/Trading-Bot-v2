@@ -1,0 +1,394 @@
+# ---- Skippy one-shot bootstrap for Replit ----
+set -euo pipefail
+
+# 1) Create folders
+mkdir -p client/src server/src server/src/middleware server/src/logs server/src/utils scripts models/backup logs
+
+# 2) Root files
+cat > .replit <<'EOF'
+run = "npm run dev"
+entrypoint = "index.ts"
+language = "typescript"
+[nix]
+pkgs = [ "nodejs", "npm" ]
+EOF
+
+cat > README.md <<'EOF'
+# Skippy – Personal RL Crypto Trading Assistant (Scaffold)
+This scaffold includes a TypeScript Express API, a React 18 (Vite) client, secure middleware, logs, and scripts.
+
+## Quickstart
+npm install
+npm run setup
+npm run dev
+
+## Secrets
+Use Replit "Secrets" (lock icon) or a local .env file:
+ADMIN_SECRET=your_admin_password
+EOF
+
+cat > .env.example <<'EOF'
+ADMIN_SECRET=replace_me
+BINANCE_WEBHOOK_SECRET=replace_me
+SENTIMENT_WEBHOOK_SECRET=replace_me
+FINETUNE_WEBHOOK_SECRET=replace_me
+OPENAI_API_KEY=
+EOF
+
+cat > package.json <<'EOF'
+{
+  "name": "skippy-master",
+  "private": true,
+  "workspaces": ["client", "server"],
+  "scripts": {
+    "postinstall": "npm install -w client && npm install -w server",
+    "setup": "tsx scripts/setup.ts",
+    "dev": "concurrently -k -n API,WEB -c blue,magenta \"npm:dev -w server\" \"npm:dev -w client\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.5"
+  }
+}
+EOF
+
+cat > tsconfig.json <<'EOF'
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "strict": false
+  }
+}
+EOF
+
+# 3) Scripts
+cat > scripts/setup.ts <<'EOF'
+// scripts/setup.ts
+import fs from 'fs';
+const dirs = ['logs', 'models', 'models/backup'];
+const files = ['logs/analytics.jsonl', 'logs/errors.log', 'models/active.json', 'models/metadata.json'];
+dirs.forEach(d => { if(!fs.existsSync(d)) { fs.mkdirSync(d, { recursive:true }); console.log('📁 Created', d);} });
+files.forEach(f => { if(!fs.existsSync(f)) { fs.writeFileSync(f, ''); console.log('📄 Created', f);} });
+console.log('✅ Setup complete');
+EOF
+
+cat > scripts/dailySummary.ts <<'EOF'
+// scripts/dailySummary.ts
+import fs from 'fs';
+import { parse } from 'json2csv';
+const LOG_PATH = './logs/analytics.jsonl';
+const EXPORT_CSV_PATH = './logs/daily_summary.csv';
+const ONE_DAY = 24*60*60*1000;
+export function generateDailySummary(): string | null {
+  try {
+    if (!fs.existsSync(LOG_PATH)) return null;
+    const now = Date.now();
+    const lines = fs.readFileSync(LOG_PATH, 'utf8').trim().split('\n').filter(Boolean);
+    const events = lines.map(l=>JSON.parse(l)).filter(e => now - new Date(e.timestamp).getTime() < ONE_DAY);
+    if (!events.length) return null;
+    const csv = parse(events);
+    fs.writeFileSync(EXPORT_CSV_PATH, csv);
+    return EXPORT_CSV_PATH;
+  } catch (e) {
+    console.error('❌ Summary generation failed:', e);
+    return null;
+  }
+}
+if (require.main === module) {
+  const out = generateDailySummary();
+  console.log(out ? '✅ Wrote ' + out : 'No events in last 24h');
+}
+EOF
+
+# 4) Server
+cat > server/package.json <<'EOF'
+{
+  "name": "skippy-server",
+  "private": true,
+  "type": "module",
+  "scripts": { "dev": "tsx src/index.ts" },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "helmet": "^7.1.0",
+    "morgan": "^1.10.0",
+    "rate-limiter-flexible": "^2.5.3"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.11.24",
+    "typescript": "^5.4.5"
+  }
+}
+EOF
+
+cat > server/tsconfig.json <<'EOF'
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "outDir": "dist",
+    "rootDir": "src",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "strict": false
+  }
+}
+EOF
+
+cat > server/src/index.ts <<'EOF'
+import 'dotenv/config';
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import morgan from 'morgan';
+import { authGuard } from './middleware/auth_guard.js';
+import { apiLimiter } from './middleware/rate_limiter.js';
+import { logAnalyticsEvent } from './logs/trade_analytics.js';
+import { verifySignatureHeader } from './utils/signature.js';
+import fs from 'fs';
+import path from 'path';
+
+const app = express();
+app.use(express.json({ limit: '1mb' }));
+app.use(cors());
+app.use(helmet());
+app.use(morgan('tiny'));
+
+// Health
+app.get('/api/ping', (_req, res) => {
+  res.json({ status: 'ok', ts: new Date().toISOString() });
+});
+
+// Secure analytics dump (jsonl)
+app.get('/api/logs/analytics', apiLimiter, authGuard, (_req, res) => {
+  try {
+    const p = path.resolve('./logs/analytics.jsonl');
+    const data = fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
+    res.type('text/plain').send(data);
+  } catch {
+    res.type('text/plain').send('');
+  }
+});
+
+// RL prediction stub
+app.post('/api/rl/predict', apiLimiter, authGuard, (req, res) => {
+  const { symbol='BTCUSDT', features={} } = req.body || {};
+  const result = {
+    action: 'hold',
+    confidence: 0.51,
+    rationale: 'Stub model response',
+    featuresUsed: Object.keys(features).slice(0,5)
+  };
+  logAnalyticsEvent({
+    timestamp: new Date().toISOString(),
+    tradeId: 'dryrun-'+Date.now(),
+    strategy: 'rl-stub',
+    regime: 'sideways',
+    type: 'scalp',
+    risk: 'low',
+    source: 'predict',
+    pnl: 0,
+    latencyMs: 2,
+    signalStrength: result.confidence,
+    confidence: result.confidence
+  });
+  res.json(result);
+});
+
+// Fine-tune webhook (HMAC)
+app.post('/api/webhooks/fine_tune_event', express.raw({ type: '*/*' }), (req, res) => {
+  const secret = process.env.FINETUNE_WEBHOOK_SECRET || '';
+  const sig = (req.headers['x-signature'] || '') as string;
+  const ok = verifySignatureHeader(req.body, sig, secret);
+  if (!ok) return res.status(401).json({ error: 'invalid_signature' });
+  res.json({ ok: true });
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`🧠 Skippy API running on :${PORT}`));
+EOF
+
+cat > server/src/middleware/auth_guard.ts <<'EOF'
+import { Request, Response, NextFunction } from 'express';
+
+export function authGuard(req: Request, res: Response, next: NextFunction) {
+  const admin = process.env.ADMIN_SECRET;
+  const header = req.headers['x-admin-secret'];
+  if (!admin || !header || header !== admin) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  next();
+}
+EOF
+
+cat > server/src/middleware/rate_limiter.ts <<'EOF'
+import { RateLimiterMemory } from 'rate-limiter-flexible';
+import { Request, Response, NextFunction } from 'express';
+
+const limiter = new RateLimiterMemory({ points: 60, duration: 60 });
+
+export async function apiLimiter(req: Request, res: Response, next: NextFunction) {
+  try {
+    await limiter.consume(req.ip || 'global');
+    next();
+  } catch {
+    res.status(429).json({ error: 'rate_limited' });
+  }
+}
+EOF
+
+cat > server/src/logs/trade_analytics.ts <<'EOF'
+import fs from 'fs';
+const PATH = './logs/analytics.jsonl';
+
+export function logAnalyticsEvent(event: {
+  timestamp: string;
+  tradeId: string;
+  strategy: string;
+  regime: 'bull'|'bear'|'sideways';
+  type: 'scalp'|'swing'|'breakout';
+  risk: 'low'|'medium'|'high';
+  source: string;
+  pnl: number;
+  latencyMs: number;
+  signalStrength: number;
+  confidence: number;
+}) {
+  try {
+    fs.appendFileSync(PATH, JSON.stringify(event) + '\n', 'utf8');
+  } catch (e) {
+    console.error('❌ Failed to log analytics:', e);
+  }
+}
+EOF
+
+cat > server/src/utils/signature.ts <<'EOF'
+import crypto from 'crypto';
+
+export function verifySignatureHeader(rawBody: any, signature: string, secret: string) {
+  try {
+    const body = Buffer.isBuffer(rawBody) ? rawBody : Buffer.from(rawBody || '');
+    const hmac = crypto.createHmac('sha256', secret).update(body).digest('hex');
+    return crypto.timingSafeEqual(Buffer.from(hmac), Buffer.from(signature || '', 'hex'));
+  } catch {
+    return false;
+  }
+}
+EOF
+
+# 5) Client
+cat > client/package.json <<'EOF'
+{
+  "name": "skippy-client",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5",
+    "vite": "^5.0.12",
+    "@types/react": "^18.2.47",
+    "@types/react-dom": "^18.2.18"
+  }
+}
+EOF
+
+cat > client/index.html <<'EOF'
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Skippy</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+EOF
+
+cat > client/tsconfig.json <<'EOF'
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM"],
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "strict": false,
+    "skipLibCheck": true
+  }
+}
+EOF
+
+cat > client/src/main.tsx <<'EOF'
+import React from 'react'
+import { createRoot } from 'react-dom/client'
+import App from './App'
+
+createRoot(document.getElementById('root')!).render(<App />)
+EOF
+
+cat > client/src/App.tsx <<'EOF'
+import React, { useEffect, useState } from 'react'
+
+export default function App(){
+  const [ping, setPing] = useState<any>(null)
+  const [analytics, setAnalytics] = useState<string>('')
+  const [secret, setSecret] = useState<string>('')
+
+  useEffect(()=>{ fetch('/api/ping').then(r=>r.json()).then(setPing).catch(()=>{}) }, [])
+
+  const loadAnalytics = async () => {
+    const res = await fetch('/api/logs/analytics', { headers: { 'x-admin-secret': secret }})
+    setAnalytics(res.ok ? await res.text() : 'Unauthorized or empty')
+  }
+
+  return (
+    <div style={{ fontFamily: 'system-ui', padding: 16 }}>
+      <h1>🧠 Skippy – Personal Trading Assistant</h1>
+      <p>Status: {ping ? `OK @ ${ping.ts}` : 'Connecting...'}</p>
+
+      <div style={{marginTop: 12}}>
+        <input placeholder="Admin secret" value={secret} onChange={e=>setSecret(e.target.value)} />
+        <button onClick={loadAnalytics} style={{marginLeft: 8}}>Load Analytics</button>
+      </div>
+
+      <section style={{marginTop: 24}}>
+        <h2>📊 Analytics (jsonl)</h2>
+        <pre style={{whiteSpace:'pre-wrap', background:'#111', color:'#0f0', padding:12, borderRadius:8, minHeight:120}}>
+{analytics || 'No analytics yet.'}
+        </pre>
+      </section>
+    </div>
+  )
+}
+EOF
+
+# 6) Seed placeholders
+: > logs/.gitkeep
+: > models/.gitkeep
+: > models/backup/.gitkeep
+
+# 7) Install + setup
+npm install
+npm run setup
+
+echo "✅ Skippy scaffold created. Next: set ADMIN_SECRET in Replit Secrets and run: npm run dev"

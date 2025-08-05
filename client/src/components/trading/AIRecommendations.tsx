@@ -76,7 +76,17 @@ export default function AIRecommendations() {
     <Card className="bg-gray-800 border-gray-700 p-4 h-full overflow-hidden">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-white">AI Recommendations</h3>
-        <Button variant="ghost" size="sm" className="text-blue-400 hover:text-blue-300">
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          onClick={() => {
+            toast({
+              title: "AI Recommendations",
+              description: "Full recommendations dashboard coming soon",
+            });
+          }}
+          className="text-blue-400 hover:text-blue-300"
+        >
           View All
         </Button>
       </div>

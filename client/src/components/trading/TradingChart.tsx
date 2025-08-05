@@ -2,11 +2,13 @@ import { useTradingStore, useSelectedMarketPrice } from '@/stores/tradingStore';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Expand, Settings } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 import { useState } from 'react';
 
 export default function TradingChart() {
   const { selectedSymbol } = useTradingStore();
   const selectedPrice = useSelectedMarketPrice();
+  const { toast } = useToast();
   const [selectedTimeframe, setSelectedTimeframe] = useState('1H');
 
   const timeframes = ['1H', '4H', '1D', '1W'];
@@ -103,6 +105,12 @@ export default function TradingChart() {
             <Button
               variant="ghost"
               size="sm"
+              onClick={() => {
+                toast({
+                  title: "Chart Expand",
+                  description: "Full-screen chart view coming soon",
+                });
+              }}
               className="bg-gray-700 p-2 text-gray-400 hover:text-white"
               data-testid="button-chart-expand"
             >
@@ -111,6 +119,12 @@ export default function TradingChart() {
             <Button
               variant="ghost"
               size="sm"
+              onClick={() => {
+                toast({
+                  title: "Chart Settings",
+                  description: "Chart configuration options coming soon",
+                });
+              }}
               className="bg-gray-700 p-2 text-gray-400 hover:text-white"
               data-testid="button-chart-settings"
             >

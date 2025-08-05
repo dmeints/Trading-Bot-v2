@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useTradingStore } from '@/stores/tradingStore';
+import { useToast } from '@/hooks/use-toast';
 import { TrendingUp, TrendingDown, Clock } from 'lucide-react';
 import { useEffect } from 'react';
 
@@ -18,6 +19,7 @@ interface Trade {
 
 export default function RecentTrades() {
   const { recentTrades, setRecentTrades } = useTradingStore();
+  const { toast } = useToast();
 
   const { data: fetchedTrades, isLoading } = useQuery<Trade[]>({
     queryKey: ['/api/trading/trades'],
@@ -92,6 +94,12 @@ export default function RecentTrades() {
         <Button 
           variant="ghost" 
           size="sm" 
+          onClick={() => {
+            toast({
+              title: "Coming Soon",
+              description: "Detailed trading history view will be available soon",
+            });
+          }}
           className="text-blue-400 hover:text-blue-300"
           data-testid="button-view-all-trades"
         >

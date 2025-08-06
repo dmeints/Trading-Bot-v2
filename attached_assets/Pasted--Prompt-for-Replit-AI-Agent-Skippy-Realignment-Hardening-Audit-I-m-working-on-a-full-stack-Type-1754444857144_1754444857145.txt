@@ -1,0 +1,129 @@
+ Prompt for Replit AI Agent — Skippy Realignment & Hardening Audit
+
+I’m working on a full-stack TypeScript crypto trading assistant app called Skippy. It was originally scaffolded as a monorepo with separate client and server, but we’ve evolved it into a unified repo with:
+
+Express backend (auth, webhooks, RL predictions)
+
+Vite + React + Tailwind frontend
+
+Replit OIDC + session-based auth
+
+Drizzle ORM + Postgres
+
+Rate limiting, analytics logger, model manager, and websocket support
+
+Please help realign the current implementation with the original bootstrap and harden it for deployment.
+
+🔍 Audit goals:
+Fill any missing features from the original scaffold (see below).
+
+Improve security, observability, and robustness.
+
+Ensure all sensitive config is environment-driven and validated.
+
+Make sure the app runs reliably on Replit (autoscale or workspace).
+
+✅ Required changes:
+1. 🔐 Security and Safety
+✅ Add helmet() middleware for basic security headers. If in dev, disable CSP via:
+
+ts
+Copy
+Edit
+app.use(helmet({ contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false }));
+✅ Ensure app.set('trust proxy', 1); is called before rate limiting middleware so req.ip works correctly behind Replit's proxy.
+
+✅ Update express-session cookie settings:
+
+ts
+Copy
+Edit
+cookie: {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax',
+  maxAge: 1000 * 60 * 60 * 24 * 7
+}
+2. 🧪 Health & Readiness
+✅ Add a /api/ping endpoint:
+
+ts
+Copy
+Edit
+app.get('/api/ping', (_req, res) => {
+  res.json({ status: 'ok', ts: new Date().toISOString() });
+});
+✅ Add /api/version to expose build hash (if available):
+
+ts
+Copy
+Edit
+app.get('/api/version', (_req, res) => {
+  res.json({ name: 'skippy', version: process.env.BUILD_SHA || 'dev' });
+});
+3. ✅ Environment Validation
+✅ Use zod or envalid to validate environment variables on startup.
+Include required fields:
+
+DATABASE_URL
+
+SESSION_SECRET
+
+REPLIT_DOMAINS
+
+ADMIN_SECRET
+
+All 3 webhook secrets
+
+Optional flags like AI_SERVICES_ENABLED
+
+Example using zod:
+
+ts
+Copy
+Edit
+import { z } from 'zod';
+export const Env = z.object({
+  DATABASE_URL: z.string().url(),
+  SESSION_SECRET: z.string().min(16),
+  REPLIT_DOMAINS: z.string().min(1),
+  ADMIN_SECRET: z.string().min(8),
+  WEBHOOK_SECRET_TRADING: z.string().min(8),
+  WEBHOOK_SECRET_MARKET: z.string().min(8),
+  WEBHOOK_SECRET_GENERIC: z.string().min(8),
+  AI_SERVICES_ENABLED: z.string().optional(),
+  NODE_ENV: z.enum(['development','production']).optional(),
+  PORT: z.string().optional(),
+}).parse(process.env);
+4. 📊 Logging and Monitoring
+✅ Add x-request-id support (generate if missing), and log it with each analytics entry or error.
+
+✅ Consider logging structured JSON to stdout (one-line-per-event) for compatibility with Replit's logging system.
+
+5. 🧰 DevX and Setup
+✅ Create a scripts/setup.ts or bash script to create logs/, models/, and default files (like logs/analytics.jsonl) if not present.
+
+✅ Add README steps:
+
+npm install
+
+npm run db:push
+
+Set all Replit secrets
+
+npm run dev
+
+6. 🧩 Client updates (optional, but useful)
+✅ Create a /api/me endpoint that returns auth info so the frontend can verify auth state.
+
+✅ Audit frontend routes for:
+
+Loading and error states
+
+Admin-only views gated by ADMIN_SECRET or session role
+
+WebSocket reconnects with backoff
+
+7. 🔀 Feature Flags
+✅ Expand use of AI_SERVICES_ENABLED, FEATURE_BACKTEST, or FEATURE_TRADING for conditional logic.
+Use process.env + client hydration to enable/disable sections in dev or rollout safely.

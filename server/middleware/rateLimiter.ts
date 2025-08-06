@@ -1,75 +1,72 @@
+/**
+ * Rate Limiting Middleware
+ * 
+ * Multi-tier rate limiting for different types of operations
+ */
+
 import { RateLimiterMemory } from 'rate-limiter-flexible';
-import { Request, Response, NextFunction } from 'express';
-import { analyticsLogger } from '../services/analyticsLogger';
+import type { Request, Response, NextFunction } from 'express';
+import { logger } from '../utils/logger';
+import type { RequestWithId } from './requestId';
 
-// Different rate limits for different endpoint types
-const generalLimiter = new RateLimiterMemory({ 
-  points: 100, // requests
-  duration: 60, // seconds
-});
-
-const tradingLimiter = new RateLimiterMemory({ 
-  points: 30, // trades per minute
+// General API rate limiter (100 requests per minute)
+const generalLimiter = new RateLimiterMemory({
+  keyPrefix: 'general',
+  points: 100,
   duration: 60,
 });
 
-const apiLimiter = new RateLimiterMemory({ 
-  points: 60, // API calls per minute
+// Trading operations rate limiter (10 requests per minute)
+const tradingLimiter = new RateLimiterMemory({
+  keyPrefix: 'trading',
+  points: 10, 
   duration: 60,
 });
 
-const adminLimiter = new RateLimiterMemory({ 
-  points: 20, // Admin actions per minute
+// Admin operations rate limiter (20 requests per minute)
+const adminLimiter = new RateLimiterMemory({
+  keyPrefix: 'admin',
+  points: 20,
   duration: 60,
 });
 
-export function createRateLimiter(type: 'general' | 'trading' | 'api' | 'admin' = 'general') {
-  const limiter = {
-    general: generalLimiter,
-    trading: tradingLimiter,
-    api: apiLimiter,
-    admin: adminLimiter,
-  }[type];
+// AI operations rate limiter (15 requests per minute)
+const aiLimiter = new RateLimiterMemory({
+  keyPrefix: 'ai',
+  points: 15,
+  duration: 60,
+});
 
-  return async (req: Request, res: Response, next: NextFunction) => {
+function createRateLimitMiddleware(limiter: RateLimiterMemory, name: string) {
+  return async (req: RequestWithId, res: Response, next: NextFunction) => {
     try {
-      const key = req.ip || req.headers['x-forwarded-for'] || 'global';
-      await limiter.consume(key as string);
+      const key = req.ip || req.connection.remoteAddress || 'unknown';
+      await limiter.consume(key);
       next();
-    } catch (rateLimiterRes: any) {
+    } catch (rejRes: any) {
+      const secs = Math.round(rejRes.msBeforeNext / 1000) || 1;
+      
       // Log rate limit violation
-      analyticsLogger.logError({
-        timestamp: new Date().toISOString(),
-        level: 'warn',
-        message: `Rate limit exceeded for ${type} limiter`,
-        endpoint: req.originalUrl,
-        metadata: {
-          ip: req.ip,
-          userAgent: req.headers['user-agent'],
-          type,
-        },
-      });
-
-      const remainingPoints = rateLimiterRes?.remainingPoints || 0;
-      const msBeforeNext = rateLimiterRes?.msBeforeNext || 60000;
-      
-      res.set({
-        'Retry-After': Math.round(msBeforeNext / 1000),
-        'X-RateLimit-Limit': limiter.points,
-        'X-RateLimit-Remaining': remainingPoints,
-        'X-RateLimit-Reset': new Date(Date.now() + msBeforeNext).toISOString(),
+      logger.withRequest(req.id).warn('Rate limit exceeded', {
+        limiter: name,
+        ip: req.ip,
+        path: req.path,
+        retryAfter: secs
       });
       
-      res.status(429).json({ 
-        error: 'rate_limited',
-        message: `Too many ${type} requests. Please try again later.`,
-        retryAfter: Math.round(msBeforeNext / 1000),
+      res.set('Retry-After', String(secs));
+      res.status(429).json({
+        error: 'Too Many Requests',
+        retryAfter: secs,
+        message: `Rate limit exceeded for ${name} operations`
       });
     }
   };
 }
 
-export const generalRateLimit = createRateLimiter('general');
-export const tradingRateLimit = createRateLimiter('trading');
-export const apiRateLimit = createRateLimiter('api');
-export const adminRateLimit = createRateLimiter('admin');
+export const rateLimiters = {
+  general: createRateLimitMiddleware(generalLimiter, 'general'),
+  trading: createRateLimitMiddleware(tradingLimiter, 'trading'),
+  admin: createRateLimitMiddleware(adminLimiter, 'admin'),
+  ai: createRateLimitMiddleware(aiLimiter, 'ai'),
+};

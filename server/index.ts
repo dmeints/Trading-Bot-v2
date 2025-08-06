@@ -1,13 +1,41 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
-import { rlEngine } from "./engine/rl";
+import { env } from "./config/env";
+import { requestIdMiddleware, type RequestWithId } from "./middleware/requestId";
+import { logger } from "./utils/logger";
+import { rateLimiters } from "./middleware/rateLimiter";
+import { errorHandler, notFoundHandler } from "./utils/errorHandler";
+import helmet from "helmet";
+
+// Validate environment variables on startup
+logger.info('Starting Skippy Trading Platform', {
+  nodeEnv: env.NODE_ENV,
+  port: env.PORT,
+  buildSha: env.BUILD_SHA,
+  aiServicesEnabled: env.AI_SERVICES_ENABLED
+});
 
 const app = express();
+
+// Trust proxy for correct IP handling behind Replit's proxy
+app.set('trust proxy', 1);
+
+// Security headers
+app.use(helmet({ 
+  contentSecurityPolicy: env.NODE_ENV === 'production' ? undefined : false 
+}));
+
+// Request ID middleware for tracking
+app.use(requestIdMiddleware);
+
+// General rate limiting for all API routes
+app.use('/api', rateLimiters.general);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-app.use((req, res, next) => {
+app.use((req: any, res: any, next: any) => {
   const start = Date.now();
   const path = req.path;
   let capturedJsonResponse: Record<string, any> | undefined = undefined;
@@ -31,6 +59,18 @@ app.use((req, res, next) => {
       }
 
       log(logLine);
+      
+      // Also log to structured logger for requests with IDs
+      if (req.id) {
+        logger.withRequest(req.id).info('API Request', {
+          method: req.method,
+          path,
+          statusCode: res.statusCode,
+          duration,
+          userAgent: req.headers['user-agent'],
+          ip: req.ip
+        });
+      }
     }
   });
 
@@ -39,14 +79,6 @@ app.use((req, res, next) => {
 
 (async () => {
   const server = await registerRoutes(app);
-
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-
-    res.status(status).json({ message });
-    throw err;
-  });
 
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
@@ -57,11 +89,17 @@ app.use((req, res, next) => {
     serveStatic(app);
   }
 
+  // 404 handler for unknown routes (after frontend routing)
+  app.use(notFoundHandler);
+  
+  // Global error handler
+  app.use(errorHandler);
+
   // ALWAYS serve the app on the port specified in the environment variable PORT
   // Other ports are firewalled. Default to 5000 if not specified.
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || '5000', 10);
+  const port = env.PORT;
   server.listen({
     port,
     host: "0.0.0.0",

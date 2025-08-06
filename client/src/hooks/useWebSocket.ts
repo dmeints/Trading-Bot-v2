@@ -1,124 +1,131 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+/**
+ * Enhanced WebSocket Hook with Reconnection Logic
+ * 
+ * Provides automatic reconnection with exponential backoff
+ * for robust real-time communication
+ */
 
-interface WebSocketMessage {
-  type: string;
-  data?: any;
-}
+import { useEffect, useRef, useState } from 'react';
 
 interface UseWebSocketOptions {
-  onMessage?: (message: WebSocketMessage) => void;
-  onConnect?: () => void;
-  onDisconnect?: () => void;
-  onError?: (error: Event) => void;
-  reconnectInterval?: number;
+  url: string;
+  protocols?: string | string[];
   maxReconnectAttempts?: number;
+  initialReconnectDelay?: number;
+  maxReconnectDelay?: number;
+  onOpen?: (event: Event) => void;
+  onMessage?: (event: MessageEvent) => void;
+  onError?: (event: Event) => void;
+  onClose?: (event: CloseEvent) => void;
 }
 
-export function useWebSocket(options: UseWebSocketOptions = {}) {
-  const {
-    onMessage,
-    onConnect,
-    onDisconnect,
-    onError,
-    reconnectInterval = 5000,
-    maxReconnectAttempts = 5,
-  } = options;
-
-  const [isConnected, setIsConnected] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>('disconnected');
+export function useWebSocket({
+  url,
+  protocols,
+  maxReconnectAttempts = 5,
+  initialReconnectDelay = 1000,
+  maxReconnectDelay = 30000,
+  onOpen,
+  onMessage,
+  onError,
+  onClose,
+}: UseWebSocketOptions) {
+  const [readyState, setReadyState] = useState<number>(WebSocket.CONNECTING);
+  const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
-  const reconnectAttempts = useRef(0);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const shouldReconnectRef = useRef(true);
 
-  const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      return;
-    }
-
-    setConnectionStatus('connecting');
-
+  const connect = () => {
     try {
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const wsUrl = `${protocol}//${window.location.host}/ws`;
-      
-      wsRef.current = new WebSocket(wsUrl);
+      const ws = new WebSocket(url, protocols);
+      wsRef.current = ws;
 
-      wsRef.current.onopen = () => {
-        setIsConnected(true);
-        setConnectionStatus('connected');
-        reconnectAttempts.current = 0;
-        onConnect?.();
+      ws.onopen = (event) => {
+        setReadyState(WebSocket.OPEN);
+        setReconnectAttempt(0);
+        onOpen?.(event);
       };
 
-      wsRef.current.onmessage = (event) => {
-        try {
-          const message: WebSocketMessage = JSON.parse(event.data);
-          onMessage?.(message);
-        } catch (error) {
-          console.error('Failed to parse WebSocket message:', error);
-        }
+      ws.onmessage = (event) => {
+        onMessage?.(event);
       };
 
-      wsRef.current.onclose = () => {
-        setIsConnected(false);
-        setConnectionStatus('disconnected');
-        onDisconnect?.();
+      ws.onerror = (event) => {
+        console.error('WebSocket connection error:', event);
+        setReadyState(WebSocket.CLOSED);
+        onError?.(event);
+      };
 
-        // Attempt to reconnect
-        if (reconnectAttempts.current < maxReconnectAttempts) {
-          reconnectAttempts.current++;
+      ws.onclose = (event) => {
+        setReadyState(WebSocket.CLOSED);
+        onClose?.(event);
+
+        // Attempt reconnection if not manually closed and under attempt limit
+        if (
+          shouldReconnectRef.current &&
+          !event.wasClean &&
+          reconnectAttempt < maxReconnectAttempts
+        ) {
+          const delay = Math.min(
+            initialReconnectDelay * Math.pow(2, reconnectAttempt),
+            maxReconnectDelay
+          );
+
+          console.log(`WebSocket reconnecting in ${delay}ms (attempt ${reconnectAttempt + 1}/${maxReconnectAttempts})`);
+          
           reconnectTimeoutRef.current = setTimeout(() => {
+            setReconnectAttempt(prev => prev + 1);
+            setReadyState(WebSocket.CONNECTING);
             connect();
-          }, reconnectInterval);
+          }, delay);
         }
-      };
-
-      wsRef.current.onerror = (error) => {
-        setConnectionStatus('error');
-        onError?.(error);
       };
     } catch (error) {
-      setConnectionStatus('error');
-      console.error('WebSocket connection error:', error);
+      console.error('Failed to create WebSocket connection:', error);
+      setReadyState(WebSocket.CLOSED);
     }
-  }, [onMessage, onConnect, onDisconnect, onError, reconnectInterval, maxReconnectAttempts]);
+  };
 
-  const disconnect = useCallback(() => {
+  const disconnect = () => {
+    shouldReconnectRef.current = false;
+    
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
 
     if (wsRef.current) {
-      wsRef.current.close();
+      wsRef.current.close(1000, 'Manual disconnect');
       wsRef.current = null;
     }
+  };
 
-    setIsConnected(false);
-    setConnectionStatus('disconnected');
-  }, []);
-
-  const sendMessage = useCallback((message: WebSocketMessage) => {
+  const sendMessage = (message: string | ArrayBufferLike | Blob | ArrayBufferView) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(message));
+      wsRef.current.send(message);
       return true;
     }
     return false;
-  }, []);
+  };
 
   useEffect(() => {
+    shouldReconnectRef.current = true;
     connect();
 
     return () => {
       disconnect();
     };
-  }, [connect, disconnect]);
+  }, [url]);
 
   return {
-    isConnected,
-    connectionStatus,
+    readyState,
     sendMessage,
-    connect,
     disconnect,
+    reconnectAttempt,
+    isConnecting: readyState === WebSocket.CONNECTING,
+    isOpen: readyState === WebSocket.OPEN,
+    isClosing: readyState === WebSocket.CLOSING,
+    isClosed: readyState === WebSocket.CLOSED,
   };
 }

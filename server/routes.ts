@@ -9,7 +9,7 @@ import { createWebSocketServer } from "./services/webSocketServer";
 import { insertTradeSchema } from "@shared/schema";
 import { z } from "zod";
 import { analyticsLogger, logTradeEvent, logAIEvent } from "./services/analyticsLogger";
-import { apiRateLimit, tradingRateLimit, adminRateLimit } from "./middleware/rateLimiter";
+import { rateLimiters } from "./middleware/rateLimiter";
 import { adminAuthGuard, AdminRequest } from "./middleware/adminAuth";
 import { modelManager } from "./services/modelManager";
 import { tradingWebhookVerifier, marketDataWebhookVerifier, genericWebhookVerifier, captureRawBody, WebhookRequest } from "./middleware/webhookSecurity";
@@ -18,10 +18,38 @@ import { policyEngine } from "./engine/policy";
 import { rlEngine } from "./engine/rl";
 import { backtestEngine } from "./engine/backtest";
 import { lazyInitService } from "./services/lazyInit";
+import { env } from "./config/env";
+import { logger } from "./utils/logger";
+import type { RequestWithId } from "./middleware/requestId";
+import { healthRoutes } from "./routes/healthRoutes";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
   await setupAuth(app);
+
+  // Health & monitoring routes
+  app.use('/api', healthRoutes);
+
+  // Auth status endpoint
+  app.get('/api/me', async (req: any, res) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ authenticated: false });
+      }
+      
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      res.json({ 
+        authenticated: true, 
+        user,
+        isAdmin: req.session?.isAdmin || false
+      });
+    } catch (error) {
+      const reqLogger = logger.withRequest((req as RequestWithId).id);
+      reqLogger.error("Error fetching auth status", { error: error instanceof Error ? error.message : String(error) });
+      res.status(500).json({ message: "Failed to fetch auth status" });
+    }
+  });
 
   // Auth routes
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
@@ -30,7 +58,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = await storage.getUser(userId);
       res.json(user);
     } catch (error) {
-      console.error("Error fetching user:", error);
+      const reqLogger = logger.withRequest((req as RequestWithId).id, req.user?.claims.sub);
+      reqLogger.error("Error fetching user", { error: error instanceof Error ? error.message : String(error) });
       res.status(500).json({ message: "Failed to fetch user" });
     }
   });
@@ -61,24 +90,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Admin routes
-  app.get('/api/admin/system/stats', adminRateLimit, adminAuthGuard, (req: AdminRequest, res) => {
+  app.get('/api/admin/system/stats', rateLimiters.admin, adminAuthGuard, (req: AdminRequest, res) => {
     const stats = analyticsLogger.getSystemStats();
     res.json(stats);
   });
 
-  app.get('/api/admin/analytics', adminRateLimit, adminAuthGuard, (req: AdminRequest, res) => {
+  app.get('/api/admin/analytics', rateLimiters.admin, adminAuthGuard, (req: AdminRequest, res) => {
     const limit = parseInt(req.query.limit as string) || 100;
     const data = analyticsLogger.getAnalyticsData(limit);
     res.json(data);
   });
 
-  app.get('/api/admin/errors', adminRateLimit, adminAuthGuard, (req: AdminRequest, res) => {
+  app.get('/api/admin/errors', rateLimiters.admin, adminAuthGuard, (req: AdminRequest, res) => {
     const limit = parseInt(req.query.limit as string) || 50;
     const logs = analyticsLogger.getErrorLogs(limit);
     res.type('text/plain').send(logs);
   });
 
-  app.post('/api/admin/generate-summary', adminRateLimit, adminAuthGuard, (req: AdminRequest, res) => {
+  app.post('/api/admin/generate-summary', rateLimiters.admin, adminAuthGuard, (req: AdminRequest, res) => {
     try {
       const filePath = analyticsLogger.generateDailySummary();
       if (filePath && require('fs').existsSync(filePath)) {
@@ -92,7 +121,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/admin/clear-logs', adminRateLimit, adminAuthGuard, (req: AdminRequest, res) => {
+  app.post('/api/admin/clear-logs', rateLimiters.admin, adminAuthGuard, (req: AdminRequest, res) => {
     try {
       analyticsLogger.clearLogs();
       res.json({ success: true, message: 'Logs cleared successfully' });
@@ -103,7 +132,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Model management routes
-  app.get('/api/admin/models', adminRateLimit, adminAuthGuard, (req: AdminRequest, res) => {
+  app.get('/api/admin/models', rateLimiters.admin, adminAuthGuard, (req: AdminRequest, res) => {
     try {
       const type = req.query.type as string;
       const models = modelManager.getAllModels(type);
@@ -114,7 +143,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/admin/models', adminRateLimit, adminAuthGuard, (req: AdminRequest, res) => {
+  app.post('/api/admin/models', rateLimiters.admin, adminAuthGuard, (req: AdminRequest, res) => {
     try {
       const modelData = req.body;
       const modelId = modelManager.registerModel(modelData);
@@ -125,7 +154,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/admin/models/:id', adminRateLimit, adminAuthGuard, (req: AdminRequest, res) => {
+  app.put('/api/admin/models/:id', rateLimiters.admin, adminAuthGuard, (req: AdminRequest, res) => {
     try {
       const { id } = req.params;
       const updates = req.body;
@@ -142,7 +171,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete('/api/admin/models/:id', adminRateLimit, adminAuthGuard, (req: AdminRequest, res) => {
+  app.delete('/api/admin/models/:id', rateLimiters.admin, adminAuthGuard, (req: AdminRequest, res) => {
     try {
       const { id } = req.params;
       const success = modelManager.deleteModel(id);
@@ -158,7 +187,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/admin/models/:id/backup', adminRateLimit, adminAuthGuard, (req: AdminRequest, res) => {
+  app.post('/api/admin/models/:id/backup', rateLimiters.admin, adminAuthGuard, (req: AdminRequest, res) => {
     try {
       const { id } = req.params;
       const backupPath = modelManager.backupModel(id);
@@ -174,7 +203,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/admin/models/stats', adminRateLimit, adminAuthGuard, (req: AdminRequest, res) => {
+  app.get('/api/admin/models/stats', rateLimiters.admin, adminAuthGuard, (req: AdminRequest, res) => {
     try {
       const stats = modelManager.getSystemStats();
       res.json(stats);
@@ -285,7 +314,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Webhook testing routes
-  app.get('/api/admin/webhook/tests', adminRateLimit, adminAuthGuard, (req: AdminRequest, res) => {
+  app.get('/api/admin/webhook/tests', rateLimiters.admin, adminAuthGuard, (req: AdminRequest, res) => {
     try {
       const history = webhookTester.getTestHistory();
       res.json(history);
@@ -295,7 +324,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/admin/webhook/stats', adminRateLimit, adminAuthGuard, (req: AdminRequest, res) => {
+  app.get('/api/admin/webhook/stats', rateLimiters.admin, adminAuthGuard, (req: AdminRequest, res) => {
     try {
       const stats = webhookTester.getTestStats();
       res.json(stats);
@@ -305,7 +334,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/admin/webhook/test', adminRateLimit, adminAuthGuard, async (req: AdminRequest, res) => {
+  app.post('/api/admin/webhook/test', rateLimiters.admin, adminAuthGuard, async (req: AdminRequest, res) => {
     try {
       const results = await webhookTester.runAllTests();
       res.json({
@@ -319,7 +348,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete('/api/admin/webhook/tests', adminRateLimit, adminAuthGuard, (req: AdminRequest, res) => {
+  app.delete('/api/admin/webhook/tests', rateLimiters.admin, adminAuthGuard, (req: AdminRequest, res) => {
     try {
       webhookTester.clearHistory();
       res.json({ success: true, message: 'Test history cleared' });
@@ -339,7 +368,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     stopPrice: z.number().optional(),
   });
 
-  app.post('/api/trading/execute', tradingRateLimit, isAuthenticated, async (req: any, res) => {
+  app.post('/api/trading/execute', rateLimiters.trading, isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const tradeRequest = tradeRequestSchema.parse(req.body);
@@ -503,7 +532,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // RL Inference routes
-  app.post('/api/rl/predict', apiRateLimit, isAuthenticated, async (req: any, res) => {
+  app.post('/api/rl/predict', rateLimiters.general, isAuthenticated, async (req: any, res) => {
     try {
       const { symbol } = req.body;
       if (!symbol) {
@@ -528,7 +557,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/rl/model-info', apiRateLimit, isAuthenticated, async (req: any, res) => {
+  app.get('/api/rl/model-info', rateLimiters.general, isAuthenticated, async (req: any, res) => {
     try {
       // Initialize RL engine if not already initialized
       await lazyInitService.initializeRLEngine();
@@ -544,7 +573,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Policy Engine routes
-  app.get('/api/policy/status', apiRateLimit, isAuthenticated, async (req: any, res) => {
+  app.get('/api/policy/status', rateLimiters.general, isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const status = await policyEngine.getPolicyStatus(userId);
@@ -557,7 +586,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/policy/emergency-stop', adminRateLimit, adminAuthGuard, async (req: AdminRequest, res) => {
+  app.post('/api/policy/emergency-stop', rateLimiters.admin, adminAuthGuard, async (req: AdminRequest, res) => {
     try {
       const { userId, durationMinutes } = req.body;
       await policyEngine.emergencyStop(userId, durationMinutes);
@@ -571,7 +600,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Simulation/Backtest routes
-  app.get('/api/simulation/strategies', apiRateLimit, isAuthenticated, async (req: any, res) => {
+  app.get('/api/simulation/strategies', rateLimiters.general, isAuthenticated, async (req: any, res) => {
     try {
       const strategies = backtestEngine.getAvailableStrategies();
       res.json(strategies);
@@ -583,7 +612,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/simulation/event-templates', apiRateLimit, isAuthenticated, async (req: any, res) => {
+  app.get('/api/simulation/event-templates', rateLimiters.general, isAuthenticated, async (req: any, res) => {
     try {
       const templates = backtestEngine.getSyntheticEventTemplates();
       res.json(templates);
@@ -595,7 +624,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/simulation/backtest', tradingRateLimit, isAuthenticated, async (req: any, res) => {
+  app.post('/api/simulation/backtest', rateLimiters.trading, isAuthenticated, async (req: any, res) => {
     try {
       const config = req.body;
       const result = await backtestEngine.runBacktest(config);
@@ -608,7 +637,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/simulation/export/:id', apiRateLimit, isAuthenticated, async (req: any, res) => {
+  app.get('/api/simulation/export/:id', rateLimiters.general, isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
       const csvData = await backtestEngine.exportBacktestCSV(id);
@@ -625,7 +654,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Journal routes (placeholder implementations)
-  app.get('/api/journal/analysis', apiRateLimit, isAuthenticated, async (req: any, res) => {
+  app.get('/api/journal/analysis', rateLimiters.general, isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const { from, to } = req.query;
@@ -654,7 +683,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/journal/performance', apiRateLimit, isAuthenticated, async (req: any, res) => {
+  app.get('/api/journal/performance', rateLimiters.general, isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const trades = await storage.getUserTrades(userId, 50);
@@ -679,7 +708,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Lazy initialization endpoint (for manual initialization if needed)
-  app.post('/api/ai/initialize', apiRateLimit, isAuthenticated, async (req: any, res) => {
+  app.post('/api/ai/initialize', rateLimiters.general, isAuthenticated, async (req: any, res) => {
     try {
       console.log('[API] Manual AI initialization requested');
       await lazyInitService.initializeAllServices();

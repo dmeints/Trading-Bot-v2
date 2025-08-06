@@ -17,7 +17,10 @@ import {
   Database,
   Settings,
   Users,
-  Activity
+  Activity,
+  CheckCircle2,
+  Clock,
+  Play
 } from 'lucide-react';
 
 interface SystemStats {
@@ -324,7 +327,7 @@ export default function Admin() {
         </div>
 
         <Tabs defaultValue="analytics" className="space-y-6">
-          <TabsList className="grid grid-cols-3 w-full max-w-xl bg-gray-800">
+          <TabsList className="grid grid-cols-4 w-full max-w-4xl bg-gray-800">
             <TabsTrigger value="analytics" className="text-white data-[state=active]:bg-blue-600">
               Analytics Data
             </TabsTrigger>
@@ -333,6 +336,9 @@ export default function Admin() {
             </TabsTrigger>
             <TabsTrigger value="models" className="text-white data-[state=active]:bg-blue-600">
               Models & Webhooks
+            </TabsTrigger>
+            <TabsTrigger value="testing" className="text-white data-[state=active]:bg-blue-600">
+              Webhook Testing
             </TabsTrigger>
           </TabsList>
 
@@ -405,11 +411,17 @@ export default function Admin() {
                   >
                     Open Model Manager
                   </Button>
+                  <Button 
+                    onClick={() => window.open('/analytics', '_blank')}
+                    className="w-full bg-purple-600 hover:bg-purple-700"
+                  >
+                    Advanced Analytics
+                  </Button>
                   <div className="text-sm text-gray-300">
                     <p>• Register and manage AI models</p>
                     <p>• Monitor model performance</p>
                     <p>• Backup and version control</p>
-                    <p>• Activate/deactivate models</p>
+                    <p>• Advanced analytics dashboard</p>
                   </div>
                 </CardContent>
               </Card>
@@ -452,8 +464,244 @@ export default function Admin() {
               </Card>
             </div>
           </TabsContent>
+
+          <TabsContent value="testing">
+            <WebhookTestingPanel adminSecret={adminSecret} />
+          </TabsContent>
         </Tabs>
       </div>
+    </div>
+  );
+}
+
+function WebhookTestingPanel({ adminSecret }: { adminSecret: string }) {
+  const [isRunning, setIsRunning] = useState(false);
+  
+  const { data: testHistory, refetch: refetchHistory } = useQuery({
+    queryKey: ['/api/admin/webhook/tests'],
+    queryFn: async () => {
+      const response = await fetch('/api/admin/webhook/tests', {
+        headers: { 'x-admin-secret': adminSecret },
+      });
+      if (!response.ok) throw new Error('Failed to fetch test history');
+      return response.json();
+    },
+    enabled: !!adminSecret,
+    refetchInterval: 5000,
+  });
+
+  const { data: testStats } = useQuery({
+    queryKey: ['/api/admin/webhook/stats'],
+    queryFn: async () => {
+      const response = await fetch('/api/admin/webhook/stats', {
+        headers: { 'x-admin-secret': adminSecret },
+      });
+      if (!response.ok) throw new Error('Failed to fetch test stats');
+      return response.json();
+    },
+    enabled: !!adminSecret,
+    refetchInterval: 10000,
+  });
+
+  const runTestsMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch('/api/admin/webhook/test', {
+        method: 'POST',
+        headers: { 'x-admin-secret': adminSecret },
+      });
+      if (!response.ok) throw new Error('Failed to run tests');
+      return response.json();
+    },
+    onSuccess: () => {
+      refetchHistory();
+      toast({
+        title: "Tests Completed",
+        description: "All webhook tests have been executed successfully",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Test Failed",
+        description: "Failed to execute webhook tests",
+        variant: "destructive",
+      });
+    },
+    onSettled: () => {
+      setIsRunning(false);
+    },
+  });
+
+  const clearHistoryMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch('/api/admin/webhook/tests', {
+        method: 'DELETE',
+        headers: { 'x-admin-secret': adminSecret },
+      });
+      if (!response.ok) throw new Error('Failed to clear history');
+      return response.json();
+    },
+    onSuccess: () => {
+      refetchHistory();
+      toast({
+        title: "History Cleared",
+        description: "Test history has been cleared successfully",
+      });
+    },
+  });
+
+  const handleRunTests = () => {
+    setIsRunning(true);
+    runTestsMutation.mutate();
+  };
+
+  return (
+    <div className="space-y-6">
+      {testStats && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <Card className="bg-gray-800 border-gray-700">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-400">Total Tests</p>
+                  <p className="text-2xl font-bold text-white">{testStats.totalTests}</p>
+                </div>
+                <Activity className="w-8 h-8 text-blue-400" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gray-800 border-gray-700">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-400">Success Rate</p>
+                  <p className="text-2xl font-bold text-white">{testStats.successRate?.toFixed(1) || 0}%</p>
+                </div>
+                {testStats.successRate >= 80 ? (
+                  <CheckCircle2 className="w-8 h-8 text-green-400" />
+                ) : (
+                  <AlertTriangle className="w-8 h-8 text-yellow-400" />
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gray-800 border-gray-700">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-400">Avg Response</p>
+                  <p className="text-2xl font-bold text-white">{testStats.averageResponseTime || 0}ms</p>
+                </div>
+                <Clock className="w-8 h-8 text-purple-400" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-gray-800 border-gray-700">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-400">Last Run</p>
+                  <p className="text-sm font-bold text-white">
+                    {testStats.lastTestRun ? new Date(testStats.lastTestRun).toLocaleString() : 'Never'}
+                  </p>
+                </div>
+                <Clock className="w-8 h-8 text-orange-400" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      <div className="flex space-x-4">
+        <Button
+          onClick={handleRunTests}
+          disabled={isRunning}
+          className="bg-green-600 hover:bg-green-700"
+        >
+          {isRunning ? (
+            <>
+              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+              Running Tests...
+            </>
+          ) : (
+            <>
+              <Play className="w-4 h-4 mr-2" />
+              Run All Tests
+            </>
+          )}
+        </Button>
+
+        <Button
+          variant="outline"
+          onClick={() => clearHistoryMutation.mutate()}
+          disabled={clearHistoryMutation.isPending}
+          className="border-gray-600 text-gray-300 hover:bg-gray-700"
+        >
+          <Trash2 className="w-4 h-4 mr-2" />
+          Clear History
+        </Button>
+      </div>
+
+      <Card className="bg-gray-800 border-gray-700">
+        <CardHeader>
+          <CardTitle className="text-white">Test Results History</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="max-h-96 overflow-y-auto space-y-3">
+            {!testHistory || testHistory.length === 0 ? (
+              <div className="text-center text-gray-400 py-8">
+                No test results available. Run some tests to see results here.
+              </div>
+            ) : (
+              testHistory.map((result: any, index: number) => (
+                <div key={index} className="p-4 bg-gray-700 rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center space-x-3">
+                      <div className={`w-3 h-3 rounded-full ${result.success ? 'bg-green-400' : 'bg-red-400'}`} />
+                      <span className="text-white font-medium">Test ID: {result.id}</span>
+                      <Badge variant={result.success ? 'default' : 'destructive'}>
+                        {result.statusCode}
+                      </Badge>
+                    </div>
+                    <span className="text-xs text-gray-400">
+                      {new Date(result.timestamp).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-4 text-sm">
+                    <div>
+                      <span className="text-gray-400">Response Time:</span>
+                      <br />
+                      <span className="text-white">{result.responseTime}ms</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400">Success:</span>
+                      <br />
+                      <span className={result.success ? 'text-green-400' : 'text-red-400'}>
+                        {result.success ? 'Yes' : 'No'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400">Signature Valid:</span>
+                      <br />
+                      <span className={result.signatureValid ? 'text-green-400' : 'text-red-400'}>
+                        {result.signatureValid ? 'Yes' : 'No'}
+                      </span>
+                    </div>
+                  </div>
+                  {result.error && (
+                    <div className="mt-2">
+                      <span className="text-gray-400 text-sm">Error: </span>
+                      <span className="text-red-400 text-sm">{result.error}</span>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

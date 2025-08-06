@@ -13,6 +13,7 @@ import { apiRateLimit, tradingRateLimit, adminRateLimit } from "./middleware/rat
 import { adminAuthGuard, AdminRequest } from "./middleware/adminAuth";
 import { modelManager } from "./services/modelManager";
 import { tradingWebhookVerifier, marketDataWebhookVerifier, genericWebhookVerifier, captureRawBody, WebhookRequest } from "./middleware/webhookSecurity";
+import { webhookTester } from "./services/webhookTester";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -276,6 +277,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Generic webhook error:', error);
       res.status(500).json({ error: 'Processing failed' });
+    }
+  });
+
+  // Webhook testing routes
+  app.get('/api/admin/webhook/tests', adminRateLimit, adminAuthGuard, (req: AdminRequest, res) => {
+    try {
+      const history = webhookTester.getTestHistory();
+      res.json(history);
+    } catch (error) {
+      console.error('Failed to fetch webhook test history:', error);
+      res.status(500).json({ error: 'Failed to fetch test history' });
+    }
+  });
+
+  app.get('/api/admin/webhook/stats', adminRateLimit, adminAuthGuard, (req: AdminRequest, res) => {
+    try {
+      const stats = webhookTester.getTestStats();
+      res.json(stats);
+    } catch (error) {
+      console.error('Failed to fetch webhook test stats:', error);
+      res.status(500).json({ error: 'Failed to fetch test stats' });
+    }
+  });
+
+  app.post('/api/admin/webhook/test', adminRateLimit, adminAuthGuard, async (req: AdminRequest, res) => {
+    try {
+      const results = await webhookTester.runAllTests();
+      res.json({
+        success: true,
+        totalTests: results.length,
+        results,
+      });
+    } catch (error) {
+      console.error('Failed to run webhook tests:', error);
+      res.status(500).json({ error: 'Failed to run tests' });
+    }
+  });
+
+  app.delete('/api/admin/webhook/tests', adminRateLimit, adminAuthGuard, (req: AdminRequest, res) => {
+    try {
+      webhookTester.clearHistory();
+      res.json({ success: true, message: 'Test history cleared' });
+    } catch (error) {
+      console.error('Failed to clear webhook test history:', error);
+      res.status(500).json({ error: 'Failed to clear test history' });
     }
   });
 

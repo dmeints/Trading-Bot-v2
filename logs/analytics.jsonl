@@ -1,0 +1,1 @@
+{"timestamp":"2025-08-06T13:48:03.911Z","tradeId":"5ef52f8a-0ea8-430c-ae56-d80934df399d","userId":"dev-user-123","symbol":"BTC-USD","action":"buy","strategy":"manual-trade","regime":"sideways","type":"scalp","risk":"low","source":"trading-engine","pnl":"0.00000000","latencyMs":0,"signalStrength":0.8,"confidence":0.8,"metadata":{"orderType":"market"}}

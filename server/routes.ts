@@ -27,9 +27,26 @@ import { healthRoutes } from "./routes/healthRoutes";
 export async function registerRoutes(app: Express): Promise<Server> {
   // Development bypass middleware
   const isDevelopment = process.env.NODE_ENV === 'development';
-  const devBypass = (req: any, res: any, next: any) => {
+  const devBypass = async (req: any, res: any, next: any) => {
     if (isDevelopment && !req.user) {
       req.user = { claims: { sub: 'dev-user-123' } };
+      
+      // Ensure dev user exists in storage
+      try {
+        let user = await storage.getUser('dev-user-123');
+        if (!user) {
+          user = await storage.upsertUser({
+            id: 'dev-user-123',
+            email: 'dev@skippy.local',
+            firstName: 'Dev',
+            lastName: 'User',
+            profileImageUrl: 'https://via.placeholder.com/150'
+          });
+          console.log('[DevBypass] Created development user:', user.id);
+        }
+      } catch (error) {
+        console.error('[DevBypass] Error ensuring dev user exists:', error);
+      }
     }
     next();
   };

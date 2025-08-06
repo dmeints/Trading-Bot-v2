@@ -8,15 +8,16 @@
 import { useEffect, useRef, useState } from 'react';
 
 interface UseWebSocketOptions {
-  url: string;
+  url?: string;
   protocols?: string | string[];
   maxReconnectAttempts?: number;
   initialReconnectDelay?: number;
   maxReconnectDelay?: number;
   onOpen?: (event: Event) => void;
-  onMessage?: (event: MessageEvent) => void;
+  onMessage?: (message: any) => void;
   onError?: (event: Event) => void;
   onClose?: (event: CloseEvent) => void;
+  onConnect?: () => void;
 }
 
 export function useWebSocket({
@@ -101,9 +102,12 @@ export function useWebSocket({
     }
   };
 
-  const sendMessage = (message: string | ArrayBufferLike | Blob | ArrayBufferView) => {
+  const sendMessage = (message: string | object | ArrayBufferLike | Blob | ArrayBufferView) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(message);
+      const messageToSend = typeof message === 'object' && !(message instanceof ArrayBuffer) && !(message instanceof Blob) 
+        ? JSON.stringify(message) 
+        : message;
+      wsRef.current.send(messageToSend);
       return true;
     }
     return false;
@@ -127,5 +131,9 @@ export function useWebSocket({
     isOpen: readyState === WebSocket.OPEN,
     isClosing: readyState === WebSocket.CLOSING,
     isClosed: readyState === WebSocket.CLOSED,
+    isConnected: readyState === WebSocket.OPEN,
+    connectionStatus: readyState === WebSocket.OPEN ? 'connected' : 
+                   readyState === WebSocket.CONNECTING ? 'connecting' : 
+                   readyState === WebSocket.CLOSING ? 'closing' : 'disconnected',
   };
 }

@@ -960,7 +960,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Revolutionary Enhancements Routes
-  app.use('/api/revolutionary', (await import('./routes/revolutionaryEnhancements')).revolutionaryEnhancementsRouter);
+  app.use('/api/revolutionary-enhancements', (await import('./routes/revolutionaryEnhancements')).revolutionaryEnhancementsRouter);
+  
+  // Revolutionary Systems Routes (Quantum Consciousness, Collective Superintelligence, etc.)
+  app.use('/api/revolutionary', (await import('./routes/revolutionary')).default);
 
   return httpServer;
 }

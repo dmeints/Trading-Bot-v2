@@ -324,12 +324,15 @@ export default function Admin() {
         </div>
 
         <Tabs defaultValue="analytics" className="space-y-6">
-          <TabsList className="grid grid-cols-2 w-full max-w-md bg-gray-800">
+          <TabsList className="grid grid-cols-3 w-full max-w-xl bg-gray-800">
             <TabsTrigger value="analytics" className="text-white data-[state=active]:bg-blue-600">
               Analytics Data
             </TabsTrigger>
             <TabsTrigger value="errors" className="text-white data-[state=active]:bg-blue-600">
               Error Logs
+            </TabsTrigger>
+            <TabsTrigger value="models" className="text-white data-[state=active]:bg-blue-600">
+              Models & Webhooks
             </TabsTrigger>
           </TabsList>
 
@@ -387,6 +390,67 @@ export default function Admin() {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="models">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card className="bg-gray-800 border-gray-700">
+                <CardHeader>
+                  <CardTitle className="text-white">Model Management</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <Button 
+                    onClick={() => window.open('/models', '_blank')}
+                    className="w-full bg-blue-600 hover:bg-blue-700"
+                  >
+                    Open Model Manager
+                  </Button>
+                  <div className="text-sm text-gray-300">
+                    <p>• Register and manage AI models</p>
+                    <p>• Monitor model performance</p>
+                    <p>• Backup and version control</p>
+                    <p>• Activate/deactivate models</p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-gray-800 border-gray-700">
+                <CardHeader>
+                  <CardTitle className="text-white">Webhook Security</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="text-sm text-gray-300 space-y-2">
+                    <div>
+                      <strong className="text-white">Trading Webhooks:</strong>
+                      <br />
+                      <code className="text-xs bg-gray-700 px-2 py-1 rounded">POST /api/webhooks/trading</code>
+                      <br />
+                      <span className="text-xs">Header: x-trading-signature</span>
+                    </div>
+                    <div>
+                      <strong className="text-white">Market Data Webhooks:</strong>
+                      <br />
+                      <code className="text-xs bg-gray-700 px-2 py-1 rounded">POST /api/webhooks/market</code>
+                      <br />
+                      <span className="text-xs">Header: x-market-signature</span>
+                    </div>
+                    <div>
+                      <strong className="text-white">Generic Webhooks:</strong>
+                      <br />
+                      <code className="text-xs bg-gray-700 px-2 py-1 rounded">POST /api/webhooks/generic</code>
+                      <br />
+                      <span className="text-xs">Header: x-webhook-signature</span>
+                    </div>
+                  </div>
+                  <Alert>
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertDescription className="text-xs">
+                      All webhooks use HMAC-SHA256 signature verification for security.
+                    </AlertDescription>
+                  </Alert>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
         </Tabs>
       </div>

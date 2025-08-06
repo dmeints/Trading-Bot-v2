@@ -216,6 +216,20 @@ export class MarketDataService {
     return this.priceCache.get(symbol);
   }
 
+  updatePrice(symbol: string, price: number): void {
+    const existingPrice = this.priceCache.get(symbol.toUpperCase());
+    const marketPrice: MarketPrice = {
+      symbol: symbol.toUpperCase(),
+      price,
+      change24h: existingPrice ? ((price - existingPrice.price) / existingPrice.price) * 100 : 0,
+      volume24h: existingPrice?.volume24h || 0,
+      timestamp: new Date(),
+    };
+    
+    this.priceCache.set(symbol.toUpperCase(), marketPrice);
+    this.broadcastPriceUpdate(symbol.toUpperCase(), marketPrice);
+  }
+
   stop() {
     if (this.updateInterval) {
       clearInterval(this.updateInterval);

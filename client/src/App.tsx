@@ -10,6 +10,7 @@ import Trading from "@/pages/trading";
 import Portfolio from "@/pages/portfolio";
 import Settings from "@/pages/settings";
 import Admin from "@/pages/admin";
+import ModelManagement from "@/pages/modelManagement";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -26,6 +27,7 @@ function Router() {
           <Route path="/portfolio" component={Portfolio} />
           <Route path="/settings" component={Settings} />
           <Route path="/admin" component={Admin} />
+          <Route path="/models" component={ModelManagement} />
         </>
       )}
       <Route component={NotFound} />

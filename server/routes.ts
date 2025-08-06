@@ -11,6 +11,8 @@ import { z } from "zod";
 import { analyticsLogger, logTradeEvent, logAIEvent } from "./services/analyticsLogger";
 import { apiRateLimit, tradingRateLimit, adminRateLimit } from "./middleware/rateLimiter";
 import { adminAuthGuard, AdminRequest } from "./middleware/adminAuth";
+import { modelManager } from "./services/modelManager";
+import { tradingWebhookVerifier, marketDataWebhookVerifier, genericWebhookVerifier, captureRawBody, WebhookRequest } from "./middleware/webhookSecurity";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -92,6 +94,188 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Failed to clear logs:', error);
       res.status(500).json({ error: 'Failed to clear logs' });
+    }
+  });
+
+  // Model management routes
+  app.get('/api/admin/models', adminRateLimit, adminAuthGuard, (req: AdminRequest, res) => {
+    try {
+      const type = req.query.type as string;
+      const models = modelManager.getAllModels(type);
+      res.json(models);
+    } catch (error) {
+      console.error('Failed to fetch models:', error);
+      res.status(500).json({ error: 'Failed to fetch models' });
+    }
+  });
+
+  app.post('/api/admin/models', adminRateLimit, adminAuthGuard, (req: AdminRequest, res) => {
+    try {
+      const modelData = req.body;
+      const modelId = modelManager.registerModel(modelData);
+      res.json({ id: modelId, success: true });
+    } catch (error) {
+      console.error('Failed to create model:', error);
+      res.status(500).json({ error: 'Failed to create model' });
+    }
+  });
+
+  app.put('/api/admin/models/:id', adminRateLimit, adminAuthGuard, (req: AdminRequest, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      const success = modelManager.updateModel(id, updates);
+      
+      if (success) {
+        res.json({ success: true });
+      } else {
+        res.status(404).json({ error: 'Model not found' });
+      }
+    } catch (error) {
+      console.error('Failed to update model:', error);
+      res.status(500).json({ error: 'Failed to update model' });
+    }
+  });
+
+  app.delete('/api/admin/models/:id', adminRateLimit, adminAuthGuard, (req: AdminRequest, res) => {
+    try {
+      const { id } = req.params;
+      const success = modelManager.deleteModel(id);
+      
+      if (success) {
+        res.json({ success: true });
+      } else {
+        res.status(404).json({ error: 'Model not found' });
+      }
+    } catch (error) {
+      console.error('Failed to delete model:', error);
+      res.status(500).json({ error: 'Failed to delete model' });
+    }
+  });
+
+  app.post('/api/admin/models/:id/backup', adminRateLimit, adminAuthGuard, (req: AdminRequest, res) => {
+    try {
+      const { id } = req.params;
+      const backupPath = modelManager.backupModel(id);
+      
+      if (backupPath) {
+        res.download(backupPath);
+      } else {
+        res.status(404).json({ error: 'Model not found or backup failed' });
+      }
+    } catch (error) {
+      console.error('Failed to backup model:', error);
+      res.status(500).json({ error: 'Failed to backup model' });
+    }
+  });
+
+  app.get('/api/admin/models/stats', adminRateLimit, adminAuthGuard, (req: AdminRequest, res) => {
+    try {
+      const stats = modelManager.getSystemStats();
+      res.json(stats);
+    } catch (error) {
+      console.error('Failed to fetch model stats:', error);
+      res.status(500).json({ error: 'Failed to fetch model stats' });
+    }
+  });
+
+  // Webhook endpoints with security
+  app.post('/api/webhooks/trading', captureRawBody, tradingWebhookVerifier, (req: WebhookRequest, res) => {
+    try {
+      const { type, data } = req.body;
+      
+      // Log webhook receipt
+      analyticsLogger.logAnalyticsEvent({
+        timestamp: new Date().toISOString(),
+        tradeId: `webhook-trading-${Date.now()}`,
+        strategy: 'webhook-trading',
+        regime: 'sideways',
+        type: 'scalp',
+        risk: 'medium',
+        source: 'trading-webhook',
+        pnl: data.pnl || 0,
+        latencyMs: 0,
+        signalStrength: 0.8,
+        confidence: 0.8,
+        metadata: { webhookType: type, data },
+      });
+
+      // Process trading webhook based on type
+      switch (type) {
+        case 'signal':
+          // Handle trading signal
+          console.log('[Webhook] Received trading signal:', data);
+          break;
+        case 'execution':
+          // Handle trade execution update
+          console.log('[Webhook] Trade execution update:', data);
+          break;
+        default:
+          console.log('[Webhook] Unknown trading webhook type:', type);
+      }
+
+      res.json({ received: true, processed: true });
+    } catch (error) {
+      console.error('Trading webhook error:', error);
+      res.status(500).json({ error: 'Processing failed' });
+    }
+  });
+
+  app.post('/api/webhooks/market', captureRawBody, marketDataWebhookVerifier, (req: WebhookRequest, res) => {
+    try {
+      const { symbol, price, timestamp } = req.body;
+      
+      // Log market data webhook
+      analyticsLogger.logAnalyticsEvent({
+        timestamp: new Date().toISOString(),
+        tradeId: `webhook-market-${Date.now()}`,
+        strategy: 'webhook-market',
+        regime: 'sideways',
+        type: 'scalp',
+        risk: 'low',
+        source: 'market-webhook',
+        pnl: 0,
+        latencyMs: 0,
+        signalStrength: 1.0,
+        confidence: 1.0,
+        metadata: { symbol, price, timestamp },
+      });
+
+      // Update market data
+      marketDataService.updatePrice(symbol, price);
+      
+      res.json({ received: true, updated: true });
+    } catch (error) {
+      console.error('Market webhook error:', error);
+      res.status(500).json({ error: 'Processing failed' });
+    }
+  });
+
+  app.post('/api/webhooks/generic', captureRawBody, genericWebhookVerifier, (req: WebhookRequest, res) => {
+    try {
+      const { source, event, data } = req.body;
+      
+      // Log generic webhook
+      analyticsLogger.logAnalyticsEvent({
+        timestamp: new Date().toISOString(),
+        tradeId: `webhook-generic-${Date.now()}`,
+        strategy: 'webhook-generic',
+        regime: 'sideways',
+        type: 'scalp',
+        risk: 'low',
+        source: 'generic-webhook',
+        pnl: 0,
+        latencyMs: 0,
+        signalStrength: 0.5,
+        confidence: 0.5,
+        metadata: { source, event, data },
+      });
+
+      console.log('[Webhook] Generic webhook from', source, ':', event);
+      res.json({ received: true });
+    } catch (error) {
+      console.error('Generic webhook error:', error);
+      res.status(500).json({ error: 'Processing failed' });
     }
   });
 

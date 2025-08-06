@@ -8,6 +8,9 @@ import { marketDataService } from "./services/marketData";
 import { createWebSocketServer } from "./services/webSocketServer";
 import { insertTradeSchema } from "@shared/schema";
 import { z } from "zod";
+import { analyticsLogger, logTradeEvent, logAIEvent } from "./services/analyticsLogger";
+import { apiRateLimit, tradingRateLimit, adminRateLimit } from "./middleware/rateLimiter";
+import { adminAuthGuard, AdminRequest } from "./middleware/adminAuth";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -50,6 +53,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Admin routes
+  app.get('/api/admin/system/stats', adminRateLimit, adminAuthGuard, (req: AdminRequest, res) => {
+    const stats = analyticsLogger.getSystemStats();
+    res.json(stats);
+  });
+
+  app.get('/api/admin/analytics', adminRateLimit, adminAuthGuard, (req: AdminRequest, res) => {
+    const limit = parseInt(req.query.limit as string) || 100;
+    const data = analyticsLogger.getAnalyticsData(limit);
+    res.json(data);
+  });
+
+  app.get('/api/admin/errors', adminRateLimit, adminAuthGuard, (req: AdminRequest, res) => {
+    const limit = parseInt(req.query.limit as string) || 50;
+    const logs = analyticsLogger.getErrorLogs(limit);
+    res.type('text/plain').send(logs);
+  });
+
+  app.post('/api/admin/generate-summary', adminRateLimit, adminAuthGuard, (req: AdminRequest, res) => {
+    try {
+      const filePath = analyticsLogger.generateDailySummary();
+      if (filePath && require('fs').existsSync(filePath)) {
+        res.download(filePath, `daily_summary_${new Date().toISOString().split('T')[0]}.csv`);
+      } else {
+        res.status(404).json({ error: 'No data available for daily summary' });
+      }
+    } catch (error) {
+      console.error('Failed to generate daily summary:', error);
+      res.status(500).json({ error: 'Failed to generate summary' });
+    }
+  });
+
+  app.post('/api/admin/clear-logs', adminRateLimit, adminAuthGuard, (req: AdminRequest, res) => {
+    try {
+      analyticsLogger.clearLogs();
+      res.json({ success: true, message: 'Logs cleared successfully' });
+    } catch (error) {
+      console.error('Failed to clear logs:', error);
+      res.status(500).json({ error: 'Failed to clear logs' });
+    }
+  });
+
   // Trading routes
   const tradeRequestSchema = z.object({
     symbol: z.string(),
@@ -60,7 +105,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     stopPrice: z.number().optional(),
   });
 
-  app.post('/api/trading/execute', isAuthenticated, async (req: any, res) => {
+  app.post('/api/trading/execute', tradingRateLimit, isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const tradeRequest = tradeRequestSchema.parse(req.body);
@@ -71,8 +116,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       if (result.success) {
+        // Log successful trade
+        logTradeEvent(
+          result.trade?.id || 'unknown',
+          userId,
+          tradeRequest.symbol,
+          tradeRequest.side,
+          result.trade?.pnl || 0,
+          0.8, // confidence score
+          'manual-trade',
+          { orderType: tradeRequest.orderType }
+        );
         res.json(result);
       } else {
+        // Log failed trade
+        analyticsLogger.logError({
+          timestamp: new Date().toISOString(),
+          level: 'warn',
+          message: 'Trade execution failed',
+          userId,
+          endpoint: '/api/trading/execute',
+          metadata: { tradeRequest, error: result.error },
+        });
         res.status(400).json({ message: result.error });
       }
     } catch (error) {

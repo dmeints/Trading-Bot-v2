@@ -88,6 +88,32 @@ The trading engine supports both simulated and live trading environments:
 - **Drizzle Kit**: Database migration and introspection tools
 
 ## Real-time Market Data
-- **Simulated Market Data**: Built-in price simulation for development and testing
-- **WebSocket Integration**: Ready for external market data provider integration
+- **Live Market Data**: CoinGecko API integration providing real cryptocurrency prices updated every 30 seconds
+- **WebSocket Integration**: Real-time price streaming to connected clients
 - **Caching Layer**: In-memory price caching with configurable update intervals
+
+# Recent Changes
+
+## Phase 1: Bootstrap Core Feature Restoration (August 6, 2025)
+
+### Analytics Logging System
+- **Comprehensive Event Logging**: JSONL-based analytics logging system tracks all trades, AI decisions, and system events
+- **Daily Summary Generation**: CSV export functionality for daily trading and system analytics
+- **Error Logging**: Dedicated error logging with structured metadata and stack traces
+- **System Statistics**: Real-time monitoring of log file sizes, event counts, and system health
+
+### Security and Rate Limiting
+- **Multi-tier Rate Limiting**: Different rate limits for general API, trading operations, and admin functions
+- **Admin Authentication**: Secure admin access system using environment-based secrets
+- **Request Logging**: All rate limit violations and unauthorized access attempts are logged
+
+### Admin Dashboard
+- **System Management Interface**: Comprehensive admin panel accessible at `/admin` route
+- **Analytics Visualization**: View recent analytics events, error logs, and system statistics
+- **Export Functionality**: Download daily summaries and system reports
+- **Log Management**: Clear logs and monitor system performance
+
+### Integration Enhancements
+- **Trade Event Logging**: All successful and failed trades are automatically logged with metadata
+- **AI Agent Monitoring**: AI agent activities and performance metrics are tracked
+- **Enhanced Error Handling**: Comprehensive error logging across all API endpoints

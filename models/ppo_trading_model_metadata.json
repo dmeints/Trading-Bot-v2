@@ -1,0 +1,17 @@
+{
+  "version": "1.0.0-stub",
+  "architecture": "PPO-Stub",
+  "trainingEpochs": 0,
+  "accuracy": 0.5,
+  "lastUpdated": "2025-08-06T00:58:57.116Z",
+  "featureNames": [
+    "price",
+    "volume24h",
+    "change24h",
+    "volatility",
+    "rsi",
+    "macd",
+    "bollingerPosition",
+    "volumeProfile"
+  ]
+}

@@ -1,0 +1,136 @@
+Objective:
+Iteratively review every implemented feature in the current Skippy app and compare it to (1) the original bootstrap starter guide and (2) the latest “master plan” decisions from our conversation. Identify misalignments, missing pieces, or features lost during the initial build. Produce a concrete remediation plan (tasks + diffs/PRs) to reach full functionality.
+
+Inputs to reference (treat as source of truth in this order):
+
+1. Master Plan / Current Scope (latest): RL + policy engine, live/paper toggle, trade throttles/cooldowns, rationale & journal, daily digest, identity-preserving tags, Simulation Studio, model versioning + auto-promotion, performance compare UI, live RL predictions, whale/news/sentiment signals, audit mode, secure webhooks, admin-secret protected logs, CSV/PDF export, scheduling for retraining, etc.
+
+
+2. Bootstrap Starter Guide: repo layout, server/client scaffolds, endpoints, scripts, logging, secrets, run scripts.
+
+
+3. Current Codebase (the actual files in the project).
+
+
+
+Deliverables:
+
+Audit Matrix (markdown table) mapping Planned Feature → Files/Modules → Status (Present / Partial / Missing) → Gaps → Fix Tasks.
+
+Gap Remediation Plan (prioritized list) with small, verifiable tasks (≤ 1–2 hrs each), owners (default “system”), and acceptance tests.
+
+Proposed Diffs/PR Plan for each missing/partial item (file paths, function signatures, stub code if helpful).
+
+Risk/Dependency Notes (secrets needed, external APIs, token costs).
+
+Definition of Done checklist.
+
+
+Method:
+
+1. Enumerate planned features from the Master Plan + Bootstrap (build a canonical list).
+
+
+2. Scan the repo (server, client, scripts) and map each feature to actual files/components.
+
+
+3. Score each feature: Present (meets acceptance), Partial (exists but incomplete), Missing.
+
+
+4. Propose corrections: minimal, testable steps (link to file paths, add TODO markers).
+
+
+5. Output Audit Matrix + Remediation Plan.
+
+
+6. Generate follow-up tasks as a numbered list with commands and file edits.
+
+
+
+Acceptance Criteria:
+
+Every feature appears in the Audit Matrix with a status.
+
+All Partial/Missing items have a concrete, reproducible fix path.
+
+Output includes at least one “next PR” set of file changes (even if stubs).
+
+No security regressions (auth, rate limit, secrets, signature checks).
+
+
+Audit Matrix Template (example):
+
+Feature	Planned Behavior	Files/Modules	Status	Gaps	Fix Tasks
+
+Live RL predictions	/api/rl/predict returns action/confidence/rationale using PPO weights	server/src/index.ts, server/src/engine/rl.ts	Partial	Stub returns “hold”	Implement rl.ts loadWeights(), predict(); wire into route; unit tests
+Trade throttle/cooldown	Pause after N losses, confidence ≥ threshold, daily cap	server/src/engine/policy.ts, server/src/logs/trade_analytics.ts	Missing	No policy engine yet	Add policy engine, env-configurable thresholds, tests, UI toggle
+Model auto-promo	Compare backtest/live metrics; update models/metadata.json	server/src/services/model_promo.ts	Missing	No compare/persist flow	Implement compare(), write metadata, UI badge delta
+Simulation Studio	Backtests + synthetic events; downloadable reports	client/src/pages/SimulationStudio.tsx, server/src/engine/backtest.ts	Missing	UI + server stubs absent	Add pages + endpoints; CSV/PDF export
+
+
+Tasks Format (example):
+
+1. Create policy engine
+
+Files: server/src/engine/policy.ts, tests in server/src/engine/__tests__/policy.test.ts
+
+Add env vars: CONF_MIN=0.85, LOSS_STREAK=3, COOLDOWN_MIN=60, DAILY_CAP=15
+
+Acceptance: policy blocks trades under threshold; cooldown activates after streak; cap enforced; tests pass.
+
+
+
+2. Wire RL inference
+
+Files: server/src/engine/rl.ts, update /api/rl/predict
+
+Acceptance: returns action/confidence using weights file; logs featuresUsed
+
+
+
+
+Definition of Done Checklist:
+
+[ ] All features marked Present or Planned (explicitly deferred).
+
+[ ] Security gates intact: x-admin-secret, rate limit, HMAC webhooks.
+
+[ ] Logs emit analytics for trade decisions, rationales, outcomes.
+
+[ ] UI shows status, toggles (audit mode, paper/live), performance compare.
+
+[ ] Scripts run: npm run setup, daily summary exports CSV.
+
+
+
+---
+
+Step-by-step actions Replit should take
+
+1. Index the codebase & build the canonical feature list from Master Plan + Bootstrap.
+
+
+2. Produce the Audit Matrix (as AUDIT.md at repo root).
+
+
+3. Generate a prioritized task list (TASKS.md) with file paths and acceptance tests.
+
+
+4. Open stubs where missing (create files with TODOs):
+
+server/src/engine/policy.ts
+
+server/src/engine/rl.ts
+
+server/src/engine/backtest.ts
+
+client/src/pages/SimulationStudio.tsx
+
+client/src/pages/Insights.tsx (model compare, equity curve)
+
+
+
+5. Emit a short summary to console with top 5 gaps and next 3 PRs.
+
+
+6. (Optional) Run quick checks: typecheck, route existence, secrets present.

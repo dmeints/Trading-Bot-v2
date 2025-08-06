@@ -1,13 +1,25 @@
 import { useAuth } from '@/hooks/useAuth';
 import { useTradingStore } from '@/stores/tradingStore';
 import { Button } from '@/components/ui/button';
-import { Brain, FlaskConical } from 'lucide-react';
+import { Brain, FlaskConical, LayoutDashboard, TrendingUp, Wallet, TestTube, BookOpen, BarChart3, Settings } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { Link, useLocation } from 'wouter';
 
 export default function TopNavigation() {
   const { user } = useAuth();
   const { tradingMode, portfolioSnapshot, setTradingMode } = useTradingStore();
   const { toast } = useToast();
+  const [location] = useLocation();
+
+  const navLinks = [
+    { href: '/', icon: LayoutDashboard, label: 'Dashboard' },
+    { href: '/trading', icon: TrendingUp, label: 'Trading' },
+    { href: '/portfolio', icon: Wallet, label: 'Portfolio' },
+    { href: '/simulation', icon: TestTube, label: 'Simulation' },
+    { href: '/journal', icon: BookOpen, label: 'Journal' },
+    { href: '/analytics', icon: BarChart3, label: 'Analytics' },
+    { href: '/settings', icon: Settings, label: 'Settings' },
+  ];
 
   const handleModeToggle = () => {
     const newMode = tradingMode === 'paper' ? 'live' : 'paper';
@@ -20,13 +32,37 @@ export default function TopNavigation() {
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-gray-800 border-b border-gray-700 px-6 py-3 flex items-center justify-between">
-      <div className="flex items-center space-x-4">
+      <div className="flex items-center space-x-8">
         <div className="flex items-center space-x-2">
           <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
             <Brain className="w-5 h-5 text-white" />
           </div>
           <span className="text-xl font-bold text-white">Skippy</span>
           <span className="text-xs bg-blue-600/20 text-blue-400 px-2 py-1 rounded">AI Trading</span>
+        </div>
+
+        {/* Navigation Links */}
+        <div className="hidden md:flex items-center space-x-1">
+          {navLinks.map(({ href, icon: Icon, label }) => {
+            const isActive = location === href || (href !== '/' && location.startsWith(href));
+            return (
+              <Link key={href} href={href}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={`flex items-center space-x-2 ${
+                    isActive 
+                      ? 'bg-blue-600/20 text-blue-400' 
+                      : 'text-gray-300 hover:text-white hover:bg-gray-700'
+                  }`}
+                  data-testid={`nav-link-${label.toLowerCase()}`}
+                >
+                  <Icon className="w-4 h-4" />
+                  <span>{label}</span>
+                </Button>
+              </Link>
+            );
+          })}
         </div>
       </div>
       

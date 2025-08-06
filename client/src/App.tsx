@@ -12,6 +12,8 @@ import Settings from "@/pages/settings";
 import Admin from "@/pages/admin";
 import ModelManagement from "@/pages/modelManagement";
 import Analytics from "@/pages/analytics";
+import SimulationStudio from "@/pages/SimulationStudio";
+import TradeJournal from "@/pages/TradeJournal";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -30,6 +32,8 @@ function Router() {
           <Route path="/admin" component={Admin} />
           <Route path="/models" component={ModelManagement} />
           <Route path="/analytics" component={Analytics} />
+          <Route path="/simulation" component={SimulationStudio} />
+          <Route path="/journal" component={TradeJournal} />
         </>
       )}
       <Route component={NotFound} />

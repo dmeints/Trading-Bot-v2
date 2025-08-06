@@ -1,6 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { rlEngine } from "./engine/rl";
 
 const app = express();
 app.use(express.json());
@@ -72,6 +73,14 @@ app.use((req, res, next) => {
     setTimeout(async () => {
       try {
         log('Initializing AI trading system...');
+        
+        // Initialize RL engine
+        try {
+          await rlEngine.loadModel();
+          log('RL Engine initialized successfully');
+        } catch (error) {
+          console.error('RL Engine initialization failed:', error);
+        }
         
         const { aiOrchestrator } = await import('./services/aiAgents');
         const { storage } = await import('./storage');

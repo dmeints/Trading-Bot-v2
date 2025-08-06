@@ -14,6 +14,9 @@ import { adminAuthGuard, AdminRequest } from "./middleware/adminAuth";
 import { modelManager } from "./services/modelManager";
 import { tradingWebhookVerifier, marketDataWebhookVerifier, genericWebhookVerifier, captureRawBody, WebhookRequest } from "./middleware/webhookSecurity";
 import { webhookTester } from "./services/webhookTester";
+import { policyEngine } from "./engine/policy";
+import { rlEngine } from "./engine/rl";
+import { backtestEngine } from "./engine/backtest";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -492,6 +495,176 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // RL Inference routes
+  app.post('/api/rl/predict', apiRateLimit, isAuthenticated, async (req: any, res) => {
+    try {
+      const { symbol } = req.body;
+      if (!symbol) {
+        return res.status(400).json({ error: 'Symbol is required' });
+      }
+
+      const marketPrice = marketDataService.getCurrentPrice(symbol);
+      if (!marketPrice) {
+        return res.status(404).json({ error: 'Market data not found for symbol' });
+      }
+
+      const prediction = await rlEngine.predict(symbol, marketPrice);
+      res.json(prediction);
+    } catch (error) {
+      console.error('RL prediction error:', error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : 'RL prediction failed' 
+      });
+    }
+  });
+
+  app.get('/api/rl/model-info', apiRateLimit, isAuthenticated, async (req: any, res) => {
+    try {
+      const info = rlEngine.getModelInfo();
+      res.json(info);
+    } catch (error) {
+      console.error('RL model info error:', error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : 'Failed to get model info' 
+      });
+    }
+  });
+
+  // Policy Engine routes
+  app.get('/api/policy/status', apiRateLimit, isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const status = await policyEngine.getPolicyStatus(userId);
+      res.json(status);
+    } catch (error) {
+      console.error('Policy status error:', error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : 'Failed to get policy status' 
+      });
+    }
+  });
+
+  app.post('/api/policy/emergency-stop', adminRateLimit, adminAuthGuard, async (req: AdminRequest, res) => {
+    try {
+      const { userId, durationMinutes } = req.body;
+      await policyEngine.emergencyStop(userId, durationMinutes);
+      res.json({ success: true, message: 'Emergency stop activated' });
+    } catch (error) {
+      console.error('Emergency stop error:', error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : 'Emergency stop failed' 
+      });
+    }
+  });
+
+  // Simulation/Backtest routes
+  app.get('/api/simulation/strategies', apiRateLimit, isAuthenticated, async (req: any, res) => {
+    try {
+      const strategies = backtestEngine.getAvailableStrategies();
+      res.json(strategies);
+    } catch (error) {
+      console.error('Get strategies error:', error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : 'Failed to get strategies' 
+      });
+    }
+  });
+
+  app.get('/api/simulation/event-templates', apiRateLimit, isAuthenticated, async (req: any, res) => {
+    try {
+      const templates = backtestEngine.getSyntheticEventTemplates();
+      res.json(templates);
+    } catch (error) {
+      console.error('Get event templates error:', error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : 'Failed to get event templates' 
+      });
+    }
+  });
+
+  app.post('/api/simulation/backtest', tradingRateLimit, isAuthenticated, async (req: any, res) => {
+    try {
+      const config = req.body;
+      const result = await backtestEngine.runBacktest(config);
+      res.json(result);
+    } catch (error) {
+      console.error('Backtest error:', error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : 'Backtest failed' 
+      });
+    }
+  });
+
+  app.get('/api/simulation/export/:id', apiRateLimit, isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const csvData = await backtestEngine.exportBacktestCSV(id);
+      
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="backtest_${id}_results.csv"`);
+      res.send(csvData);
+    } catch (error) {
+      console.error('Export backtest error:', error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : 'Export failed' 
+      });
+    }
+  });
+
+  // Journal routes (placeholder implementations)
+  app.get('/api/journal/analysis', apiRateLimit, isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { from, to } = req.query;
+      
+      // Get actual trades for analysis
+      const trades = await storage.getUserTrades(userId, 100);
+      const winningTrades = trades.filter(t => parseFloat(t.pnl) > 0);
+      const winRate = trades.length > 0 ? (winningTrades.length / trades.length) * 100 : 0;
+      const avgReturn = trades.length > 0 ? trades.reduce((sum, t) => sum + parseFloat(t.pnl), 0) / trades.length : 0;
+      
+      const analysis = {
+        winRate,
+        avgReturn,
+        bestStrategy: 'ai_hybrid',
+        worstStrategy: 'momentum',
+        emotionalBias: ['overconfidence', 'fomo'],
+        improvementAreas: ['risk_management', 'patience']
+      };
+      
+      res.json(analysis);
+    } catch (error) {
+      console.error('Journal analysis error:', error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : 'Failed to analyze journal' 
+      });
+    }
+  });
+
+  app.get('/api/journal/performance', apiRateLimit, isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const trades = await storage.getUserTrades(userId, 50);
+      
+      // Generate cumulative P&L data
+      let cumulativePnl = 0;
+      const performanceData = trades.reverse().map(trade => {
+        cumulativePnl += parseFloat(trade.pnl);
+        return {
+          date: new Date(trade.executedAt).toISOString().split('T')[0],
+          cumulative_pnl: cumulativePnl
+        };
+      });
+      
+      res.json(performanceData);
+    } catch (error) {
+      console.error('Journal performance error:', error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : 'Failed to get performance data' 
+      });
+    }
+  });
+
   // Health check
   app.get('/api/health', (req, res) => {
     res.json({
@@ -501,6 +674,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         database: 'connected',
         ai_agents: 'active',
         market_data: 'streaming',
+        rl_engine: rlEngine.getModelInfo().loaded ? 'ready' : 'loading',
+        policy_engine: 'active',
       },
     });
   });

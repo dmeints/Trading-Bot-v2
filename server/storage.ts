@@ -6,6 +6,15 @@ import {
   marketData,
   recommendations,
   portfolioSnapshots,
+  sentimentData,
+  aiModels,
+  strategySharing,
+  userReputations,
+  marketRegimes,
+  correlationMatrix,
+  eventAnalysis,
+  riskMetrics,
+  backtestResults,
   type User,
   type UpsertUser,
   type Position,
@@ -20,6 +29,24 @@ import {
   type InsertRecommendation,
   type PortfolioSnapshot,
   type InsertPortfolioSnapshot,
+  type SentimentData,
+  type InsertSentimentData,
+  type AIModel,
+  type InsertAIModel,
+  type StrategySharing,
+  type InsertStrategySharing,
+  type UserReputation,
+  type InsertUserReputation,
+  type MarketRegime,
+  type InsertMarketRegime,
+  type CorrelationMatrix,
+  type InsertCorrelationMatrix,
+  type EventAnalysis,
+  type InsertEventAnalysis,
+  type RiskMetrics,
+  type InsertRiskMetrics,
+  type BacktestResults,
+  type InsertBacktestResults,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sql } from "drizzle-orm";
@@ -56,6 +83,47 @@ export interface IStorage {
   // Portfolio operations
   createPortfolioSnapshot(snapshot: InsertPortfolioSnapshot): Promise<PortfolioSnapshot>;
   getLatestPortfolioSnapshot(userId: string): Promise<PortfolioSnapshot | undefined>;
+  
+  // Enhanced features for intelligent trading
+  // Sentiment data operations
+  createSentimentData(data: InsertSentimentData): Promise<SentimentData>;
+  getSentimentData(symbol: string): Promise<SentimentData[]>;
+  getHistoricalSentiment(symbol: string, hours: number): Promise<SentimentData[]>;
+  
+  // AI model management
+  createAIModel(model: InsertAIModel): Promise<AIModel>;
+  getAIModels(): Promise<AIModel[]>;
+  updateAIModel(id: string, updates: Partial<AIModel>): Promise<AIModel>;
+  
+  // Strategy sharing
+  createSharedStrategy(strategy: InsertStrategySharing): Promise<StrategySharing>;
+  getPublicStrategies(): Promise<StrategySharing[]>;
+  getUserStrategies(userId: string): Promise<StrategySharing[]>;
+  voteOnStrategy(strategyId: string, upvote: boolean): Promise<StrategySharing>;
+  
+  // User reputation
+  getUserReputation(userId: string): Promise<UserReputation | undefined>;
+  updateUserReputation(userId: string, updates: Partial<UserReputation>): Promise<UserReputation>;
+  
+  // Market regime detection
+  createMarketRegime(regime: InsertMarketRegime): Promise<MarketRegime>;
+  getCurrentMarketRegime(symbol: string): Promise<MarketRegime | undefined>;
+  
+  // Correlation analysis
+  updateCorrelation(correlation: InsertCorrelationMatrix): Promise<CorrelationMatrix>;
+  getCorrelationData(symbol: string): Promise<CorrelationMatrix[]>;
+  
+  // Event analysis
+  createEventAnalysis(event: InsertEventAnalysis): Promise<EventAnalysis>;
+  getRecentEvents(limit?: number): Promise<EventAnalysis[]>;
+  
+  // Risk metrics
+  createRiskMetrics(metrics: InsertRiskMetrics): Promise<RiskMetrics>;
+  getUserRiskMetrics(userId: string): Promise<RiskMetrics | undefined>;
+  
+  // Backtesting
+  createBacktestResult(result: InsertBacktestResults): Promise<BacktestResults>;
+  getUserBacktests(userId: string): Promise<BacktestResults[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -208,6 +276,114 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(portfolioSnapshots.createdAt))
       .limit(1);
     return snapshot;
+  }
+
+  // Enhanced features implementations
+  async createSentimentData(data: InsertSentimentData): Promise<SentimentData> {
+    const [result] = await db.insert(sentimentData).values(data).returning();
+    return result;
+  }
+
+  async getSentimentData(symbol: string): Promise<SentimentData[]> {
+    return await db.select().from(sentimentData).where(eq(sentimentData.symbol, symbol)).orderBy(desc(sentimentData.timestamp)).limit(10);
+  }
+
+  async getHistoricalSentiment(symbol: string, hours: number): Promise<SentimentData[]> {
+    const hoursAgo = new Date(Date.now() - hours * 60 * 60 * 1000);
+    return await db.select().from(sentimentData).where(and(eq(sentimentData.symbol, symbol), sql`${sentimentData.timestamp} >= ${hoursAgo}`)).orderBy(desc(sentimentData.timestamp));
+  }
+
+  async createAIModel(model: InsertAIModel): Promise<AIModel> {
+    const [result] = await db.insert(aiModels).values(model).returning();
+    return result;
+  }
+
+  async getAIModels(): Promise<AIModel[]> {
+    return await db.select().from(aiModels).orderBy(desc(aiModels.createdAt));
+  }
+
+  async updateAIModel(id: string, updates: Partial<AIModel>): Promise<AIModel> {
+    const [result] = await db.update(aiModels).set({ ...updates, updatedAt: new Date() }).where(eq(aiModels.id, id)).returning();
+    return result;
+  }
+
+  async createSharedStrategy(strategy: InsertStrategySharing): Promise<StrategySharing> {
+    const [result] = await db.insert(strategySharing).values(strategy).returning();
+    return result;
+  }
+
+  async getPublicStrategies(): Promise<StrategySharing[]> {
+    return await db.select().from(strategySharing).where(eq(strategySharing.isPublic, true)).orderBy(desc(strategySharing.upvotes));
+  }
+
+  async getUserStrategies(userId: string): Promise<StrategySharing[]> {
+    return await db.select().from(strategySharing).where(eq(strategySharing.userId, userId)).orderBy(desc(strategySharing.createdAt));
+  }
+
+  async voteOnStrategy(strategyId: string, upvote: boolean): Promise<StrategySharing> {
+    const updateField = upvote ? 'upvotes' : 'downvotes';
+    const [result] = await db.update(strategySharing).set({ [updateField]: sql`${strategySharing[updateField]} + 1` }).where(eq(strategySharing.id, strategyId)).returning();
+    return result;
+  }
+
+  async getUserReputation(userId: string): Promise<UserReputation | undefined> {
+    const [reputation] = await db.select().from(userReputations).where(eq(userReputations.userId, userId));
+    return reputation;
+  }
+
+  async updateUserReputation(userId: string, updates: Partial<UserReputation>): Promise<UserReputation> {
+    const [result] = await db.update(userReputations).set({ ...updates, updatedAt: new Date() }).where(eq(userReputations.userId, userId)).returning();
+    return result;
+  }
+
+  async createMarketRegime(regime: InsertMarketRegime): Promise<MarketRegime> {
+    const [result] = await db.insert(marketRegimes).values(regime).returning();
+    return result;
+  }
+
+  async getCurrentMarketRegime(symbol: string): Promise<MarketRegime | undefined> {
+    const [regime] = await db.select().from(marketRegimes).where(eq(marketRegimes.symbol, symbol)).orderBy(desc(marketRegimes.timestamp)).limit(1);
+    return regime;
+  }
+
+  async updateCorrelation(correlation: InsertCorrelationMatrix): Promise<CorrelationMatrix> {
+    const [result] = await db.insert(correlationMatrix).values(correlation).onConflictDoUpdate({
+      target: [correlationMatrix.asset1, correlationMatrix.asset2, correlationMatrix.timeframe],
+      set: { correlation: correlation.correlation, significance: correlation.significance, updatedAt: new Date() }
+    }).returning();
+    return result;
+  }
+
+  async getCorrelationData(symbol: string): Promise<CorrelationMatrix[]> {
+    return await db.select().from(correlationMatrix).where(sql`${correlationMatrix.asset1} = ${symbol} OR ${correlationMatrix.asset2} = ${symbol}`).orderBy(desc(correlationMatrix.updatedAt));
+  }
+
+  async createEventAnalysis(event: InsertEventAnalysis): Promise<EventAnalysis> {
+    const [result] = await db.insert(eventAnalysis).values(event).returning();
+    return result;
+  }
+
+  async getRecentEvents(limit: number = 20): Promise<EventAnalysis[]> {
+    return await db.select().from(eventAnalysis).orderBy(desc(eventAnalysis.timestamp)).limit(limit);
+  }
+
+  async createRiskMetrics(metrics: InsertRiskMetrics): Promise<RiskMetrics> {
+    const [result] = await db.insert(riskMetrics).values(metrics).returning();
+    return result;
+  }
+
+  async getUserRiskMetrics(userId: string): Promise<RiskMetrics | undefined> {
+    const [metrics] = await db.select().from(riskMetrics).where(eq(riskMetrics.userId, userId)).orderBy(desc(riskMetrics.timestamp)).limit(1);
+    return metrics;
+  }
+
+  async createBacktestResult(result: InsertBacktestResults): Promise<BacktestResults> {
+    const [backtest] = await db.insert(backtestResults).values(result).returning();
+    return backtest;
+  }
+
+  async getUserBacktests(userId: string): Promise<BacktestResults[]> {
+    return await db.select().from(backtestResults).where(eq(backtestResults.userId, userId)).orderBy(desc(backtestResults.createdAt));
   }
 }
 

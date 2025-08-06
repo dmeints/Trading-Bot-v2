@@ -964,6 +964,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Revolutionary Systems Routes (Quantum Consciousness, Collective Superintelligence, etc.)
   app.use('/api/revolutionary', (await import('./routes/revolutionary')).default);
+  
+  // AI Copilot Routes
+  app.use('/api/copilot', (await import('./routes/copilot')).default);
+  
+  // Metrics and Monitoring Routes
+  app.use('/api/metrics', (await import('./routes/metrics')).default);
+  
+  // Feature Flags Routes
+  app.use('/api/feature-flags', (await import('./routes/featureFlags')).default);
 
   return httpServer;
 }

@@ -237,6 +237,20 @@ export const backtestResults = pgTable("backtest_results", {
 // Type exports
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
+
+// Feedback submissions table
+export const feedbackSubmissions = pgTable("feedback_submissions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  rating: integer("rating").notNull(),
+  category: varchar("category").notNull(),
+  message: text("message").notNull(),
+  page: varchar("page").notNull(),
+  userAgent: text("user_agent"),
+  submittedAt: timestamp("submitted_at").defaultNow(),
+});
+
+export type FeedbackSubmission = typeof feedbackSubmissions.$inferSelect;
 export type Position = typeof positions.$inferSelect;
 export type InsertPosition = typeof positions.$inferInsert;
 export type Trade = typeof trades.$inferSelect;

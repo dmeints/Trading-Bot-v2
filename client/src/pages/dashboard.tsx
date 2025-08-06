@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { useTradingStore } from '@/stores/tradingStore';
+import { useUIStore } from '@/stores/uiStore';
 import TopNavigation from '@/components/layout/TopNavigation';
 import SidebarNavigation from '@/components/layout/SidebarNavigation';
 import MobileBottomNav from '@/components/layout/MobileBottomNav';
@@ -11,12 +12,17 @@ import QuickTradePanel from '@/components/trading/QuickTradePanel';
 import AIRecommendations from '@/components/trading/AIRecommendations';
 import PortfolioSummary from '@/components/dashboard/PortfolioSummary';
 import RecentTrades from '@/components/dashboard/RecentTrades';
+import { AdaptiveCard } from '@/components/ui/adaptive-card';
+import { StatusIndicator, DataFreshness, TradingStatus } from '@/components/ui/status-indicator';
+import { FeedbackWidget } from '@/components/ui/feedback-widget';
 import { useToast } from '@/hooks/use-toast';
 import { isUnauthorizedError } from '@/lib/authUtils';
+import { Settings, Expand } from 'lucide-react';
 
 export default function Dashboard() {
   const { user, isLoading, isAuthenticated } = useAuth();
   const { toast } = useToast();
+  const { userLevel } = useUIStore();
   const {
     updateMarketPrice,
     updateAgentStatus,
@@ -25,6 +31,9 @@ export default function Dashboard() {
     setPositions,
     setRecentTrades,
     setPortfolioSnapshot,
+    marketPrices,
+    agentStatuses,
+    tradingMode,
   } = useTradingStore();
 
   // Handle unauthorized access
@@ -150,125 +159,112 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-gray-100">
+    <div className="flex flex-col h-screen bg-gray-900 text-white">
       <TopNavigation />
       
-      <div className="flex h-screen pt-16">
+      <div className="flex flex-1 min-h-0">
         <SidebarNavigation />
         
-        <main className="flex-1 overflow-hidden">
-          {/* Desktop Layout */}
-          <div className="hidden lg:block h-full">
-            <div className="h-full grid grid-cols-12 grid-rows-6 gap-fluid-2 p-fluid-2">
-              {/* Market Overview Header */}
-              <div className="col-span-12 row-span-1">
-                <MarketOverview />
-              </div>
+        <main className="flex-1 lg:ml-64 min-h-0">
+          <div className="h-full flex flex-col">
+            <div className="flex-1 min-h-0 overflow-auto p-4 pt-20 lg:pt-6">
+              <div className="dashboard-grid max-w-7xl mx-auto" data-testid="dashboard-grid">
+                
+                {/* Market Overview with Enhanced Status */}
+                <AdaptiveCard
+                  title="Market Overview"
+                  level={userLevel}
+                  status="live"
+                  className="col-span-1 md:col-span-2 min-h-0"
+                  actions={[
+                    { icon: <Settings className="w-3 h-3" />, label: "Configure", onClick: () => {} },
+                    { icon: <Expand className="w-3 h-3" />, label: "Fullscreen", onClick: () => {} }
+                  ]}
+                >
+                  <div className="flex justify-between items-center mb-4">
+                    <TradingStatus
+                      isMarketOpen={true}
+                      hasActiveOrders={false}
+                      connectionStatus={isConnected ? 'connected' : 'disconnected'}
+                    />
+                    <DataFreshness lastUpdate={new Date()} threshold={5} />
+                  </div>
+                  <MarketOverview />
+                </AdaptiveCard>
 
-              {/* Main Chart */}
-              <div className="col-span-8 row-span-4">
-                <TradingChart />
-              </div>
+                {/* Trading Chart */}
+                <AdaptiveCard
+                  title="Live Trading Chart"
+                  level={userLevel}
+                  status="live"
+                  className="col-span-1 md:col-span-2 lg:col-span-3 min-h-0"
+                  expandable={false}
+                >
+                  <TradingChart />
+                </AdaptiveCard>
 
-              {/* Trading Panel */}
-              <div className="col-span-4 row-span-2">
-                <QuickTradePanel />
-              </div>
+                {/* Quick Trade Panel */}
+                <AdaptiveCard
+                  title="Quick Trade"
+                  level={userLevel}
+                  status={tradingMode === 'paper' ? 'delayed' : 'live'}
+                  className="col-span-1 min-h-0"
+                >
+                  <QuickTradePanel />
+                </AdaptiveCard>
 
-              {/* AI Recommendations */}
-              <div className="col-span-4 row-span-2">
-                <AIRecommendations />
-              </div>
+                {/* AI Recommendations */}
+                <AdaptiveCard
+                  title="AI Analysis"
+                  level={userLevel}
+                  status="live"
+                  className="col-span-1 md:col-span-2 min-h-0"
+                  actions={[
+                    { icon: <Settings className="w-3 h-3" />, label: "Configure AI", onClick: () => {} }
+                  ]}
+                >
+                  <div className="mb-3 flex space-x-2">
+                    {Object.entries(agentStatuses).map(([type, status]) => (
+                      <div key={type} className="flex items-center space-x-1">
+                        <StatusIndicator 
+                          status={status.status === 'active' ? 'online' : 'offline'} 
+                          size="sm" 
+                        />
+                        <span className="text-xs text-gray-400 capitalize">{type}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <AIRecommendations />
+                </AdaptiveCard>
 
-              {/* Portfolio Summary */}
-              <div className="col-span-6 row-span-1">
-                <PortfolioSummary />
-              </div>
+                {/* Portfolio Summary */}
+                <AdaptiveCard
+                  title="Portfolio"
+                  level={userLevel}
+                  status="live"
+                  className="col-span-1 lg:col-span-2 min-h-0"
+                >
+                  <PortfolioSummary />
+                </AdaptiveCard>
 
-              {/* Recent Trades */}
-              <div className="col-span-6 row-span-1">
-                <RecentTrades />
-              </div>
-            </div>
-          </div>
+                {/* Recent Trades */}
+                <AdaptiveCard
+                  title="Recent Activity"
+                  level={userLevel}
+                  status="live"
+                  className="col-span-1 md:col-span-2 min-h-0"
+                >
+                  <RecentTrades />
+                </AdaptiveCard>
 
-          {/* Tablet Layout */}
-          <div className="hidden md:block lg:hidden h-full overflow-y-auto scroll-container-y">
-            <div className="grid grid-cols-2 gap-fluid-2 p-fluid-2 min-h-full">
-              {/* Market Overview - Full Width */}
-              <div className="col-span-2">
-                <MarketOverview />
-              </div>
-
-              {/* Chart - Full Width */}
-              <div className="col-span-2 h-96">
-                <TradingChart />
-              </div>
-
-              {/* Trading Panel */}
-              <div className="col-span-1">
-                <QuickTradePanel />
-              </div>
-
-              {/* AI Recommendations */}
-              <div className="col-span-1">
-                <AIRecommendations />
-              </div>
-
-              {/* Portfolio Summary */}
-              <div className="col-span-1">
-                <PortfolioSummary />
-              </div>
-
-              {/* Recent Trades */}
-              <div className="col-span-1">
-                <RecentTrades />
-              </div>
-            </div>
-          </div>
-
-          {/* Mobile Layout */}
-          <div className="block md:hidden h-full overflow-y-auto scroll-container-y">
-            <div className="space-y-fluid-2 p-fluid-1">
-              {/* Market Overview */}
-              <MarketOverview />
-
-              {/* Main Chart */}
-              <div className="h-80">
-                <TradingChart />
-              </div>
-
-              {/* Quick Actions Row */}
-              <div className="grid grid-cols-1 gap-fluid-1">
-                <QuickTradePanel />
-                <AIRecommendations />
-              </div>
-
-              {/* Portfolio & Trades */}
-              <div className="grid grid-cols-1 gap-fluid-1">
-                <PortfolioSummary />
-                <RecentTrades />
               </div>
             </div>
           </div>
         </main>
       </div>
-
-      {/* Mobile Bottom Navigation */}
+      
       <MobileBottomNav />
-
-      {/* WebSocket Status Indicator - responsive positioning */}
-      <div className="fixed bottom-4 right-4 md:bottom-4 md:right-4 flex items-center space-x-2 bg-gray-800 rounded-lg px-fluid-1 py-1 border border-gray-700 text-xs" data-testid="websocket-status">
-        <div className={`w-2 h-2 rounded-full ${
-          isConnected ? 'bg-green-400 animate-pulse' : 'bg-red-400'
-        }`}></div>
-        <span className="text-xs text-gray-400 hidden sm:inline">
-          {connectionStatus === 'connected' ? 'Live Data Connected' : 'Connecting...'}
-        </span>
-        <span className="text-xs text-gray-400 sm:hidden">
-          {connectionStatus === 'connected' ? 'Live' : 'Offline'}
-        </span>
-      </div>
+      <FeedbackWidget />
     </div>
   );
 }

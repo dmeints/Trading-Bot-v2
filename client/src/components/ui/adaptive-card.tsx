@@ -1,213 +1,155 @@
-import { useState, ReactNode } from 'react';
-import { Card } from '@/components/ui/card';
+import { ReactNode, useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ChevronDown, Settings, Expand, MoreHorizontal } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { ChevronUp, ChevronDown, Maximize2, Minimize2, Settings } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+export type UserLevel = 'beginner' | 'intermediate' | 'expert';
+export type CardStatus = 'live' | 'delayed' | 'offline';
+
+interface CardAction {
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+}
 
 interface AdaptiveCardProps {
   title: string;
+  level: UserLevel;
+  status?: CardStatus;
   children: ReactNode;
-  level?: 'beginner' | 'intermediate' | 'expert';
-  expandable?: boolean;
-  status?: 'live' | 'delayed' | 'offline';
-  actions?: Array<{
-    icon: ReactNode;
-    label: string;
-    onClick: () => void;
-  }>;
   className?: string;
-  defaultExpanded?: boolean;
+  expandable?: boolean;
+  actions?: CardAction[];
 }
 
 export function AdaptiveCard({
   title,
-  children,
-  level = 'intermediate',
-  expandable = true,
+  level,
   status = 'live',
-  actions = [],
-  className = '',
-  defaultExpanded = false
+  children,
+  className,
+  expandable = true,
+  actions = []
 }: AdaptiveCardProps) {
-  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
-  const [showActions, setShowActions] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
-  const statusClasses = {
-    live: 'border-green-500/30 bg-gray-800/90',
-    delayed: 'border-yellow-500/30 bg-gray-800/90',
-    offline: 'border-red-500/30 bg-gray-800/50'
+  const statusColors = {
+    live: 'bg-green-500',
+    delayed: 'bg-yellow-500',
+    offline: 'bg-red-500'
   };
 
-  const statusIndicators = {
-    live: 'bg-green-400 animate-pulse',
-    delayed: 'bg-yellow-400',
-    offline: 'bg-red-400'
+  const statusLabels = {
+    live: 'Live',
+    delayed: 'Delayed',
+    offline: 'Offline'
   };
 
   return (
     <Card 
-      className={`
-        relative overflow-hidden transition-all duration-300 backdrop-blur-sm border
-        ${statusClasses[status]}
-        ${isExpanded ? 'h-auto' : level === 'beginner' ? 'h-24' : 'h-32'}
-        ${className}
-      `}
-      onMouseEnter={() => setShowActions(true)}
-      onMouseLeave={() => setShowActions(false)}
+      className={cn(
+        "bg-gray-800 border-gray-700 transition-all duration-300",
+        isExpanded && "col-span-full row-span-2 z-10",
+        isCollapsed && "min-h-[60px]",
+        className
+      )}
+      data-testid={`adaptive-card-${title.toLowerCase().replace(/\s+/g, '-')}`}
     >
-      {/* Status Indicator */}
-      <div className="absolute top-3 right-3 flex items-center space-x-2">
-        <div className={`w-2 h-2 rounded-full ${statusIndicators[status]}`} />
-        {level === 'expert' && (
-          <span className="text-xs text-gray-400">{status}</span>
-        )}
-      </div>
-
-      {/* Header */}
-      <div className="p-4 flex items-center justify-between">
-        <h3 className={`font-semibold text-white ${
-          level === 'beginner' ? 'text-base' : 'text-lg'
-        }`}>
-          {title}
-        </h3>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <div className="flex items-center space-x-2">
+          <CardTitle className="text-sm font-medium text-gray-200">
+            {title}
+          </CardTitle>
+          <div className="flex items-center space-x-1">
+            <div className={cn("w-2 h-2 rounded-full", statusColors[status])} />
+            <Badge variant="outline" className="text-xs">
+              {statusLabels[status]}
+            </Badge>
+          </div>
+        </div>
         
         <div className="flex items-center space-x-1">
-          {/* Expandable Toggle */}
-          {expandable && level !== 'beginner' && (
+          {/* User level indicator */}
+          {level === 'expert' && (
+            <Badge variant="outline" className="text-xs">Expert</Badge>
+          )}
+          
+          {/* Action buttons */}
+          {actions.map((action, index) => (
+            <Button
+              key={index}
+              variant="ghost"
+              size="sm"
+              onClick={action.onClick}
+              className="h-6 w-6 p-0 text-gray-400 hover:text-gray-200"
+              title={action.label}
+            >
+              {action.icon}
+            </Button>
+          ))}
+          
+          {/* Collapse/Expand controls */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className="h-6 w-6 p-0 text-gray-400 hover:text-gray-200"
+            title={isCollapsed ? "Expand" : "Collapse"}
+          >
+            {isCollapsed ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
+          </Button>
+          
+          {expandable && (
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setIsExpanded(!isExpanded)}
-              className="hover:bg-gray-700 p-1"
+              className="h-6 w-6 p-0 text-gray-400 hover:text-gray-200"
+              title={isExpanded ? "Minimize" : "Maximize"}
+              aria-label={isExpanded ? "minimize card" : "expand card"}
             >
-              <ChevronDown className={`w-4 h-4 transition-transform ${
-                isExpanded ? 'rotate-180' : ''
-              }`} />
+              {isExpanded ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
             </Button>
           )}
         </div>
-      </div>
-
-      {/* Content */}
-      <div className={`px-4 pb-4 ${
-        level === 'beginner' && !isExpanded ? 'overflow-hidden' : ''
-      }`}>
-        {children}
-      </div>
-
-      {/* Hover Actions (TradingView Pattern) */}
-      <div className={`
-        absolute top-3 left-3 flex space-x-1 transition-opacity duration-200
-        ${showActions && level !== 'beginner' ? 'opacity-100' : 'opacity-0'}
-      `}>
-        {actions.map((action, index) => (
-          <Button
-            key={index}
-            variant="ghost"
-            size="sm"
-            onClick={action.onClick}
-            className="bg-gray-800/80 hover:bg-gray-700 p-1.5 backdrop-blur-sm"
-            title={action.label}
-          >
-            {action.icon}
-          </Button>
-        ))}
-        
-        {level === 'expert' && (
-          <>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="bg-gray-800/80 hover:bg-gray-700 p-1.5 backdrop-blur-sm"
-              title="Settings"
-            >
-              <Settings className="w-3 h-3" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="bg-gray-800/80 hover:bg-gray-700 p-1.5 backdrop-blur-sm"
-              title="Expand"
-            >
-              <Expand className="w-3 h-3" />
-            </Button>
-          </>
-        )}
-      </div>
-
-      {/* Progressive Disclosure Indicator */}
-      {!isExpanded && expandable && level !== 'beginner' && (
-        <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2">
-          <div className="flex space-x-1">
-            <div className="w-1 h-1 bg-gray-500 rounded-full"></div>
-            <div className="w-1 h-1 bg-gray-500 rounded-full"></div>
-            <div className="w-1 h-1 bg-gray-500 rounded-full"></div>
+      </CardHeader>
+      
+      {!isCollapsed && (
+        <CardContent className="pt-0">
+          <div className={cn(
+            "transition-all duration-300",
+            isExpanded && "max-h-none",
+            !isExpanded && level === 'beginner' && "max-h-48 overflow-hidden"
+          )}>
+            {children}
           </div>
-        </div>
-      )}
-
-      {/* Mobile Expand Hint */}
-      {!isExpanded && expandable && level === 'beginner' && (
-        <div className="absolute bottom-2 right-4">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setIsExpanded(true)}
-            className="text-xs text-gray-400 hover:text-white"
-          >
-            Show more
-          </Button>
-        </div>
+        </CardContent>
       )}
     </Card>
   );
 }
 
-// Simple and Advanced view components for different user levels
-export function SimpleView({ data }: { data: any }) {
+// Simple and Advanced View Components for Progressive Disclosure
+interface ViewProps {
+  children: ReactNode;
+  className?: string;
+}
+
+export function SimpleView({ children, className }: ViewProps) {
   return (
-    <div className="space-y-2">
-      <div className="text-2xl font-bold text-white">
-        {data.primary}
-      </div>
-      <div className={`text-sm ${data.change >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-        {data.change >= 0 ? '+' : ''}{data.change}%
-      </div>
+    <div className={cn("space-y-2", className)} data-testid="simple-view">
+      {children}
     </div>
   );
 }
 
-export function AdvancedView({ data, expanded }: { data: any; expanded: boolean }) {
+export function AdvancedView({ children, className }: ViewProps) {
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="text-2xl font-bold text-white">
-          {data.primary}
-        </div>
-        <div className={`text-sm font-medium ${data.change >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-          {data.change >= 0 ? '+' : ''}{data.change}%
-        </div>
-      </div>
-      
-      {expanded && (
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <div className="text-gray-400">24h Volume</div>
-            <div className="text-white font-medium">{data.volume}</div>
-          </div>
-          <div>
-            <div className="text-gray-400">Market Cap</div>
-            <div className="text-white font-medium">{data.marketCap}</div>
-          </div>
-          <div>
-            <div className="text-gray-400">High</div>
-            <div className="text-white font-medium">{data.high}</div>
-          </div>
-          <div>
-            <div className="text-gray-400">Low</div>
-            <div className="text-white font-medium">{data.low}</div>
-          </div>
-        </div>
-      )}
+    <div className={cn("space-y-4", className)} data-testid="advanced-view">
+      {children}
     </div>
   );
 }

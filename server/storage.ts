@@ -15,6 +15,7 @@ import {
   eventAnalysis,
   riskMetrics,
   backtestResults,
+  feedbackSubmissions,
   type User,
   type UpsertUser,
   type Position,
@@ -47,6 +48,7 @@ import {
   type InsertRiskMetrics,
   type BacktestResults,
   type InsertBacktestResults,
+  type FeedbackSubmission,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sql } from "drizzle-orm";
@@ -786,3 +788,11 @@ export class DatabaseStorage implements IStorage {
 }
 
 export const storage = new DatabaseStorage();
+
+// Add feedback methods to storage interface
+declare module './storage' {
+  interface IStorage {
+    createFeedbackSubmission(feedbackData: { userId: string; rating: number; category: string; message: string; page: string; userAgent: string }): Promise<{ id: string }>;
+    getFeedbackSubmissions(limit?: number): Promise<any[]>;
+  }
+}

@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
+// Feedback routes will be added inline
 import { tradingEngine } from "./services/tradingEngine";
 import { aiOrchestrator } from "./services/aiAgents";
 import { marketDataService } from "./services/marketData";
@@ -1032,6 +1033,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Ultra-Adaptive Intelligence Routes
   app.use('/api/ultra-adaptive', (await import('./routes/ultraAdaptive')).default);
+
+  // Feedback routes
+  app.post('/api/feedback', isDevelopment ? devBypass : isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { rating, category, message, page } = req.body;
+      
+      if (!rating || !category || !message) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+      
+      console.log('[Feedback] Received feedback:', { rating, category, page });
+      res.json({ success: true, id: 'feedback-' + Date.now() });
+    } catch (error) {
+      console.error("Error submitting feedback:", error);
+      res.status(500).json({ message: "Failed to submit feedback" });
+    }
+  });
+
+  // Health check endpoint for monitoring
+  app.get('/api/health', (req, res) => {
+    res.json({ 
+      status: 'healthy', 
+      timestamp: new Date().toISOString(),
+      version: process.env.npm_package_version || '1.0.0'
+    });
+  });
 
   return httpServer;
 }

@@ -32,7 +32,7 @@ export default function Dashboard() {
     setRecentTrades,
     setPortfolioSnapshot,
     marketPrices,
-    agentStatuses,
+    agentStatus,
     tradingMode,
   } = useTradingStore();
 
@@ -224,7 +224,7 @@ export default function Dashboard() {
                   ]}
                 >
                   <div className="mb-3 flex space-x-2">
-                    {Object.entries(agentStatuses).map(([type, status]) => (
+                    {Object.entries(agentStatus).map(([type, status]) => (
                       <div key={type} className="flex items-center space-x-1">
                         <StatusIndicator 
                           status={status.status === 'active' ? 'online' : 'offline'} 

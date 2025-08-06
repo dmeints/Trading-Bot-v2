@@ -117,6 +117,18 @@ export const portfolioSnapshots = pgTable("portfolio_snapshots", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Feedback submissions table
+export const feedbackSubmissions = pgTable("feedback_submissions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  rating: integer("rating").notNull(), // 1-5 stars
+  category: varchar("category").notNull(), // 'UI/UX', 'Performance', etc.
+  message: text("message").notNull(),
+  page: varchar("page").default('/'),
+  userAgent: varchar("user_agent"),
+  submittedAt: timestamp("submitted_at").defaultNow(),
+});
+
 // Enhanced tables for intelligent features
 export const sentimentData = pgTable("sentiment_data", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -238,19 +250,7 @@ export const backtestResults = pgTable("backtest_results", {
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
 
-// Feedback submissions table
-export const feedbackSubmissions = pgTable("feedback_submissions", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id),
-  rating: integer("rating").notNull(),
-  category: varchar("category").notNull(),
-  message: text("message").notNull(),
-  page: varchar("page").notNull(),
-  userAgent: text("user_agent"),
-  submittedAt: timestamp("submitted_at").defaultNow(),
-});
-
-export type FeedbackSubmission = typeof feedbackSubmissions.$inferSelect;
+// Duplicate removed
 export type Position = typeof positions.$inferSelect;
 export type InsertPosition = typeof positions.$inferInsert;
 export type Trade = typeof trades.$inferSelect;
@@ -283,6 +283,10 @@ export type RiskMetrics = typeof riskMetrics.$inferSelect;
 export type InsertRiskMetrics = typeof riskMetrics.$inferInsert;
 export type BacktestResults = typeof backtestResults.$inferSelect;
 export type InsertBacktestResults = typeof backtestResults.$inferInsert;
+
+// Feedback submission types  
+export type FeedbackSubmission = typeof feedbackSubmissions.$inferSelect;
+export type InsertFeedbackSubmission = typeof feedbackSubmissions.$inferInsert;
 
 // Insert schemas
 export const insertTradeSchema = createInsertSchema(trades).omit({
@@ -347,4 +351,9 @@ export const insertRiskMetricsSchema = createInsertSchema(riskMetrics).omit({
 export const insertBacktestResultsSchema = createInsertSchema(backtestResults).omit({
   id: true,
   createdAt: true,
+});
+
+export const insertFeedbackSubmissionSchema = createInsertSchema(feedbackSubmissions).omit({
+  id: true,
+  submittedAt: true,
 });

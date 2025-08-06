@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
-const { Command } = require('commander');
-const axios = require('axios');
-const fs = require('fs');
-const path = require('path');
+import { Command } from 'commander';
+import axios from 'axios';
+import fs from 'fs';
+import path from 'path';
 
 const program = new Command();
 

@@ -135,6 +135,7 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  private db = db;
   // User operations
   async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
@@ -569,7 +570,7 @@ export class DatabaseStorage implements IStorage {
 
   async getUserTrades(userId: string, limit: number = 50): Promise<any[]> {
     try {
-      const userTrades = await db
+      const userTrades = await this.db
         .select()
         .from(trades)
         .where(eq(trades.userId, userId))

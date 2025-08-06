@@ -1,0 +1,73 @@
+Responsive Layout
+
+Ensure all panels, widgets, and charts resize fluidly across common breakpoints (mobile, tablet, desktop).
+
+Use CSS Grid or Flexbox patterns to maintain consistent gutters, margins, and alignment.
+
+Adaptive Typography
+
+Implement fluid/rem units or utility classes so text scales with container size—no overflow or cut-off.
+
+Define a typographic scale (e.g. text-sm → text-xl) that adapts via media queries or clamp().
+
+Scroll & Overflow Management
+
+Place scroll bars only where needed (e.g. data tables, chat panels), and make them visible on hover/focus.
+
+Prevent nested scroll conflicts: ensure inner scroll containers don’t block outer page scrolling.
+
+Refined HUD & Controls
+
+Optimize the placement and sizing of buttons, inputs, and selectors for both mouse and touch.
+
+Ensure consistent padding, hit-areas, and contrast across light/dark themes.
+
+Inspiration & Best Practices
+
+Research 3–5 web apps with similar dashboards (e.g. TradingView, Binance, Coinbase Pro, Robinhood).
+
+Summarize key layout patterns and UI behaviors they use for responsiveness and scrolling.
+
+Provide code or Tailwind examples inspired by those patterns.
+
+🔧 Tasks
+Audit Existing Components
+
+Scan our React components and Tailwind classes for fixed widths/heights or hard-coded pixel typography.
+
+Identify places where overflow is mishandled or scrollbars don’t appear.
+
+Apply Responsive Patterns
+
+Replace fixed sizes with relative (%, vw/vh, rem, clamp()) or Tailwind responsive utilities (sm:, md:, lg:).
+
+Use min-max grid templates and Flexbox wrappers to let widgets grow or shrink.
+
+Implement Fluid Typography
+
+Define a root font scale using clamp(…) or Tailwind’s fluid type plugin.
+
+Apply across headings, labels, and body text so nothing overflows at smaller widths.
+
+Refactor Scroll Containers
+
+Wrap scrollable areas in well-scoped <div className="overflow-auto"> with max-h-[…] and visible scrollbars.
+
+Ensure outer containers (<main>, <section>) use overflow-hidden when appropriate.
+
+Gather & Document Examples
+
+Pull screenshots or live URLs of 3–5 reference apps.
+
+Note their breakpoint strategies, scroll-cue designs, and typography scales.
+
+Provide a brief style guide or component snippets to emulate those UX patterns.
+
+📦 Deliverables
+PR with updated React/Tailwind code implementing the above refinements.
+
+Responsive design spec (markdown) listing breakpoints, font scales, grid layouts, and overflow rules.
+
+Reference gallery (links or images) of 3–5 apps, annotated with the patterns we’re adopting.
+
+Before/After screenshots or animated GIFs demonstrating improved resizing and scroll behavior.

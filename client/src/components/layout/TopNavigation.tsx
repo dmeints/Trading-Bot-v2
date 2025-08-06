@@ -31,18 +31,19 @@ export default function TopNavigation() {
   };
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-gray-800 border-b border-gray-700 px-6 py-3 flex items-center justify-between">
-      <div className="flex items-center space-x-8">
-        <div className="flex items-center space-x-2">
+    <nav className="fixed top-0 left-0 right-0 z-50 bg-gray-800 border-b border-gray-700 px-fluid-2 py-fluid-1 flex items-center justify-between">
+      <div className="flex items-center space-x-fluid-3">
+        {/* Logo */}
+        <div className="flex items-center space-x-fluid-1">
           <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
             <Brain className="w-5 h-5 text-white" />
           </div>
-          <span className="text-xl font-bold text-white">Skippy</span>
-          <span className="text-xs bg-blue-600/20 text-blue-400 px-2 py-1 rounded">AI Trading</span>
+          <span className="text-fluid-xl font-bold text-white">Skippy</span>
+          <span className="hidden sm:inline text-fluid-xs bg-blue-600/20 text-blue-400 px-2 py-1 rounded">AI Trading</span>
         </div>
 
-        {/* Navigation Links */}
-        <div className="hidden md:flex items-center space-x-1">
+        {/* Desktop Navigation Links */}
+        <div className="hidden lg:flex items-center space-x-1">
           {navLinks.map(({ href, icon: Icon, label }) => {
             const isActive = location === href || (href !== '/' && location.startsWith(href));
             return (
@@ -50,7 +51,7 @@ export default function TopNavigation() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className={`flex items-center space-x-2 ${
+                  className={`flex items-center space-x-fluid-1 px-fluid-1 ${
                     isActive 
                       ? 'bg-blue-600/20 text-blue-400' 
                       : 'text-gray-300 hover:text-white hover:bg-gray-700'
@@ -58,7 +59,31 @@ export default function TopNavigation() {
                   data-testid={`nav-link-${label.toLowerCase()}`}
                 >
                   <Icon className="w-4 h-4" />
-                  <span>{label}</span>
+                  <span className="text-fluid-sm">{label}</span>
+                </Button>
+              </Link>
+            );
+          })}
+        </div>
+
+        {/* Tablet Navigation - Icons only */}
+        <div className="hidden md:flex lg:hidden items-center space-x-1">
+          {navLinks.slice(0, 4).map(({ href, icon: Icon, label }) => {
+            const isActive = location === href || (href !== '/' && location.startsWith(href));
+            return (
+              <Link key={href} href={href}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={`p-2 ${
+                    isActive 
+                      ? 'bg-blue-600/20 text-blue-400' 
+                      : 'text-gray-300 hover:text-white hover:bg-gray-700'
+                  }`}
+                  data-testid={`nav-link-${label.toLowerCase()}`}
+                  title={label}
+                >
+                  <Icon className="w-4 h-4" />
                 </Button>
               </Link>
             );

@@ -63,56 +63,106 @@ export default function PortfolioSummary() {
   const totalPnl = displaySnapshot?.totalPnl ? parseFloat(displaySnapshot.totalPnl) : 0;
 
   return (
-    <Card className="bg-gray-800 border-gray-700 p-4 h-full">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-white">Portfolio Performance</h3>
-        <div className="flex items-center space-x-4">
-          
+    <Card className="bg-gray-800 border-gray-700 p-fluid-2 h-full card-widget overflow-hidden">
+      {/* Desktop Layout */}
+      <div className="hidden md:block">
+        <div className="flex items-center justify-between mb-fluid-2">
+          <h3 className="text-fluid-lg font-semibold text-white whitespace-nowrap">Portfolio Performance</h3>
+          <div className="flex items-center space-x-fluid-2 overflow-x-auto scroll-container-x">
+            
+            <div className="text-center flex-shrink-0">
+              <div className="text-fluid-xs text-gray-400">Today's P&L</div>
+              <div 
+                className={`text-fluid-sm font-semibold flex items-center ${
+                  dailyPnl >= 0 ? 'text-green-400' : 'text-red-400'
+                }`}
+                data-testid="text-daily-pnl"
+              >
+                {dailyPnl >= 0 ? <TrendingUp className="w-4 h-4 mr-1" /> : <TrendingDown className="w-4 h-4 mr-1" />}
+                {formatCurrency(dailyPnl)}
+              </div>
+            </div>
+            
+            <div className="text-center flex-shrink-0">
+              <div className="text-fluid-xs text-gray-400">Total P&L</div>
+              <div 
+                className={`text-fluid-sm font-semibold flex items-center ${
+                  totalPnl >= 0 ? 'text-green-400' : 'text-red-400'
+                }`}
+                data-testid="text-total-pnl"
+              >
+                {totalPnl >= 0 ? <TrendingUp className="w-4 h-4 mr-1" /> : <TrendingDown className="w-4 h-4 mr-1" />}
+                {formatCurrency(totalPnl)}
+              </div>
+            </div>
+            
+            <div className="text-center flex-shrink-0">
+              <div className="text-fluid-xs text-gray-400">Win Rate</div>
+              <div className="text-fluid-sm font-semibold text-white" data-testid="text-win-rate">
+                {displaySnapshot?.winRate ? formatPercentage(displaySnapshot.winRate) : '0.0%'}
+              </div>
+            </div>
+            
+            <div className="text-center flex-shrink-0">
+              <div className="text-fluid-xs text-gray-400">Sharpe Ratio</div>
+              <div className="text-fluid-sm font-semibold text-white" data-testid="text-sharpe-ratio">
+                {displaySnapshot?.sharpeRatio ? displaySnapshot.sharpeRatio.toFixed(2) : '0.00'}
+              </div>
+            </div>
+
+            <div className="text-center flex-shrink-0">
+              <div className="text-fluid-xs text-gray-400">Portfolio Value</div>
+              <div className="text-fluid-sm font-semibold text-blue-400 flex items-center" data-testid="text-portfolio-value-summary">
+                <DollarSign className="w-4 h-4 mr-1" />
+                {displaySnapshot?.totalValue ? formatCurrency(displaySnapshot.totalValue) : '$0.00'}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Mobile Layout */}
+      <div className="block md:hidden">
+        <h3 className="text-fluid-lg font-semibold text-white mb-fluid-1">Portfolio Performance</h3>
+        
+        <div className="grid grid-cols-2 gap-fluid-1">
           <div className="text-center">
-            <div className="text-sm text-gray-400">Today's P&L</div>
+            <div className="text-fluid-xs text-gray-400">Today's P&L</div>
             <div 
-              className={`text-lg font-semibold flex items-center ${
+              className={`text-fluid-sm font-semibold flex items-center justify-center ${
                 dailyPnl >= 0 ? 'text-green-400' : 'text-red-400'
               }`}
-              data-testid="text-daily-pnl"
+              data-testid="text-daily-pnl-mobile"
             >
-              {dailyPnl >= 0 ? <TrendingUp className="w-4 h-4 mr-1" /> : <TrendingDown className="w-4 h-4 mr-1" />}
+              {dailyPnl >= 0 ? <TrendingUp className="w-3 h-3 mr-1" /> : <TrendingDown className="w-3 h-3 mr-1" />}
               {formatCurrency(dailyPnl)}
             </div>
           </div>
           
           <div className="text-center">
-            <div className="text-sm text-gray-400">Total P&L</div>
-            <div 
-              className={`text-lg font-semibold flex items-center ${
-                totalPnl >= 0 ? 'text-green-400' : 'text-red-400'
-              }`}
-              data-testid="text-total-pnl"
-            >
-              {totalPnl >= 0 ? <TrendingUp className="w-4 h-4 mr-1" /> : <TrendingDown className="w-4 h-4 mr-1" />}
-              {formatCurrency(totalPnl)}
+            <div className="text-fluid-xs text-gray-400">Portfolio Value</div>
+            <div className="text-fluid-sm font-semibold text-blue-400 flex items-center justify-center" data-testid="text-portfolio-value-mobile">
+              <DollarSign className="w-3 h-3 mr-1" />
+              {displaySnapshot?.totalValue ? formatCurrency(displaySnapshot.totalValue) : '$0.00'}
             </div>
           </div>
           
           <div className="text-center">
-            <div className="text-sm text-gray-400">Win Rate</div>
-            <div className="text-lg font-semibold text-white" data-testid="text-win-rate">
+            <div className="text-fluid-xs text-gray-400">Win Rate</div>
+            <div className="text-fluid-sm font-semibold text-white" data-testid="text-win-rate-mobile">
               {displaySnapshot?.winRate ? formatPercentage(displaySnapshot.winRate) : '0.0%'}
             </div>
           </div>
           
           <div className="text-center">
-            <div className="text-sm text-gray-400">Sharpe Ratio</div>
-            <div className="text-lg font-semibold text-white" data-testid="text-sharpe-ratio">
-              {displaySnapshot?.sharpeRatio ? displaySnapshot.sharpeRatio.toFixed(2) : '0.00'}
-            </div>
-          </div>
-
-          <div className="text-center">
-            <div className="text-sm text-gray-400">Portfolio Value</div>
-            <div className="text-lg font-semibold text-blue-400 flex items-center" data-testid="text-portfolio-value-summary">
-              <DollarSign className="w-4 h-4 mr-1" />
-              {displaySnapshot?.totalValue ? formatCurrency(displaySnapshot.totalValue) : '$0.00'}
+            <div className="text-fluid-xs text-gray-400">Total P&L</div>
+            <div 
+              className={`text-fluid-sm font-semibold ${
+                totalPnl >= 0 ? 'text-green-400' : 'text-red-400'
+              }`}
+              data-testid="text-total-pnl-mobile"
+            >
+              {formatCurrency(totalPnl)}
             </div>
           </div>
         </div>

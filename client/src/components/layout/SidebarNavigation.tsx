@@ -24,26 +24,26 @@ export default function SidebarNavigation() {
   };
 
   return (
-    <aside className="w-64 bg-gray-800 border-r border-gray-700 flex flex-col">
-      <div className="p-4 border-b border-gray-700">
-        <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">AI Agents Status</h3>
+    <aside className="hidden lg:flex w-64 bg-gray-800 border-r border-gray-700 flex-col">
+      <div className="p-fluid-2 border-b border-gray-700">
+        <h3 className="text-fluid-xs font-semibold text-gray-300 uppercase tracking-wide">AI Agents Status</h3>
       </div>
       
-      <div className="flex-1 overflow-y-auto">
-        <div className="p-4 space-y-3">
+      <div className="flex-1 overflow-y-auto scroll-container-y">
+        <div className="p-fluid-2 space-y-fluid-1">
           {Object.entries(agentStatus).map(([agentType, status]) => (
             <Card 
               key={agentType}
-              className="bg-gray-700 p-3 border border-green-500/30"
+              className="bg-gray-700 p-fluid-1 border border-green-500/30 transition-all hover:border-green-500/50"
               data-testid={`card-agent-${agentType}`}
             >
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-white">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-fluid-xs font-medium text-white truncate">
                   {agentDisplayNames[agentType] || agentType}
                 </span>
-                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse flex-shrink-0"></div>
               </div>
-              <div className="text-xs text-gray-400" data-testid={`text-agent-activity-${agentType}`}>
+              <div className="text-xs text-gray-400 truncate-2-lines" data-testid={`text-agent-activity-${agentType}`}>
                 {status.lastActivity}
               </div>
               <div className="text-xs text-blue-400 mt-1" data-testid={`text-agent-confidence-${agentType}`}>

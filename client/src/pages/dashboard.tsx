@@ -4,6 +4,7 @@ import { useWebSocket } from '@/hooks/useWebSocket';
 import { useTradingStore } from '@/stores/tradingStore';
 import TopNavigation from '@/components/layout/TopNavigation';
 import SidebarNavigation from '@/components/layout/SidebarNavigation';
+import MobileBottomNav from '@/components/layout/MobileBottomNav';
 import MarketOverview from '@/components/dashboard/MarketOverview';
 import TradingChart from '@/components/trading/TradingChart';
 import QuickTradePanel from '@/components/trading/QuickTradePanel';
@@ -156,47 +157,116 @@ export default function Dashboard() {
         <SidebarNavigation />
         
         <main className="flex-1 overflow-hidden">
-          <div className="h-full grid grid-cols-12 grid-rows-6 gap-4 p-4">
-            {/* Market Overview Header */}
-            <div className="col-span-12 row-span-1">
+          {/* Desktop Layout */}
+          <div className="hidden lg:block h-full">
+            <div className="h-full grid grid-cols-12 grid-rows-6 gap-fluid-2 p-fluid-2">
+              {/* Market Overview Header */}
+              <div className="col-span-12 row-span-1">
+                <MarketOverview />
+              </div>
+
+              {/* Main Chart */}
+              <div className="col-span-8 row-span-4">
+                <TradingChart />
+              </div>
+
+              {/* Trading Panel */}
+              <div className="col-span-4 row-span-2">
+                <QuickTradePanel />
+              </div>
+
+              {/* AI Recommendations */}
+              <div className="col-span-4 row-span-2">
+                <AIRecommendations />
+              </div>
+
+              {/* Portfolio Summary */}
+              <div className="col-span-6 row-span-1">
+                <PortfolioSummary />
+              </div>
+
+              {/* Recent Trades */}
+              <div className="col-span-6 row-span-1">
+                <RecentTrades />
+              </div>
+            </div>
+          </div>
+
+          {/* Tablet Layout */}
+          <div className="hidden md:block lg:hidden h-full overflow-y-auto scroll-container-y">
+            <div className="grid grid-cols-2 gap-fluid-2 p-fluid-2 min-h-full">
+              {/* Market Overview - Full Width */}
+              <div className="col-span-2">
+                <MarketOverview />
+              </div>
+
+              {/* Chart - Full Width */}
+              <div className="col-span-2 h-96">
+                <TradingChart />
+              </div>
+
+              {/* Trading Panel */}
+              <div className="col-span-1">
+                <QuickTradePanel />
+              </div>
+
+              {/* AI Recommendations */}
+              <div className="col-span-1">
+                <AIRecommendations />
+              </div>
+
+              {/* Portfolio Summary */}
+              <div className="col-span-1">
+                <PortfolioSummary />
+              </div>
+
+              {/* Recent Trades */}
+              <div className="col-span-1">
+                <RecentTrades />
+              </div>
+            </div>
+          </div>
+
+          {/* Mobile Layout */}
+          <div className="block md:hidden h-full overflow-y-auto scroll-container-y">
+            <div className="space-y-fluid-2 p-fluid-1">
+              {/* Market Overview */}
               <MarketOverview />
-            </div>
 
-            {/* Main Chart */}
-            <div className="col-span-8 row-span-4">
-              <TradingChart />
-            </div>
+              {/* Main Chart */}
+              <div className="h-80">
+                <TradingChart />
+              </div>
 
-            {/* Trading Panel */}
-            <div className="col-span-4 row-span-2">
-              <QuickTradePanel />
-            </div>
+              {/* Quick Actions Row */}
+              <div className="grid grid-cols-1 gap-fluid-1">
+                <QuickTradePanel />
+                <AIRecommendations />
+              </div>
 
-            {/* AI Recommendations */}
-            <div className="col-span-4 row-span-2">
-              <AIRecommendations />
-            </div>
-
-            {/* Portfolio Summary */}
-            <div className="col-span-6 row-span-1">
-              <PortfolioSummary />
-            </div>
-
-            {/* Recent Trades */}
-            <div className="col-span-6 row-span-1">
-              <RecentTrades />
+              {/* Portfolio & Trades */}
+              <div className="grid grid-cols-1 gap-fluid-1">
+                <PortfolioSummary />
+                <RecentTrades />
+              </div>
             </div>
           </div>
         </main>
       </div>
 
-      {/* WebSocket Status Indicator */}
-      <div className="fixed bottom-4 right-4 flex items-center space-x-2 bg-gray-800 rounded-lg px-3 py-2 border border-gray-700" data-testid="websocket-status">
+      {/* Mobile Bottom Navigation */}
+      <MobileBottomNav />
+
+      {/* WebSocket Status Indicator - responsive positioning */}
+      <div className="fixed bottom-4 right-4 md:bottom-4 md:right-4 flex items-center space-x-2 bg-gray-800 rounded-lg px-fluid-1 py-1 border border-gray-700 text-xs" data-testid="websocket-status">
         <div className={`w-2 h-2 rounded-full ${
           isConnected ? 'bg-green-400 animate-pulse' : 'bg-red-400'
         }`}></div>
-        <span className="text-xs text-gray-400">
+        <span className="text-xs text-gray-400 hidden sm:inline">
           {connectionStatus === 'connected' ? 'Live Data Connected' : 'Connecting...'}
+        </span>
+        <span className="text-xs text-gray-400 sm:hidden">
+          {connectionStatus === 'connected' ? 'Live' : 'Offline'}
         </span>
       </div>
     </div>

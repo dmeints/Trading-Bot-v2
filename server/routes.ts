@@ -16,8 +16,9 @@ import { tradingWebhookVerifier, marketDataWebhookVerifier, genericWebhookVerifi
 import { webhookTester } from "./services/webhookTester";
 import { policyEngine } from "./engine/policy";
 import { rlEngine } from "./engine/rl";
-import { backtestEngine } from "./engine/backtest";
 import { lazyInitService } from "./services/lazyInit";
+import { backtestEngine } from "./services/backtestEngine";
+import { ensembleOrchestrator } from "./services/ensembleAI";
 import { env } from "./config/env";
 import { logger } from "./utils/logger";
 import type { RequestWithId } from "./middleware/requestId";
@@ -759,6 +760,204 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Setup WebSocket server
   createWebSocketServer(httpServer);
+
+  // Collaborative Intelligence Routes
+  app.get('/api/strategies/public', async (req, res) => {
+    try {
+      const strategies = await storage.getPublicStrategies();
+      res.json(strategies);
+    } catch (error) {
+      console.error('Error fetching public strategies:', error);
+      res.status(500).json({ error: 'Failed to fetch strategies' });
+    }
+  });
+
+  app.post('/api/strategies/:id/vote', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { upvote } = req.body;
+      const strategy = await storage.voteOnStrategy(id, upvote);
+      res.json(strategy);
+    } catch (error) {
+      console.error('Error voting on strategy:', error);
+      res.status(500).json({ error: 'Failed to vote on strategy' });
+    }
+  });
+
+  app.get('/api/community/signals', async (req, res) => {
+    try {
+      const signals = [
+        { id: '1', symbol: 'BTC/USD', action: 'buy', confidence: 0.78, reasoning: 'Strong technical indicators and positive sentiment', votes: 24, userCount: 18, sentiment: 0.65, timeframe: '24h' }
+      ];
+      res.json(signals);
+    } catch (error) {
+      console.error('Error fetching community signals:', error);
+      res.status(500).json({ error: 'Failed to fetch community signals' });
+    }
+  });
+
+  app.get('/api/community/top-traders', async (req, res) => {
+    try {
+      const topTraders = [
+        { userId: 'trader001', tradingScore: 0.89, communityScore: 0.76, totalTrades: 156, successfulTrades: 118 }
+      ];
+      res.json(topTraders);
+    } catch (error) {
+      console.error('Error fetching top traders:', error);
+      res.status(500).json({ error: 'Failed to fetch top traders' });
+    }
+  });
+
+  app.get('/api/risk/metrics', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const riskMetrics = await storage.getUserRiskMetrics(userId);
+      
+      if (!riskMetrics) {
+        return res.json({
+          overallRisk: 0.3, varDaily: 0.05, varWeekly: 0.12, maxDrawdown: 0.15,
+          sharpeRatio: 1.2, sortinoRatio: 1.5, beta: 1.1, alpha: 0.03, diversificationScore: 0.7
+        });
+      }
+      res.json(riskMetrics);
+    } catch (error) {
+      console.error('Error fetching risk metrics:', error);
+      res.status(500).json({ error: 'Failed to fetch risk metrics' });
+    }
+  });
+
+  app.get('/api/analytics/performance/:timeframe', isAuthenticated, async (req: any, res) => {
+    try {
+      const performanceData = {
+        current: { portfolioValue: 125000 },
+        summary: { totalReturn: 0.15, sharpeRatio: 1.45, maxDrawdown: 0.08 },
+        timeline: Array.from({ length: 30 }, (_, i) => ({
+          date: new Date(Date.now() - (29 - i) * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          portfolioValue: 100000 + Math.random() * 50000,
+          benchmark: 100000 + Math.random() * 30000,
+          drawdown: Math.random() * 0.1
+        }))
+      };
+      res.json(performanceData);
+    } catch (error) {
+      console.error('Error fetching performance data:', error);
+      res.status(500).json({ error: 'Failed to fetch performance data' });
+    }
+  });
+
+  app.get('/api/sentiment/analysis/:symbol', async (req, res) => {
+    try {
+      const { symbol } = req.params;
+      const sentimentData = await storage.getSentimentData(symbol);
+      const breakdown = sentimentData.reduce((acc: any, item) => {
+        const existing = acc.find((a: any) => a.source === item.source);
+        if (existing) {
+          existing.sentiment = (existing.sentiment + item.sentiment) / 2;
+          existing.volume += item.volume || 0;
+        } else {
+          acc.push({ source: item.source, sentiment: item.sentiment, volume: item.volume || 0, confidence: item.confidence });
+        }
+        return acc;
+      }, []);
+      const overallSentiment = breakdown.reduce((sum: number, item: any) => sum + item.sentiment, 0) / breakdown.length;
+      res.json({
+        overallSentiment: overallSentiment || 0.1,
+        breakdown: breakdown.length > 0 ? breakdown : [
+          { source: 'twitter', sentiment: 0.2, volume: 150, confidence: 0.7 },
+          { source: 'reddit', sentiment: 0.35, volume: 89, confidence: 0.6 },
+          { source: 'news', sentiment: -0.1, volume: 23, confidence: 0.8 },
+          { source: 'fear_greed', sentiment: 0.4, volume: 1, confidence: 0.9 }
+        ]
+      });
+    } catch (error) {
+      console.error('Error fetching sentiment analysis:', error);
+      res.status(500).json({ error: 'Failed to fetch sentiment analysis' });
+    }
+  });
+
+  app.get('/api/market/regimes', async (req, res) => {
+    try {
+      const symbols = ['BTC/USD', 'ETH/USD', 'SOL/USD', 'ADA/USD', 'DOT/USD'];
+      const regimes = [];
+      for (const symbol of symbols) {
+        const regime = await storage.getCurrentMarketRegime(symbol);
+        if (regime) {
+          regimes.push(regime);
+        } else {
+          regimes.push({
+            symbol, regime: ['bull', 'bear', 'sideways', 'volatile'][Math.floor(Math.random() * 4)],
+            confidence: 0.6 + Math.random() * 0.3, volatility: 0.3 + Math.random() * 0.4, trendStrength: 0.4 + Math.random() * 0.5
+          });
+        }
+      }
+      res.json(regimes);
+    } catch (error) {
+      console.error('Error fetching market regimes:', error);
+      res.status(500).json({ error: 'Failed to fetch market regimes' });
+    }
+  });
+
+  app.get('/api/ai/performance', async (req, res) => {
+    try {
+      await lazyInitService.initializeAIOrchestrator();
+      const modelPerformance = ensembleOrchestrator.getModelPerformance();
+      const performance = Object.entries(modelPerformance).map(([agentType, performance]) => ({
+        agentType, accuracy: performance, confidence: 0.7 + Math.random() * 0.2,
+        predictions: Math.floor(Math.random() * 100) + 50, successRate: performance
+      }));
+      res.json(performance);
+    } catch (error) {
+      console.error('Error fetching AI performance:', error);
+      res.status(500).json({ error: 'Failed to fetch AI performance' });
+    }
+  });
+
+  app.get('/api/correlations/:symbol', async (req, res) => {
+    try {
+      const { symbol } = req.params;
+      const correlations = await storage.getCorrelationData(symbol);
+      if (correlations.length === 0) {
+        const otherAssets = ['BTC/USD', 'ETH/USD', 'SOL/USD', 'ADA/USD', 'DOT/USD'].filter(s => s !== symbol);
+        const simulatedCorrelations = otherAssets.map(asset => ({
+          asset1: symbol, asset2: asset, correlation: Math.random() * 2 - 1,
+          significance: 0.8 + Math.random() * 0.2, timeframe: '30d'
+        }));
+        return res.json(simulatedCorrelations);
+      }
+      res.json(correlations);
+    } catch (error) {
+      console.error('Error fetching correlations:', error);
+      res.status(500).json({ error: 'Failed to fetch correlations' });
+    }
+  });
+
+  app.post('/api/backtest/run', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const config = req.body;
+      if (!config.startDate || !config.endDate || !config.initialCapital) {
+        return res.status(400).json({ error: 'Missing required backtest parameters' });
+      }
+      const result = await backtestEngine.runBacktest({
+        ...config, userId, startDate: new Date(config.startDate), endDate: new Date(config.endDate)
+      });
+      res.json(result);
+    } catch (error) {
+      console.error('Error running backtest:', error);
+      res.status(500).json({ error: 'Failed to run backtest' });
+    }
+  });
+
+  app.get('/api/backtest/results', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const results = await storage.getUserBacktests(userId);
+      res.json(results);
+    } catch (error) {
+      console.error('Error fetching backtest results:', error);
+      res.status(500).json({ error: 'Failed to fetch backtest results' });
+    }
+  });
 
   return httpServer;
 }

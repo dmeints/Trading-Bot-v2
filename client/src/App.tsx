@@ -15,6 +15,8 @@ import Analytics from "@/pages/analytics";
 import SimulationStudio from "@/pages/SimulationStudio";
 import TradeJournal from "@/pages/TradeJournal";
 import NotFound from "@/pages/not-found";
+import { CollaborativeIntelligence } from "./components/CollaborativeIntelligence";
+import { AdvancedAnalytics } from "./components/AdvancedAnalytics";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -34,6 +36,8 @@ function Router() {
           <Route path="/analytics" component={Analytics} />
           <Route path="/simulation" component={SimulationStudio} />
           <Route path="/journal" component={TradeJournal} />
+          <Route path="/community" component={CollaborativeIntelligence} />
+          <Route path="/advanced-analytics" component={AdvancedAnalytics} />
         </>
       )}
       <Route component={NotFound} />

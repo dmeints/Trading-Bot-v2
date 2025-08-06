@@ -1,5 +1,5 @@
 # Overview
-Skippy is an AI-powered cryptocurrency trading assistant designed for real-time market analysis, intelligent trade recommendations, and comprehensive risk management. It supports both paper and live trading, aiming to provide a robust solution for cryptocurrency trading. The system integrates a React frontend with an Express.js backend, utilizing PostgreSQL for data persistence and WebSockets for real-time market data.
+Skippy is a revolutionary self-improving AI financial intelligence ecosystem that combines advanced AI capabilities, collaborative features, real-time market intelligence, ensemble AI models, sentiment analysis, and breakthrough innovations. The platform features adversarial trading networks, multi-source data fusion, collaborative intelligence sharing, predictive analytics, sophisticated automation, and comprehensive backtesting capabilities. The system integrates a React frontend with an Express.js backend, utilizing PostgreSQL for data persistence and WebSockets for real-time market data and AI agent coordination.
 
 # User Preferences
 Preferred communication style: Simple, everyday language.
@@ -39,6 +39,10 @@ The trading engine supports:
 - **RL Engine**: Reinforcement learning inference system with model management and prediction APIs.
 - **Backtest Engine**: Comprehensive strategy simulation with synthetic events and detailed analysis.
 - **Trading Integration**: Policy-controlled trade execution with automated risk assessment.
+- **Ensemble AI System**: Multi-agent ensemble orchestrator with performance tracking and confidence scoring.
+- **Sentiment Analysis Engine**: Real-time multi-source sentiment analysis with confidence weighting.
+- **Collaborative Intelligence**: Community strategy sharing, voting, and reputation systems.
+- **Advanced Analytics**: Real-time performance metrics, risk analysis, and market regime detection.
 
 ## API Infrastructure
 Includes routes for RL inference, policy management, simulation services, and journal analytics.

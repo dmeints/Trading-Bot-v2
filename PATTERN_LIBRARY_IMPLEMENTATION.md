@@ -12,38 +12,221 @@ This document provides implementation details for the enhanced UI components ins
 
 The `AdaptiveCard` component implements progressive disclosure patterns from TradingView and Binance, adapting complexity based on user experience level.
 
-**Key Features:**
-- Progressive disclosure (beginner/intermediate/expert modes)
-- Hover-revealed actions (TradingView pattern)
-- Status indicators with real-time updates
-- Expandable content areas
-- Mobile-optimized layouts
-
-**Usage Examples:**
+**Complete Implementation:**
 
 ```jsx
-// Basic Market Overview Card
+// client/src/components/ui/adaptive-card.tsx
+import { useState, ReactNode } from 'react';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { ChevronDown, Settings, Expand, MoreHorizontal } from 'lucide-react';
+
+interface AdaptiveCardProps {
+  title: string;
+  children: ReactNode;
+  level?: 'beginner' | 'intermediate' | 'expert';
+  expandable?: boolean;
+  status?: 'live' | 'delayed' | 'offline';
+  actions?: Array<{
+    icon: ReactNode;
+    label: string;
+    onClick: () => void;
+  }>;
+  className?: string;
+  defaultExpanded?: boolean;
+}
+
+export function AdaptiveCard({
+  title,
+  children,
+  level = 'intermediate',
+  expandable = true,
+  status = 'live',
+  actions = [],
+  className = '',
+  defaultExpanded = false
+}: AdaptiveCardProps) {
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+  const [showActions, setShowActions] = useState(false);
+
+  const statusClasses = {
+    live: 'border-green-500/30 bg-gray-800/90',
+    delayed: 'border-yellow-500/30 bg-gray-800/90', 
+    offline: 'border-red-500/30 bg-gray-800/50'
+  };
+
+  const statusIndicators = {
+    live: 'bg-green-400 animate-pulse',
+    delayed: 'bg-yellow-400',
+    offline: 'bg-red-400'
+  };
+
+  return (
+    <Card 
+      className={`
+        relative overflow-hidden transition-all duration-300 backdrop-blur-sm border
+        ${statusClasses[status]}
+        ${isExpanded ? 'h-auto' : level === 'beginner' ? 'h-24' : 'h-32'}
+        ${className}
+      `}
+      onMouseEnter={() => setShowActions(true)}
+      onMouseLeave={() => setShowActions(false)}
+    >
+      {/* Status Indicator */}
+      <div className="absolute top-3 right-3 flex items-center space-x-2">
+        <div className={`w-2 h-2 rounded-full ${statusIndicators[status]}`} />
+        {level === 'expert' && (
+          <span className="text-xs text-gray-400">{status}</span>
+        )}
+      </div>
+
+      {/* Header */}
+      <div className="p-4 flex items-center justify-between">
+        <h3 className={`font-semibold text-white ${
+          level === 'beginner' ? 'text-base' : 'text-lg'
+        }`}>
+          {title}
+        </h3>
+        
+        <div className="flex items-center space-x-1">
+          {expandable && level !== 'beginner' && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsExpanded(!isExpanded)}
+              className="hover:bg-gray-700 p-1"
+            >
+              <ChevronDown className={`w-4 h-4 transition-transform ${
+                isExpanded ? 'rotate-180' : ''
+              }`} />
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Content with proper scrolling */}
+      <div className={`
+        px-4 pb-4 
+        ${level === 'beginner' && !isExpanded ? 'overflow-hidden' : 'overflow-auto max-h-96'}
+      `}>
+        {children}
+      </div>
+
+      {/* Hover Actions (TradingView Pattern) */}
+      <div className={`
+        absolute top-3 left-3 flex space-x-1 transition-opacity duration-200
+        ${showActions && level !== 'beginner' ? 'opacity-100' : 'opacity-0'}
+      `}>
+        {actions.map((action, index) => (
+          <Button
+            key={index}
+            variant="ghost"
+            size="sm"
+            onClick={action.onClick}
+            className="bg-gray-800/80 hover:bg-gray-700 p-1.5 backdrop-blur-sm"
+            title={action.label}
+          >
+            {action.icon}
+          </Button>
+        ))}
+        
+        {level === 'expert' && (
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="bg-gray-800/80 hover:bg-gray-700 p-1.5 backdrop-blur-sm"
+              title="Settings"
+            >
+              <Settings className="w-3 h-3" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="bg-gray-800/80 hover:bg-gray-700 p-1.5 backdrop-blur-sm"
+              title="Expand"
+            >
+              <Expand className="w-3 h-3" />
+            </Button>
+          </>
+        )}
+      </div>
+
+      {/* Progressive Disclosure Indicator */}
+      {!isExpanded && expandable && level !== 'beginner' && (
+        <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2">
+          <div className="flex space-x-1">
+            <div className="w-1 h-1 bg-gray-500 rounded-full"></div>
+            <div className="w-1 h-1 bg-gray-500 rounded-full"></div>
+            <div className="w-1 h-1 bg-gray-500 rounded-full"></div>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Expand Hint */}
+      {!isExpanded && expandable && level === 'beginner' && (
+        <div className="absolute bottom-2 right-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsExpanded(true)}
+            className="text-xs text-gray-400 hover:text-white"
+          >
+            Show more
+          </Button>
+        </div>
+      )}
+    </Card>
+  );
+}
+```
+
+**Real Usage Examples:**
+
+```jsx
+// Market Overview with scrolling price list
 <AdaptiveCard
-  title="BTC/USD Market"
-  level="beginner"
+  title="Market Overview"
+  level="intermediate"
   status="live"
-  actions={[
-    { icon: <Settings />, label: "Configure", onClick: () => {} },
-    { icon: <Expand />, label: "Fullscreen", onClick: () => {} }
-  ]}
+  className="col-span-1 md:col-span-2"
 >
-  <SimpleView data={marketData} />
+  <div className="space-y-2 max-h-64 overflow-auto scrollbar-custom">
+    {marketData.map(coin => (
+      <div key={coin.symbol} className="flex justify-between items-center p-2 bg-gray-700 rounded">
+        <span className="font-medium">{coin.symbol}</span>
+        <span className={coin.change >= 0 ? 'text-green-400' : 'text-red-400'}>
+          ${coin.price} ({coin.change}%)
+        </span>
+      </div>
+    ))}
+  </div>
 </AdaptiveCard>
 
-// Advanced AI Analysis Card
+// AI Analysis with expandable details
 <AdaptiveCard
   title="AI Portfolio Analysis"
   level="expert"
-  expandable={true}
-  defaultExpanded={false}
   status="live"
+  expandable={true}
+  actions={[
+    { icon: <Expand />, label: "Fullscreen", onClick: () => openFullscreen() },
+    { icon: <Settings />, label: "Configure", onClick: () => openSettings() }
+  ]}
 >
-  <AdvancedView data={aiAnalysis} expanded={true} />
+  <div className="space-y-4">
+    <div className="text-2xl font-bold text-green-400">+12.3%</div>
+    <div className="text-sm text-gray-400">24h Performance</div>
+    <div className="space-y-2 max-h-48 overflow-auto">
+      {analysis.recommendations.map(rec => (
+        <div key={rec.id} className="p-3 bg-gray-750 rounded border-l-2 border-blue-500">
+          <div className="font-medium text-white">{rec.action}</div>
+          <div className="text-sm text-gray-400">{rec.reason}</div>
+          <div className="text-xs text-blue-400">Confidence: {rec.confidence}%</div>
+        </div>
+      ))}
+    </div>
+  </div>
 </AdaptiveCard>
 ```
 

@@ -436,6 +436,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Trading status endpoint - add before positions
+  app.get('/api/trading/status', devBypass, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.json({
+          enabled: false,
+          openPositions: 0,
+          totalPnL: 0,
+          message: 'Not authenticated'
+        });
+      }
+      
+      const positions = await storage.getUserPositions(userId);
+      const trades = await storage.getUserTrades(userId, 10);
+      
+      const totalPnL = trades.reduce((sum, trade) => sum + parseFloat(trade.pnl || '0'), 0);
+      
+      res.json({
+        enabled: positions.length > 0,
+        openPositions: positions.length,
+        totalPnL: totalPnL.toFixed(2),
+        lastUpdate: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Trading status error:', error);
+      res.status(500).json({ error: 'Failed to get trading status' });
+    }
+  });
+
   app.get('/api/trading/positions', isDevelopment ? devBypass : isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;

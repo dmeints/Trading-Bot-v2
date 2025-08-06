@@ -69,6 +69,7 @@ export interface IStorage {
   // Agent operations
   logAgentActivity(activity: InsertAgentActivity): Promise<AgentActivity>;
   getRecentAgentActivities(limit?: number): Promise<AgentActivity[]>;
+  getAgentActivities(userId: string, limit?: number): Promise<AgentActivity[]>;
   
   // Market data operations
   updateMarketData(data: InsertMarketData): Promise<MarketData>;
@@ -132,6 +133,7 @@ export interface IStorage {
   getAIPredictions(symbol: string): Promise<{score: number}[]>;
   getAllCorrelationData(): Promise<{correlation: number}[]>;
   updateUserAutomationConfig(userId: string, configKey: string, value: any): Promise<void>;
+  recordAgentActivity(activity: any): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -211,6 +213,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getRecentAgentActivities(limit = 20): Promise<AgentActivity[]> {
+    return await db
+      .select()
+      .from(agentActivities)
+      .orderBy(desc(agentActivities.createdAt))
+      .limit(limit);
+  }
+
+  async getAgentActivities(userId: string, limit = 20): Promise<AgentActivity[]> {
     return await db
       .select()
       .from(agentActivities)
@@ -758,6 +768,19 @@ export class DatabaseStorage implements IStorage {
       }
     } catch (error) {
       console.error('Error updating user automation config:', error);
+    }
+  }
+
+  async recordAgentActivity(activity: any): Promise<void> {
+    try {
+      await this.logAgentActivity({
+        agentType: activity.agentType || 'unknown',
+        activity: activity.activity || 'Recorded activity',
+        confidence: activity.confidence || 0.5,
+        data: activity.data || {},
+      });
+    } catch (error) {
+      console.error('Error recording agent activity:', error);
     }
   }
 }

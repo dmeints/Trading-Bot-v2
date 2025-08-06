@@ -56,6 +56,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
   await setupAuth(app);
 
+  // Unified API routes
+  app.use('/api', unifiedApi);
+
   // Health & monitoring routes
   app.use('/api', healthRoutes);
 

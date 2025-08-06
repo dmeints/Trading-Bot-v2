@@ -1,4 +1,4 @@
-import { lazy } from 'react';
+import React from 'react';
 
 // Placeholder components - implement as needed
 const AdvancedChart = () => <div className="text-gray-400">Advanced charts coming soon</div>;

@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import React, { Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 // Placeholder components - implement as needed  
@@ -42,17 +42,13 @@ export default function AIInsights() {
         {/* Market Insights */}
         <div className="lg:col-span-2 bg-gray-800 rounded-lg p-4">
           <h2 className="text-lg font-semibold text-white mb-4">Current Analysis</h2>
-          <Suspense fallback={<div className="text-gray-400">Loading insights...</div>}>
-            <MarketInsights />
-          </Suspense>
+          <MarketInsights />
         </div>
 
         {/* AI Copilot Chat */}
         <div className="lg:col-span-3 bg-gray-800 rounded-lg p-4">
           <h2 className="text-lg font-semibold text-white mb-4">AI Trading Assistant</h2>
-          <Suspense fallback={<div className="text-gray-400">Loading copilot...</div>}>
-            <CopilotChat />
-          </Suspense>
+          <CopilotChat />
         </div>
       </div>
     </div>

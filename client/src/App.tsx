@@ -4,46 +4,51 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
-import Landing from "@/pages/landing";
-import Dashboard from "@/pages/dashboard";
-import Trading from "@/pages/trading";
-import Portfolio from "@/pages/portfolio";
-import Settings from "@/pages/settings";
-import Admin from "@/pages/admin";
-import ModelManagement from "@/pages/modelManagement";
-import Analytics from "@/pages/analytics";
-import SimulationStudio from "@/pages/SimulationStudio";
-import TradeJournal from "@/pages/TradeJournal";
-import NotFound from "@/pages/not-found";
-import { CollaborativeIntelligence } from "./components/CollaborativeIntelligence";
-import { AdvancedAnalytics } from "./components/AdvancedAnalytics";
-import RevolutionaryDashboard from "./pages/RevolutionaryDashboard";
+import { Suspense, lazy } from "react";
+
+// Lazy load pages for better performance
+const Landing = lazy(() => import("@/pages/landing"));
+const Dashboard = lazy(() => import("@/pages/dashboard"));
+const Trading = lazy(() => import("@/pages/trading"));
+const Portfolio = lazy(() => import("@/pages/portfolio"));
+const Settings = lazy(() => import("@/pages/settings"));
+const Analytics = lazy(() => import("@/pages/analytics"));
+const AIInsights = lazy(() => import("@/pages/AIInsights"));
+const NotFound = lazy(() => import("@/pages/not-found"));
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
 
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-900">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+      </div>
+    );
+  }
+
   return (
-    <Switch>
-      {isLoading || !isAuthenticated ? (
-        <Route path="/" component={Landing} />
-      ) : (
-        <>
-          <Route path="/" component={Dashboard} />
-          <Route path="/trading" component={Trading} />
-          <Route path="/portfolio" component={Portfolio} />
-          <Route path="/settings" component={Settings} />
-          <Route path="/admin" component={Admin} />
-          <Route path="/models" component={ModelManagement} />
-          <Route path="/analytics" component={Analytics} />
-          <Route path="/simulation" component={SimulationStudio} />
-          <Route path="/journal" component={TradeJournal} />
-          <Route path="/community" component={CollaborativeIntelligence} />
-          <Route path="/advanced-analytics" component={AdvancedAnalytics} />
-          <Route path="/revolutionary" component={RevolutionaryDashboard} />
-        </>
-      )}
-      <Route component={NotFound} />
-    </Switch>
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen bg-gray-900">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+      </div>
+    }>
+      <Switch>
+        {!isAuthenticated ? (
+          <Route path="/" component={Landing} />
+        ) : (
+          <>
+            <Route path="/" component={Dashboard} />
+            <Route path="/trading" component={Trading} />
+            <Route path="/portfolio" component={Portfolio} />
+            <Route path="/analytics" component={Analytics} />
+            <Route path="/ai-insights" component={AIInsights} />
+            <Route path="/settings" component={Settings} />
+          </>
+        )}
+        <Route component={NotFound} />
+      </Switch>
+    </Suspense>
   );
 }
 

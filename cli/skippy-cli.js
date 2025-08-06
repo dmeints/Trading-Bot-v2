@@ -298,6 +298,120 @@ program
     }
   });
 
+// Ultra-Adaptive Intelligence commands
+program
+  .command('retrain')
+  .description('Trigger adaptive RL retraining on high-impact events')
+  .option('--force', 'Force retraining even without high-impact events')
+  .action(async (options) => {
+    console.log('Analyzing high-impact events and triggering adaptive retraining...');
+    
+    try {
+      const result = await apiRequest('/ultra-adaptive/retrain', {
+        method: 'POST',
+        data: { forceRetrain: options.force || false }
+      });
+      
+      console.log(`\n⚡️ Adaptive Retraining Result:`);
+      console.log(`Status: ${result.status}`);
+      console.log(`Events Processed: ${result.eventsProcessed || 0}`);
+      
+      if (result.improvementMetrics) {
+        console.log(`\nPerformance Improvements:`);
+        console.log(`Accuracy: +${(result.improvementMetrics.accuracyImprovement * 100).toFixed(1)}%`);
+        console.log(`Loss Reduction: ${(result.improvementMetrics.lossReduction * 100).toFixed(1)}%`);
+      }
+    } catch (error) {
+      console.error('Failed to trigger retraining:', error.message);
+    }
+  });
+
+program
+  .command('what-if <tradeId>')
+  .description('Generate what-if scenarios for a specific trade')
+  .action(async (tradeId) => {
+    console.log(`Generating what-if scenarios for trade ${tradeId}...`);
+    
+    try {
+      const response = await apiRequest(`/ultra-adaptive/what-if/${tradeId}`);
+      
+      console.log(`\n🔮 What-If Scenarios for Trade ${tradeId}:`);
+      response.scenarios.forEach((scenario, i) => {
+        console.log(`\n${i + 1}. ${scenario.explanation}`);
+        console.log(`   PnL Difference: $${scenario.pnlDifference.toFixed(2)}`);
+        console.log(`   Confidence Change: ${scenario.confidenceDelta > 0 ? '+' : ''}${(scenario.confidenceDelta * 100).toFixed(1)}%`);
+      });
+    } catch (error) {
+      console.error('Failed to generate what-if scenarios:', error.message);
+    }
+  });
+
+program
+  .command('vector-search')
+  .description('Search for similar historical trades')
+  .option('-s, --symbol <symbol>', 'Symbol to search for', 'BTC')
+  .option('-t, --type <type>', 'Trade type (buy/sell)', 'buy')
+  .action(async (options) => {
+    console.log(`Searching for trades similar to ${options.type} ${options.symbol}...`);
+    
+    try {
+      const query = {
+        symbol: options.symbol,
+        type: options.type,
+        executedAt: new Date()
+      };
+      
+      const response = await apiRequest('/ultra-adaptive/vector-search', {
+        method: 'POST',
+        data: { query, limit: 5 }
+      });
+      
+      console.log(`\n🔍 Similar Historical Trades:`);
+      response.results.forEach((result, i) => {
+        console.log(`\n${i + 1}. ${result.trade.type.toUpperCase()} ${result.trade.symbol}`);
+        console.log(`   Similarity: ${(result.similarity * 100).toFixed(1)}%`);
+        console.log(`   PnL: $${result.outcome.pnl?.toFixed(2) || 'N/A'}`);
+        console.log(`   Date: ${new Date(result.trade.executedAt).toLocaleDateString()}`);
+      });
+    } catch (error) {
+      console.error('Failed to perform vector search:', error.message);
+    }
+  });
+
+program
+  .command('cross-domain <symbol>')
+  .description('Get cross-domain analysis (on-chain + sentiment)')
+  .action(async (symbol) => {
+    console.log(`Analyzing cross-domain data for ${symbol}...`);
+    
+    try {
+      const enrichedContext = await apiRequest(`/ultra-adaptive/enriched-context/${symbol}`);
+      
+      console.log(`\n🌐 Cross-Domain Analysis for ${symbol}:`);
+      
+      // On-chain data
+      console.log(`\nOn-Chain Metrics:`);
+      console.log(`Whale Activity: ${enrichedContext.onChain.whaleActivity}`);
+      console.log(`Liquidity Health: ${enrichedContext.onChain.liquidityHealth}`);
+      console.log(`Network Strength: ${enrichedContext.onChain.networkStrength}`);
+      
+      // Sentiment data
+      console.log(`\nSentiment Analysis:`);
+      console.log(`Overall: ${enrichedContext.sentiment.overall}`);
+      console.log(`Trend: ${enrichedContext.sentiment.trend}`);
+      
+      // Insights
+      if (enrichedContext.enrichedInsights?.length > 0) {
+        console.log(`\nKey Insights:`);
+        enrichedContext.enrichedInsights.forEach((insight, i) => {
+          console.log(`${i + 1}. ${insight}`);
+        });
+      }
+    } catch (error) {
+      console.error('Failed to get cross-domain analysis:', error.message);
+    }
+  });
+
 // Utility functions
 function getDateFromPeriod(period) {
   const now = new Date();

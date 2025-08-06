@@ -10,9 +10,17 @@ Preferred communication style: Simple, everyday language.
 - **InsightEngine**: Unified analytics consolidating backtest, RL, and WebSocket streams  
 - **Metrics Service**: Prometheus-style monitoring with intelligent alerting
 - **Feature Flags**: Dynamic feature control with gradual rollout capabilities
-- **CLI Toolkit**: Comprehensive command-line interface with 15+ management commands
+- **CLI Toolkit**: Comprehensive command-line interface with 25+ management commands
 - **Nightly Jobs**: Automated backtest sweeps, health reports, and system analytics
 - **Experience Replay**: Manual correction system for AI learning improvement
+
+## Ultra-Adaptive Intelligence Features (August 6, 2025)
+- **Self-Tuning RL Loop**: Automatic retraining on high-impact events with closed-loop learning
+- **Vector Search & Retrieval**: Semantic trade memory with analogous scenario matching
+- **Cross-Domain Synergies**: On-chain + social sentiment + traditional market fusion
+- **Plugin Architecture**: Enterprise-grade third-party extensibility framework
+- **What-If Scenario Engine**: Counterfactual analysis for optimal decision-making
+- **Cross-Market Arbitrage**: Advanced correlation detection and opportunity identification
 
 # System Architecture
 

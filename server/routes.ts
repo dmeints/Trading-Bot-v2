@@ -973,6 +973,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Feature Flags Routes
   app.use('/api/feature-flags', (await import('./routes/featureFlags')).default);
+  
+  // Ultra-Adaptive Intelligence Routes
+  app.use('/api/ultra-adaptive', (await import('./routes/ultraAdaptive')).default);
 
   return httpServer;
 }

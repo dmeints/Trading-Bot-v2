@@ -17,6 +17,7 @@ import TradeJournal from "@/pages/TradeJournal";
 import NotFound from "@/pages/not-found";
 import { CollaborativeIntelligence } from "./components/CollaborativeIntelligence";
 import { AdvancedAnalytics } from "./components/AdvancedAnalytics";
+import RevolutionaryDashboard from "./pages/RevolutionaryDashboard";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -38,6 +39,7 @@ function Router() {
           <Route path="/journal" component={TradeJournal} />
           <Route path="/community" component={CollaborativeIntelligence} />
           <Route path="/advanced-analytics" component={AdvancedAnalytics} />
+          <Route path="/revolutionary" component={RevolutionaryDashboard} />
         </>
       )}
       <Route component={NotFound} />

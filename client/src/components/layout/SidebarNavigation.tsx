@@ -1,6 +1,6 @@
 import { useTradingStore } from '@/stores/tradingStore';
 import { Card } from '@/components/ui/card';
-import { BarChart3, TrendingUp, Wallet, Settings, Activity } from 'lucide-react';
+import { BarChart3, TrendingUp, Wallet, Settings, Activity, Zap } from 'lucide-react';
 import { useLocation } from 'wouter';
 
 export default function SidebarNavigation() {
@@ -103,6 +103,19 @@ export default function SidebarNavigation() {
           >
             <Settings className="w-4 h-4" />
             <span className="text-sm font-medium">Settings</span>
+          </button>
+          
+          <button 
+            onClick={() => setLocation('/revolutionary')}
+            className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors ${
+              location === '/revolutionary' 
+                ? 'bg-purple-600/20 text-purple-400' 
+                : 'text-gray-400 hover:bg-gray-700 hover:text-white'
+            }`}
+            data-testid="link-revolutionary"
+          >
+            <Zap className="w-4 h-4" />
+            <span className="text-sm font-medium">Revolutionary AI</span>
           </button>
         </div>
       </div>

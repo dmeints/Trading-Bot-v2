@@ -11,19 +11,44 @@ export interface WebSocketMessage {
 
 export class SkippyWebSocketServer {
   private wss: WebSocketServer;
-  private clients: Map<WebSocket, { userId?: string; subscriptions: Set<string> }> = new Map();
+  private clients: Map<WebSocket, { 
+    userId?: string; 
+    subscriptions: Set<string>;
+    lastPing: number;
+    connectionHealth: 'healthy' | 'degraded' | 'unhealthy';
+  }> = new Map();
 
   constructor(server: Server) {
-    this.wss = new WebSocketServer({ server, path: '/ws' });
+    this.wss = new WebSocketServer({ 
+      server, 
+      path: '/ws',
+      perMessageDeflate: false,
+      maxPayload: 1024 * 1024, // 1MB
+      clientTracking: true
+    });
     this.setupEventHandlers();
+    this.setupHealthCheck();
   }
 
   private setupEventHandlers() {
-    this.wss.on('connection', (ws: WebSocket) => {
-      console.log('New WebSocket connection');
+    this.wss.on('connection', (ws: WebSocket, request) => {
+      console.log(`New WebSocket connection from ${request.socket.remoteAddress}`);
       
-      // Initialize client data
-      this.clients.set(ws, { subscriptions: new Set() });
+      // Initialize client data with connection health
+      this.clients.set(ws, { 
+        subscriptions: new Set(),
+        lastPing: Date.now(),
+        connectionHealth: 'healthy'
+      });
+
+      // Set up ping/pong for connection health
+      ws.on('pong', () => {
+        const client = this.clients.get(ws);
+        if (client) {
+          client.lastPing = Date.now();
+          client.connectionHealth = 'healthy';
+        }
+      });
 
       ws.on('message', async (message: Buffer) => {
         try {
@@ -35,8 +60,8 @@ export class SkippyWebSocketServer {
         }
       });
 
-      ws.on('close', () => {
-        console.log('WebSocket connection closed');
+      ws.on('close', (code, reason) => {
+        console.log(`WebSocket connection closed: ${code} - ${reason}`);
         this.handleDisconnect(ws);
       });
 
@@ -48,6 +73,32 @@ export class SkippyWebSocketServer {
       // Send initial data
       this.sendWelcomeMessage(ws);
     });
+
+    this.wss.on('error', (error) => {
+      console.error('WebSocket Server error:', error);
+    });
+  }
+
+  private setupHealthCheck() {
+    // Health check every 30 seconds
+    setInterval(() => {
+      this.wss.clients.forEach((ws) => {
+        const client = this.clients.get(ws);
+        if (client) {
+          const timeSinceLastPing = Date.now() - client.lastPing;
+          
+          if (timeSinceLastPing > 60000) { // 60 seconds
+            client.connectionHealth = 'unhealthy';
+            ws.terminate();
+          } else if (timeSinceLastPing > 30000) { // 30 seconds
+            client.connectionHealth = 'degraded';
+            ws.ping();
+          } else {
+            ws.ping();
+          }
+        }
+      });
+    }, 30000);
   }
 
   private async handleMessage(ws: WebSocket, message: WebSocketMessage) {

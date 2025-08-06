@@ -959,5 +959,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Revolutionary Enhancements Routes
+  app.use('/api/revolutionary', (await import('./routes/revolutionaryEnhancements')).revolutionaryEnhancementsRouter);
+
   return httpServer;
 }

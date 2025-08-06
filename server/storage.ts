@@ -569,7 +569,7 @@ export class DatabaseStorage implements IStorage {
 
   async getUserTrades(userId: string, limit: number = 50): Promise<any[]> {
     try {
-      const userTrades = await this.db
+      const userTrades = await db
         .select()
         .from(trades)
         .where(eq(trades.userId, userId))

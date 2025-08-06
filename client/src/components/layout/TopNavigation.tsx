@@ -1,6 +1,7 @@
 import { useAuth } from '@/hooks/useAuth';
 import { useTradingStore } from '@/stores/tradingStore';
 import { Button } from '@/components/ui/button';
+import { CommandPalette } from '@/components/ui/command-palette';
 import { Brain, FlaskConical, LayoutDashboard, TrendingUp, Wallet, TestTube, BookOpen, BarChart3, Settings } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Link, useLocation } from 'wouter';
@@ -88,6 +89,11 @@ export default function TopNavigation() {
               </Link>
             );
           })}
+        </div>
+
+        {/* Command Palette */}
+        <div className="flex-1 max-w-md mx-8">
+          <CommandPalette />
         </div>
       </div>
       

@@ -1,0 +1,57 @@
+### 🖥️ Prompt for Replit AI Agent — Skippy UI Benchmarking & User-Centered Refinement
+
+I’m building **Skippy**, an AI-driven crypto trading assistant, and I need your help to **revamp the UI** by learning from the best in our space and beyond, and by putting **user sentiment** front and center.
+
+---
+
+#### 🔍 Audit & Inspiration
+
+1. **Crypto-UI Leaders**  
+   - Benchmark against top trading dashboards: **TradingView**, **Binance**, **Coinbase Pro**, **Kraken**.  
+   - Analyze their layout patterns, chart interactions, watchlists, and trade-execution flows.
+
+2. **Cross-Industry Leaders**  
+   - Pull in best practices from apps renowned for UX: **Slack**, **Notion**, **Figma**, **Spotify**, **Stripe Dashboard**.  
+   - Note how they handle onboarding, layout hierarchy, feedback/toast notifications, and responsive modular panels.
+
+---
+
+#### 🎯 Objectives
+
+- **Prioritize real user sentiment**:  
+  - Reference user reviews, forum feedback, or usability studies of those top apps to understand what users praise or complain about (e.g. discoverability, clarity, performance).  
+  - Apply the most-valued patterns (dark mode toggles, keyboard shortcuts, contextual help, drift-free scrollbars).
+
+- **Improve Skippy’s UI foundations**:  
+  - Enforce a clear **visual hierarchy** for trading, analytics, and AI-Copilot panes.  
+  - Ensure all modules **resize fluidly** and show scrollbars exactly where needed (e.g. logs, order books, backtest tables).  
+  - Use **consistent spacing, typography scales**, and **feedback states** (loading, empty, error).
+
+- **Incorporate advanced UI strategies**:  
+  - Leverage **component-driven design** (design tokens + variants) for buttons, cards, modals, and charts.  
+  - Surface real-time data changes via subtle **micro-animations** or **status badges**.  
+  - Offer **personalization**: let users collapse/focus panels, choose theme, and reconfigure layouts.
+
+---
+
+#### 🛠️ Additional Instructions
+
+- Cite specific examples or screenshots from those benchmark apps when recommending patterns.  
+- Suggest Tailwind / CSS-in-JS classes or React component structures that mirror proven UX elements.  
+- If you need to install helper libraries (e.g. `react-split-pane`, `react-virtualized`, `framer-motion`), note them.  
+- This is for **experimenting** and **power-user** scenarios—favor clarity, discoverability, and performance.
+
+---
+
+#### 📦 Deliverables
+
+1. **UI Audit Report** summarizing 5–7 key lessons from each benchmark app, tied to specific Skippy pages/components.  
+2. **Pattern Library**: a set of updated React + Tailwind component snippets (cards, headers, panel layouts, toasts, chart wrappers).  
+3. **Refactor Plan**: step-by-step guide (or PR) to implement the top 4 UI improvements, including code examples and layout mocks.  
+4. **User Sentiment Insights**: a brief appendix of “what users love / hate” from each benchmark and how we’re addressing it in Skippy.
+
+---
+
+Please run this UI benchmarking & sentiment-driven review, then return the audit report, code snippets, and refactor plan so we can elevate Skippy’s UI to the level of the best consumer and crypto trading apps.```
+
+Feel free to paste this directly into the Replit AI Agent to get started on a user-centered UI transformation!

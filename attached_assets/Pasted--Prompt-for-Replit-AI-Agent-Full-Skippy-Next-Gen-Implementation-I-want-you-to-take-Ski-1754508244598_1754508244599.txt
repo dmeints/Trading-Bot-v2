@@ -1,0 +1,51 @@
+### 🏗️ Prompt for Replit AI Agent — Full Skippy Next-Gen Implementation
+
+I want you to **take Skippy from prototype to production-hardened powerhouse** by delivering all of the following in one end-to-end sprint. Treat this as a single project with multiple phases, but complete each task automatically. 
+
+---
+
+## 1. System Robustness & Quality Assurance  
+- **Schema migrations & data migration scripts** to transition from 15+ tables down to the new 8–10 table design using `drizzle-kit`.  
+- **Playwright E2E tests** covering: login, dashboard load, paper-trade, portfolio view, Analytics & AI Insights lazy routes.  
+- **Visual-diff tests** on key pages (dashboard, analytics, logs) to catch CSS/layout regressions.  
+- **CI pipeline** (Replit Deploy Task or GitHub Action) that runs:  
+  1. `npm run lint`  
+  2. Unit tests  
+  3. E2E + visual-diff  
+  4. Schema migration dry run  
+  5. Axe-core accessibility checks  
+  6. Lighthouse performance audit (FCP <1.5s, TTI <3s)  
+- Fail the build on any error.
+
+## 2. Data Enrichment & Intelligence Feedback Loop  
+- **Closed-loop RL retraining**: hook live analytics events back into the Market Insight agent’s training set.  
+- **Vector DB integration** (e.g. Pinecone): index all past trades, signals, and rationales.  
+- **Copilot extension**: enable “find similar scenario” queries in AI Insights UI.  
+- **On-chain & sentiment MVP**: ingest top-100 whale transfers and daily Reddit sentiment; overlay them on price charts.
+
+## 3. Developer Experience & Extensibility  
+- **Plugin architecture MVP**: define a strategy-plugin API, scaffold `/plugins` directory, and deliver a “hello-world” EMA-crossover plugin.  
+- **CLI convergence**: merge Cron/backtest/health scripts into the `skippy` CLI (`migrate`, `backtest`, `health`, `retrain`).  
+- **API versioning & docs**: prefix endpoints with `/v1/`, scaffold `/v2/`, and auto-generate OpenAPI/Swagger from TypeScript types.
+
+## 4. UX Polish & Accessibility  
+- **Mobile-first refactor**: ensure all pages collapse gracefully on <480 px, increase touch targets to ≥44 px.  
+- **A11y compliance**: axe-core integration in CI, fix all violations (focus management, ARIA roles, live-region announcements).  
+- **Layout personalization**: add a “Layout Editor” to collapse/reorder panels; persist choices per user.
+
+## 5. Operational Excellence & Monitoring  
+- **Distributed tracing**: instrument Express and client with OpenTelemetry, capture spans end-to-end for market data → AI → backtest → WS.  
+- **Metrics & alerts**: extend `/metrics` (Prometheus style) with agent-specific counters; configure alert rules in Replit metrics UI.  
+- **Load & chaos testing**: write a k6 script simulating 100+ concurrent WS connections and orders; integrate into CI.
+
+---
+
+### 📦 Deliverables  
+1. **Merged code** including migrations, tests, CLI, plugin scaffold, vector-DB code, mobile-first CSS, a11y fixes, tracing, and k6 scripts.  
+2. **CI configuration** file(s) for Replit/GitHub Actions covering all QC gates.  
+3. **Documentation updates** (`README.md`, `DEPLOYMENT.md`, `plugins/README.md`, `CLI.md`) explaining how to run tests, migrations, CLI commands, vector-DB setup, and monitoring.  
+4. **Metrics dashboard & alert rules** configured in Replit.  
+
+---
+
+**Run this in a single pass**: scaffold code, run migrations, generate tests, configure CI, and update docs. Return a summary of what was created, how to invoke each feature, and any remaining blockers or manual steps. ```

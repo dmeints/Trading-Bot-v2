@@ -1,380 +1,511 @@
 # Skippy Trading Platform - Deployment Guide
 
-## 🚀 Production Deployment Guide
+## Overview
 
-### Prerequisites
-- Node.js 18+ with npm/yarn
-- PostgreSQL 14+ database
-- OpenAI API key (for AI Copilot)
-- Replit OIDC credentials
+This guide covers the complete deployment process for the Skippy Trading Platform, from development to production. The platform is designed for deployment on Replit with support for traditional cloud environments.
 
-### Environment Configuration
+## Table of Contents
 
-#### Required Environment Variables
+1. [Prerequisites](#prerequisites)
+2. [Environment Setup](#environment-setup)
+3. [Database Migration](#database-migration)
+4. [Build and Test](#build-and-test)
+5. [Production Deployment](#production-deployment)
+6. [Monitoring and Observability](#monitoring-and-observability)
+7. [Security Considerations](#security-considerations)
+8. [Troubleshooting](#troubleshooting)
+
+## Prerequisites
+
+### Required Services
+- **PostgreSQL Database** (Neon recommended for Replit)
+- **OpenAI API** access for AI features
+- **Node.js 20+** runtime environment
+
+### Required Secrets
+Set these environment variables/secrets before deployment:
+
 ```bash
-# Database
-DATABASE_URL="postgresql://user:password@host:port/database"
-
-# Authentication
-REPLIT_CLIENT_ID="your_replit_client_id"
-REPLIT_CLIENT_SECRET="your_replit_client_secret"
-SESSION_SECRET="secure_random_session_secret"
-
-# AI Services
-OPENAI_API_KEY="sk-your_openai_api_key"
-AI_SERVICES_ENABLED="true"
-
-# Application
-NODE_ENV="production"
-PORT="5000"
-ALLOWED_ORIGINS="https://yourdomain.com"
-
-# Security
-RATE_LIMIT_WINDOW_MS="900000"
-RATE_LIMIT_MAX_REQUESTS="100"
+DATABASE_URL=postgresql://username:password@host:port/database
+OPENAI_API_KEY=sk-...
+SESSION_SECRET=your-session-secret-key
+ADMIN_SECRET=your-admin-secret-key
 ```
 
-#### Optional Environment Variables
+### Optional Secrets
 ```bash
-# Feature Flags
-FEATURE_TRADING="true"
-FEATURE_BACKTEST="true"
-FEATURE_AI_COPILOT="true"
-FEATURE_REVOLUTIONARY_AI="true"
-
-# Monitoring
-PROMETHEUS_METRICS_ENABLED="true"
-ALERT_WEBHOOK_URL="https://your-slack-webhook"
-
-# Development
-DEBUG_MODE="false"
-LOG_LEVEL="info"
+SNYK_TOKEN=for-security-scanning
+LHCI_GITHUB_APP_TOKEN=for-lighthouse-ci
 ```
 
-## 📋 Pre-Deployment Checklist
+## Environment Setup
 
-### Database Setup
-- [ ] PostgreSQL database created and accessible
-- [ ] Database migrations applied: `npm run db:push`
-- [ ] Connection pool configured for production load
-- [ ] Database backups scheduled
+### Development Environment
 
-### Security Configuration
-- [ ] HTTPS certificates configured
-- [ ] CORS origins set to production domains
-- [ ] Rate limiting configured appropriately
-- [ ] Session secrets are cryptographically secure
-- [ ] API keys stored securely (not in code)
+1. **Clone and Install**
+   ```bash
+   git clone <repository-url>
+   cd skippy-trading-platform
+   npm install
+   ```
 
-### Performance Optimization
-- [ ] Database indexes optimized for queries
-- [ ] Response caching configured
-- [ ] WebSocket connection limits set
-- [ ] Memory limits configured
+2. **Database Setup**
+   ```bash
+   # Generate schema
+   npm run db:generate
+   
+   # Push to database
+   npm run db:push
+   
+   # Run optimized migration
+   npm run migrate:test
+   ```
 
-### Monitoring Setup
-- [ ] Health check endpoints functional: `/api/health`
-- [ ] Prometheus metrics endpoint accessible: `/api/metrics/prometheus`
-- [ ] Alert rules configured for critical metrics
-- [ ] Log aggregation configured
+3. **Start Development Server**
+   ```bash
+   npm run dev
+   ```
 
-## 🛠️ Deployment Steps
+### Production Environment
 
-### 1. Code Deployment
+1. **Install Dependencies**
+   ```bash
+   npm ci --production
+   ```
+
+2. **Build Application**
+   ```bash
+   npm run build
+   ```
+
+3. **Start Production Server**
+   ```bash
+   npm start
+   ```
+
+## Database Migration
+
+### Schema Transition (Legacy to Optimized)
+
+The platform includes a comprehensive migration from 15+ legacy tables to an optimized 8-10 table design:
+
 ```bash
-# Clone the repository
-git clone https://github.com/your-org/skippy-trading-platform.git
-cd skippy-trading-platform
+# Dry run (recommended first)
+npm run skippy db migrate --dry-run
 
-# Install dependencies
-npm ci --production
+# Execute migration
+npm run skippy db migrate
 
-# Build the application
-npm run build
-
-# Run database migrations
-npm run db:push
+# Verify migration
+npm run skippy db health
 ```
 
-### 2. Environment Setup
+### Post-Migration Cleanup
+
+After successful migration and verification:
+
+```sql
+-- Manual cleanup of legacy tables (run carefully)
+DROP TABLE IF EXISTS trading_signals CASCADE;
+DROP TABLE IF EXISTS market_regimes CASCADE;
+DROP TABLE IF EXISTS sentiment_data CASCADE;
+DROP TABLE IF EXISTS agent_memories CASCADE;
+DROP TABLE IF EXISTS trading_strategies CASCADE;
+```
+
+### Vector Database Setup
+
+For AI similarity search features:
+
 ```bash
-# Copy environment template
-cp .env.example .env
-
-# Edit environment variables
-nano .env
-
-# Validate configuration
-npm run audit
+# Initialize vector database
+npm run skippy db init-vectors
 ```
 
-### 3. Service Configuration
+## Build and Test
+
+### Pre-Deployment Testing
+
+Run the complete test suite before deployment:
+
 ```bash
-# Create systemd service (Linux)
-sudo nano /etc/systemd/system/skippy.service
+# Lint and format check
+npm run lint
+npm run format:check
 
-# Enable and start service
-sudo systemctl enable skippy
-sudo systemctl start skippy
+# Unit tests
+npm run test:unit
 
-# Check service status
-sudo systemctl status skippy
+# End-to-end tests
+npm run test:e2e
+
+# Visual regression tests
+npm run test:visual
+
+# Accessibility tests
+npm run test:a11y
+
+# Load testing (optional)
+npm run test:load
 ```
 
-#### Example systemd Service File
-```ini
-[Unit]
-Description=Skippy Trading Platform
-After=network.target postgresql.service
+### Bundle Analysis
 
-[Service]
-Type=simple
-User=skippy
-WorkingDirectory=/opt/skippy
-ExecStart=/usr/bin/node dist/server/index.js
-Restart=always
-RestartSec=10
-Environment=NODE_ENV=production
-EnvironmentFile=/opt/skippy/.env
+Verify bundle size targets (<450KB total):
 
-[Install]
-WantedBy=multi-user.target
+```bash
+npm run analyze:bundle
 ```
 
-### 4. Reverse Proxy Configuration
+### Performance Audit
 
-#### Nginx Configuration
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name your-domain.com;
-    
-    ssl_certificate /path/to/certificate.crt;
-    ssl_certificate_key /path/to/private.key;
-    
-    location / {
-        proxy_pass http://localhost:5000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
-    }
-    
-    # WebSocket support
-    location /ws {
-        proxy_pass http://localhost:5000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
+```bash
+# Install Lighthouse CI
+npm install -g @lhci/cli
+
+# Run performance audit
+lhci autorun
+```
+
+## Production Deployment
+
+### Replit Deployment
+
+1. **Configure Secrets**
+   - Go to Replit Secrets panel
+   - Add all required environment variables
+   - Verify database connectivity
+
+2. **Deploy Application**
+   ```bash
+   # Build for production
+   npm run build
+   
+   # Start application
+   npm start
+   ```
+
+3. **Verify Deployment**
+   ```bash
+   # Check system status
+   npm run skippy system status
+   
+   # Test API endpoints
+   curl https://your-app.replit.app/api/health
+   ```
+
+### Traditional Cloud Deployment
+
+#### Docker Deployment
+
+```dockerfile
+# Dockerfile
+FROM node:20-alpine
+
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --production
+
+COPY . .
+RUN npm run build
+
+EXPOSE 5000
+CMD ["npm", "start"]
+```
+
+```bash
+# Build and run
+docker build -t skippy-trading .
+docker run -p 5000:5000 --env-file .env skippy-trading
+```
+
+#### PM2 Deployment
+
+```bash
+# Install PM2
+npm install -g pm2
+
+# Create ecosystem file
+cat > ecosystem.config.js << EOF
+module.exports = {
+  apps: [{
+    name: 'skippy-trading',
+    script: 'dist/server/index.js',
+    env: {
+      NODE_ENV: 'production',
+      PORT: 5000
+    },
+    instances: 2,
+    exec_mode: 'cluster'
+  }]
 }
+EOF
+
+# Deploy
+pm2 start ecosystem.config.js
+pm2 save
+pm2 startup
 ```
 
-## 📊 Production Monitoring
+## Monitoring and Observability
 
 ### Health Checks
-The application provides comprehensive health check endpoints:
+
+The platform includes comprehensive health monitoring:
 
 ```bash
-# Basic health check
-curl https://your-domain.com/api/health
+# System health
+curl /api/health
 
 # Database health
-curl https://your-domain.com/api/health/db
+npm run skippy db health
 
-# AI services health
-curl https://your-domain.com/api/health/ai
-
-# Trading engine health
-curl https://your-domain.com/api/health/trading
+# AI service status
+curl /api/ai/status
 ```
 
-### Prometheus Metrics
-Access system metrics for monitoring:
+### Metrics and Alerting
+
+Built-in Prometheus-compatible metrics at `/api/metrics`:
+
+- **Trading Metrics**: Trades/minute, success rate, P&L
+- **AI Metrics**: Inference time, model accuracy, error rates  
+- **System Metrics**: API response time, WebSocket connections
+- **Business Metrics**: User activity, portfolio performance
+
+### Distributed Tracing
+
+The platform includes OpenTelemetry-compatible tracing:
+
+- **Request Tracing**: End-to-end API request tracking
+- **Database Tracing**: Query performance monitoring
+- **WebSocket Tracing**: Real-time connection monitoring
+- **AI Tracing**: Model inference performance
+
+Access traces via:
+```bash
+# View recent traces
+curl /api/traces?limit=100
+
+# Export traces for external systems
+npm run skippy system export-traces
+```
+
+### Log Aggregation
+
+Structured JSON logging with levels:
 
 ```bash
-# Get Prometheus-format metrics
-curl https://your-domain.com/api/metrics/prometheus
+# View logs
+npm run skippy system logs --level=info --tail=100
 
-# Key metrics include:
-# - skippy_requests_total
-# - skippy_request_duration_ms
-# - skippy_trades_total
-# - skippy_ai_confidence
-# - skippy_system_uptime_seconds
+# Search logs
+npm run skippy system logs --search="trade executed"
 ```
 
-### Alerting Rules
-Configure alerts for critical metrics:
-
-```yaml
-# Example Prometheus alert rules
-groups:
-  - name: skippy_alerts
-    rules:
-      - alert: SkippyHighErrorRate
-        expr: skippy_system_error_rate > 0.05
-        for: 5m
-        labels:
-          severity: critical
-        annotations:
-          summary: "High error rate detected"
-          
-      - alert: SkippyLowAIConfidence
-        expr: skippy_ai_confidence < 0.4
-        for: 10m
-        labels:
-          severity: warning
-        annotations:
-          summary: "AI confidence below threshold"
-```
-
-## 🔧 CLI Management
-
-### Production Management Commands
-```bash
-# System audit and health check
-skippy audit
-
-# Get system metrics
-skippy metrics --range 24h
-
-# Check feature flag status
-skippy flags list
-
-# Get trading recommendations
-skippy trading recommendations
-
-# Query AI copilot
-skippy ai ask "What's the system performance today?"
-
-# Generate daily summary
-skippy summarize --format csv --since yesterday
-```
-
-### Nightly Jobs Management
-```bash
-# The system automatically runs nightly jobs:
-# - 1 AM: AI Performance Analysis
-# - 2 AM: Backtest Sweeps
-# - 3 AM: Market Health Reports
-# - 4 AM: System Analytics Summary
-# - 5 AM: Database Cleanup
-# - 6 AM Sunday: Weekly Deep Analysis
-```
-
-## 🛡️ Security Best Practices
-
-### Application Security
-- [ ] Regular dependency updates with `npm audit`
-- [ ] Environment variables never committed to code
-- [ ] Secure session configuration with HttpOnly cookies
-- [ ] CSRF protection enabled
-- [ ] Rate limiting configured per endpoint type
-
-### Infrastructure Security
-- [ ] Firewall configured to allow only necessary ports
-- [ ] Database access restricted to application servers
-- [ ] SSL/TLS certificates auto-renewal configured
-- [ ] Log files protected and regularly rotated
-- [ ] Backup encryption configured
+## Security Considerations
 
 ### API Security
-- [ ] Authentication required for all sensitive endpoints
-- [ ] Admin endpoints protected with additional authorization
-- [ ] Request validation with Zod schemas
-- [ ] Response sanitization to prevent data leaks
 
-## 📈 Scaling Considerations
+- **Authentication**: Replit OIDC with session management
+- **Authorization**: Role-based access control
+- **Rate Limiting**: Built-in request throttling
+- **Input Validation**: Zod schema validation
 
-### Horizontal Scaling
+### Database Security
+
+- **Connection Security**: SSL/TLS encrypted connections
+- **Query Protection**: Parameterized queries via Drizzle ORM
+- **Access Control**: Principle of least privilege
+
+### Secrets Management
+
+- **Environment Variables**: Never commit secrets to code
+- **Rotation**: Regular API key rotation
+- **Encryption**: At-rest and in-transit encryption
+
+### Security Scanning
+
 ```bash
-# The application supports horizontal scaling:
-# - Stateless architecture with PostgreSQL session storage
-# - WebSocket clustering with Redis adapter (if needed)
-# - Database connection pooling
-# - Load balancer session affinity not required
+# NPM audit
+npm audit --audit-level high
+
+# Snyk security scan (if configured)
+snyk test --severity-threshold=high
 ```
 
-### Performance Optimization
-- **Database**: Connection pooling, query optimization, read replicas
-- **Caching**: Redis for session storage and response caching
-- **CDN**: Static assets served via CDN
-- **Monitoring**: APM tools for performance tracking
+## Performance Optimization
 
-### Resource Requirements
+### Bundle Size Optimization
 
-#### Minimum Production Requirements
-- **CPU**: 2 vCPUs
-- **RAM**: 4 GB
-- **Storage**: 50 GB SSD
-- **Network**: 1 Gbps
+Target: <450KB total bundle size
 
-#### Recommended Production Configuration
-- **CPU**: 4 vCPUs
-- **RAM**: 8 GB  
-- **Storage**: 100 GB SSD
-- **Network**: 10 Gbps
-- **Database**: Dedicated PostgreSQL instance
+- **Code Splitting**: Lazy loading for Analytics and AI pages
+- **Tree Shaking**: Unused code elimination
+- **Chunk Optimization**: Strategic vendor chunking
 
-## 🔄 Backup & Recovery
+### Database Performance
 
-### Database Backup
+- **Connection Pooling**: Neon serverless connections
+- **Query Optimization**: Indexed queries and materialized views
+- **Data Archival**: Automated cleanup of old data
+
 ```bash
-# Daily automated backups
-pg_dump $DATABASE_URL > backup_$(date +%Y%m%d).sql
-
-# Point-in-time recovery setup
-# Configure WAL-E or similar for continuous backup
+# Performance maintenance
+npm run skippy system cleanup --days=90
 ```
 
-### Application Backup
-```bash
-# Configuration backup
-tar -czf config_backup_$(date +%Y%m%d).tar.gz .env logs/
+### WebSocket Performance
 
-# Full application backup
-tar -czf app_backup_$(date +%Y%m%d).tar.gz --exclude node_modules .
+- **Connection Management**: Automatic cleanup and pooling
+- **Message Batching**: Efficient real-time updates
+- **Backpressure Handling**: Graceful degradation under load
+
+## Plugin System
+
+### Plugin Deployment
+
+```bash
+# List available plugins
+npm run skippy plugin list
+
+# Deploy EMA crossover strategy
+npm run skippy plugin deploy ema-crossover --live
+
+# Monitor plugin performance
+npm run skippy plugin status ema-crossover
 ```
 
-### Disaster Recovery
-- **RTO (Recovery Time Objective)**: < 15 minutes
-- **RPO (Recovery Point Objective)**: < 5 minutes
-- **Automated failover**: Configure with monitoring alerts
-- **Data replication**: Cross-region database replication
+### Plugin Security
 
-## 🎯 Production Validation
+- **Sandboxing**: Isolated execution environment
+- **Resource Limits**: CPU and memory constraints
+- **Code Review**: Required for production deployment
 
-### Smoke Tests
+## Troubleshooting
+
+### Common Issues
+
+#### Database Connection Issues
 ```bash
-# Automated deployment validation
-curl -f https://your-domain.com/api/health || exit 1
-curl -f https://your-domain.com/api/health/db || exit 1
-curl -f https://your-domain.com/api/health/ai || exit 1
+# Test database connectivity
+npm run skippy db health
 
-# Feature validation
-skippy audit
-skippy metrics --range 1h
+# Check connection string
+echo $DATABASE_URL
+
+# Verify SSL requirements
+psql "$DATABASE_URL" -c "SELECT version();"
 ```
 
-### Performance Validation
-- [ ] API response times < 500ms under load
-- [ ] WebSocket connections stable under 1000+ concurrent users
-- [ ] Database query performance optimized
-- [ ] Memory usage stable over 24 hours
+#### Bundle Size Issues
+```bash
+# Analyze bundle composition
+npm run analyze:bundle
 
-### Security Validation
-- [ ] SSL/TLS configuration scored A+ on SSL Labs
-- [ ] No exposed sensitive endpoints
-- [ ] Rate limiting functional
-- [ ] Authentication/authorization working correctly
+# Check for large dependencies
+npm ls --depth=0 --prod
+```
 
----
+#### Performance Issues
+```bash
+# Check system status
+npm run skippy system status
 
-**Deployment Status**: Ready for Production  
-**Last Updated**: August 6, 2025  
-**Next Review**: Post-deployment performance analysis
+# Monitor resource usage
+top -p $(pgrep node)
+
+# Analyze slow queries
+npm run skippy db slow-queries
+```
+
+#### WebSocket Connection Issues
+```bash
+# Test WebSocket connectivity
+wscat -c ws://localhost:5000/ws
+
+# Check WebSocket logs
+npm run skippy system logs --search="websocket"
+```
+
+### Error Recovery
+
+#### Application Restart
+```bash
+# Graceful restart
+pm2 restart skippy-trading
+
+# Force restart if needed
+pm2 stop skippy-trading && pm2 start skippy-trading
+```
+
+#### Database Recovery
+```bash
+# Rollback last migration if needed
+npm run skippy db rollback
+
+# Restore from backup
+pg_restore -d $DATABASE_URL backup.sql
+```
+
+#### Cache Clearing
+```bash
+# Clear application cache
+npm run skippy system cache-clear
+
+# Clear client-side cache
+# Add ?v=timestamp to URLs
+```
+
+## Maintenance
+
+### Regular Tasks
+
+#### Daily
+- Monitor system health
+- Check error rates
+- Review security alerts
+
+#### Weekly  
+- Update dependencies
+- Review performance metrics
+- Plugin performance analysis
+
+#### Monthly
+- Security scan and updates
+- Database cleanup and optimization
+- Backup verification
+
+### Automated Maintenance
+
+```bash
+# Setup automated cleanup (cron job)
+echo "0 2 * * * cd /app && npm run skippy system cleanup" | crontab -
+
+# Setup automated health checks
+echo "*/5 * * * * curl -f http://localhost:5000/api/health || echo 'Health check failed'" | crontab -
+```
+
+## Support and Documentation
+
+### API Documentation
+- OpenAPI/Swagger: `/api/docs`
+- Health endpoint: `/api/health`
+- Metrics endpoint: `/api/metrics`
+
+### CLI Reference
+```bash
+# Complete CLI help
+npm run skippy --help
+
+# Command-specific help
+npm run skippy db --help
+npm run skippy plugin --help
+```
+
+### Monitoring Dashboards
+- System health: Built-in dashboard at `/admin/health`
+- Performance metrics: Replit metrics panel
+- Custom dashboards: Grafana/Prometheus compatible
+
+For additional support, refer to the project documentation and monitoring dashboards.

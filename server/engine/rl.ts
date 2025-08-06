@@ -204,8 +204,9 @@ export class RLInferenceEngine {
       
       // Determine action and confidence
       const scores = { buy: buyScore, sell: sellScore, hold: holdScore };
-      const action = Object.entries(scores).reduce((a, b) => scores[a[0]] > scores[b[0]] ? a : b)[0] as 'buy' | 'sell' | 'hold';
-      const confidence = scores[action];
+      const maxEntry = Object.entries(scores).reduce((a, b) => a[1] > b[1] ? a : b);
+      const action = maxEntry[0] as 'buy' | 'sell' | 'hold';
+      const confidence = maxEntry[1];
       
       // Generate rationale based on features
       const rationale = this.generateRationale(features, action, confidence);

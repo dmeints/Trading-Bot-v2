@@ -17,6 +17,7 @@ import { webhookTester } from "./services/webhookTester";
 import { policyEngine } from "./engine/policy";
 import { rlEngine } from "./engine/rl";
 import { backtestEngine } from "./engine/backtest";
+import { lazyInitService } from "./services/lazyInit";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -405,6 +406,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // AI Agent routes
   app.get('/api/ai/agents/status', async (req, res) => {
     try {
+      // Initialize AI orchestrator if not already initialized
+      await lazyInitService.initializeAIOrchestrator();
+      
       const status = aiOrchestrator.getAgentStatus();
       const recentActivities = await storage.getRecentAgentActivities(20);
       res.json({ agents: status, recentActivities });
@@ -418,6 +422,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { agentType } = req.params;
       const data = req.body;
+      
+      // Initialize AI orchestrator if not already initialized
+      await lazyInitService.initializeAIOrchestrator();
       
       const result = await aiOrchestrator.runAgent(agentType, data);
       res.json(result);
@@ -503,6 +510,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: 'Symbol is required' });
       }
 
+      // Initialize RL engine if not already initialized
+      await lazyInitService.initializeRLEngine();
+
       const marketPrice = marketDataService.getCurrentPrice(symbol);
       if (!marketPrice) {
         return res.status(404).json({ error: 'Market data not found for symbol' });
@@ -520,6 +530,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/rl/model-info', apiRateLimit, isAuthenticated, async (req: any, res) => {
     try {
+      // Initialize RL engine if not already initialized
+      await lazyInitService.initializeRLEngine();
+      
       const info = rlEngine.getModelInfo();
       res.json(info);
     } catch (error) {
@@ -665,19 +678,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Lazy initialization endpoint (for manual initialization if needed)
+  app.post('/api/ai/initialize', apiRateLimit, isAuthenticated, async (req: any, res) => {
+    try {
+      console.log('[API] Manual AI initialization requested');
+      await lazyInitService.initializeAllServices();
+      const status = lazyInitService.getStatus();
+      res.json({ 
+        message: 'AI services initialized successfully', 
+        status 
+      });
+    } catch (error) {
+      console.error('Manual AI initialization error:', error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : 'AI initialization failed' 
+      });
+    }
+  });
+
   // Health check
-  app.get('/api/health', (req, res) => {
-    res.json({
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      services: {
-        database: 'connected',
-        ai_agents: 'active',
-        market_data: 'streaming',
-        rl_engine: rlEngine.getModelInfo().loaded ? 'ready' : 'loading',
-        policy_engine: 'active',
-      },
-    });
+  app.get('/api/health', async (req, res) => {
+    try {
+      const lazyInitStatus = lazyInitService.getStatus();
+      const rlEngineStatus = lazyInitStatus.rlEngine ? 
+        (rlEngine.getModelInfo().loaded ? 'ready' : 'loaded_not_ready') : 
+        'not_initialized';
+      
+      res.json({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        services: {
+          database: 'connected',
+          ai_agents: lazyInitStatus.aiOrchestrator ? 'active' : 'not_initialized',
+          market_data: 'streaming',
+          rl_engine: rlEngineStatus,
+          policy_engine: 'active',
+        },
+        lazy_init_status: lazyInitStatus,
+      });
+    } catch (error) {
+      console.error('Health check error:', error);
+      res.status(500).json({
+        status: 'error',
+        timestamp: new Date().toISOString(),
+        error: 'Health check failed'
+      });
+    }
   });
 
   const httpServer = createServer(app);

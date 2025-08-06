@@ -68,40 +68,6 @@ app.use((req, res, next) => {
     reusePort: true,
   }, () => {
     log(`serving on port ${port}`);
-    
-    // Initialize AI system after server starts
-    setTimeout(async () => {
-      try {
-        log('Initializing AI trading system...');
-        
-        // Initialize RL engine
-        try {
-          await rlEngine.loadModel();
-          log('RL Engine initialized successfully');
-        } catch (error) {
-          console.error('RL Engine initialization failed:', error);
-        }
-        
-        const { aiOrchestrator } = await import('./services/aiAgents');
-        const { storage } = await import('./storage');
-        
-        // Get current market data
-        const allMarketData = await storage.getAllMarketData();
-        
-        if (allMarketData.length > 0) {
-          log('Running initial AI analysis...');
-          
-          // Run all AI agents with market data
-          const results = await aiOrchestrator.runAllAgents({
-            marketData: allMarketData,
-            timestamp: new Date().toISOString()
-          });
-          
-          log(`AI analysis complete. ${results.length} agents processed data.`);
-        }
-      } catch (error) {
-        console.error('Error during AI initialization:', error);
-      }
-    }, 8000); // Wait 8 seconds for market data to populate
+    log('Server started successfully - AI services will initialize on first request');
   });
 })();

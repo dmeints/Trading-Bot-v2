@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { storage } from "../storage";
+import { MarketInsightAgent } from "./marketInsightAgent";
 
 // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
 const openai = new OpenAI({ 
@@ -17,11 +18,9 @@ export class AIAgentOrchestrator {
   private agents: Map<string, AIAgent> = new Map();
 
   constructor() {
-    this.agents.set('market_analyst', new MarketAnalystAgent());
-    this.agents.set('news_analyst', new NewsAnalystAgent());
-    this.agents.set('trading_agent', new TradingAgent());
+    // Consolidated to unified Market Insight Agent + Risk Assessor
+    this.agents.set('market_insight', new MarketInsightAgent());
     this.agents.set('risk_assessor', new RiskAssessorAgent());
-    this.agents.set('sentiment_analyst', new SentimentAnalystAgent());
   }
 
   async runAgent(agentType: string, data: any): Promise<AgentResponse> {

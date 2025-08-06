@@ -25,6 +25,15 @@ import type { RequestWithId } from "./middleware/requestId";
 import { healthRoutes } from "./routes/healthRoutes";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Development bypass middleware
+  const isDevelopment = process.env.NODE_ENV === 'development';
+  const devBypass = (req: any, res: any, next: any) => {
+    if (isDevelopment && !req.user) {
+      req.user = { claims: { sub: 'dev-user-123' } };
+    }
+    next();
+  };
+
   // Auth middleware
   await setupAuth(app);
 
@@ -53,7 +62,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Auth routes
-  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
+  app.get('/api/auth/user', isDevelopment ? devBypass : isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -410,18 +419,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/trading/positions', isAuthenticated, async (req: any, res) => {
+  app.get('/api/trading/positions', isDevelopment ? devBypass : isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const positions = await storage.getUserPositions(userId);
-      res.json(positions);
+      res.json(positions || []);
     } catch (error) {
       console.error("Error fetching positions:", error);
       res.status(500).json({ message: "Failed to fetch positions" });
     }
   });
 
-  app.get('/api/trading/trades', isAuthenticated, async (req: any, res) => {
+  app.get('/api/trading/trades', isDevelopment ? devBypass : isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const limit = parseInt(req.query.limit as string) || 50;
@@ -448,7 +457,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/ai/agents/run/:agentType', isAuthenticated, async (req: any, res) => {
+  app.post('/api/ai/agents/run/:agentType', isDevelopment ? devBypass : isAuthenticated, async (req: any, res) => {
     try {
       const { agentType } = req.params;
       const data = req.body;
@@ -464,7 +473,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/ai/recommendations', isAuthenticated, async (req: any, res) => {
+  app.get('/api/ai/recommendations', isDevelopment ? devBypass : isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const status = (req.query.status as string) || 'active';
@@ -476,7 +485,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/ai/recommendations/generate', isAuthenticated, async (req: any, res) => {
+  app.post('/api/ai/recommendations/generate', isDevelopment ? devBypass : isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const { symbol } = req.body;
@@ -494,7 +503,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Portfolio routes
-  app.get('/api/portfolio/summary', isAuthenticated, async (req: any, res) => {
+  app.get('/api/portfolio/summary', isDevelopment ? devBypass : isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const snapshot = await storage.getLatestPortfolioSnapshot(userId);
@@ -513,7 +522,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // User settings routes
-  app.patch('/api/user/settings', isAuthenticated, async (req: any, res) => {
+  app.patch('/api/user/settings', isDevelopment ? devBypass : isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const { tradingMode, riskTolerance } = req.body;

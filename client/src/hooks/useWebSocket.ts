@@ -21,7 +21,7 @@ interface UseWebSocketOptions {
 }
 
 export function useWebSocket({
-  url,
+  url = `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`,
   protocols,
   maxReconnectAttempts = 5,
   initialReconnectDelay = 1000,
@@ -30,6 +30,7 @@ export function useWebSocket({
   onMessage,
   onError,
   onClose,
+  onConnect,
 }: UseWebSocketOptions) {
   const [readyState, setReadyState] = useState<number>(WebSocket.CONNECTING);
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
@@ -46,10 +47,16 @@ export function useWebSocket({
         setReadyState(WebSocket.OPEN);
         setReconnectAttempt(0);
         onOpen?.(event);
+        onConnect?.(event);
       };
 
       ws.onmessage = (event) => {
-        onMessage?.(event);
+        try {
+          const data = JSON.parse(event.data);
+          onMessage?.(data);
+        } catch (error) {
+          onMessage?.(event);
+        }
       };
 
       ws.onerror = (event) => {

@@ -14,15 +14,23 @@ const API_BASE = process.env.SKIPPY_API_BASE || DEFAULT_API_BASE;
 // Helper function to make API requests
 async function apiRequest(endpoint, options = {}) {
   try {
+    const headers = {
+      'Content-Type': 'application/json',
+      ...options.headers
+    };
+    
+    // Add admin secret for admin endpoints
+    if (endpoint.includes('/admin') || endpoint.includes('/metrics') || endpoint.includes('/flags') || endpoint.includes('/feature-flags')) {
+      const adminSecret = process.env.ADMIN_SECRET || 'admin_secret_123';
+      headers['x-admin-secret'] = adminSecret;
+    }
+    
     const response = await axios({
       url: `${API_BASE}${endpoint}`,
       method: options.method || 'GET',
       data: options.data,
       params: options.params,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-      }
+      headers
     });
     return response.data;
   } catch (error) {

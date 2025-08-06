@@ -2,6 +2,8 @@ import { useAuth } from '@/hooks/useAuth';
 import TopNavigation from '@/components/layout/TopNavigation';
 import SidebarNavigation from '@/components/layout/SidebarNavigation';
 import PortfolioSummary from '@/components/dashboard/PortfolioSummary';
+import PortfolioAnalytics from '@/components/portfolio/PortfolioAnalytics';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import RecentTrades from '@/components/dashboard/RecentTrades';
 import { Card } from '@/components/ui/card';
 import { useTradingStore } from '@/stores/tradingStore';

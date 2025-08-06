@@ -2,8 +2,13 @@ import { useAuth } from '@/hooks/useAuth';
 import TopNavigation from '@/components/layout/TopNavigation';
 import SidebarNavigation from '@/components/layout/SidebarNavigation';
 import TradingChart from '@/components/trading/TradingChart';
+import AdvancedChart from '@/components/trading/AdvancedChart';
 import QuickTradePanel from '@/components/trading/QuickTradePanel';
+import AdvancedOrderPanel from '@/components/trading/AdvancedOrderPanel';
+import OrderBook from '@/components/trading/OrderBook';
 import AIRecommendations from '@/components/trading/AIRecommendations';
+import SocialTradingFeed from '@/components/social/SocialTradingFeed';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export default function Trading() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -32,22 +37,75 @@ export default function Trading() {
           <div className="max-w-7xl mx-auto">
             <h1 className="text-2xl font-bold mb-6">Advanced Trading</h1>
             
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-12rem)]">
-              {/* Trading Chart - Takes 2 columns */}
-              <div className="lg:col-span-2">
-                <TradingChart />
-              </div>
+            <Tabs defaultValue="trading" className="w-full">
+              <TabsList className="grid grid-cols-4 w-full max-w-md bg-gray-800 mb-6">
+                <TabsTrigger value="trading" className="text-white data-[state=active]:bg-blue-600">
+                  Trading
+                </TabsTrigger>
+                <TabsTrigger value="advanced" className="text-white data-[state=active]:bg-blue-600">
+                  Advanced
+                </TabsTrigger>
+                <TabsTrigger value="analytics" className="text-white data-[state=active]:bg-blue-600">
+                  Analytics
+                </TabsTrigger>
+                <TabsTrigger value="social" className="text-white data-[state=active]:bg-blue-600">
+                  Social
+                </TabsTrigger>
+              </TabsList>
               
-              {/* Right sidebar with trade panel and recommendations */}
-              <div className="space-y-6">
-                <div className="h-1/2">
-                  <QuickTradePanel />
+              <TabsContent value="trading" className="space-y-6">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-16rem)]">
+                  {/* Trading Chart - Takes 2 columns */}
+                  <div className="lg:col-span-2">
+                    <TradingChart />
+                  </div>
+                  
+                  {/* Right sidebar with trade panel and recommendations */}
+                  <div className="space-y-6">
+                    <div className="h-1/2">
+                      <QuickTradePanel />
+                    </div>
+                    <div className="h-1/2">
+                      <AIRecommendations />
+                    </div>
+                  </div>
                 </div>
-                <div className="h-1/2">
+              </TabsContent>
+              
+              <TabsContent value="advanced" className="space-y-6">
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[calc(100vh-16rem)]">
+                  {/* Advanced Chart */}
+                  <div className="lg:col-span-3">
+                    <AdvancedChart />
+                  </div>
+                  
+                  {/* Trading Tools */}
+                  <div className="space-y-6 h-full overflow-y-auto">
+                    <OrderBook />
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <AdvancedOrderPanel />
                   <AIRecommendations />
                 </div>
-              </div>
-            </div>
+              </TabsContent>
+              
+              <TabsContent value="analytics" className="space-y-6">
+                <div className="text-center py-12">
+                  <h3 className="text-xl font-semibold text-white mb-4">
+                    Advanced Analytics Coming Soon
+                  </h3>
+                  <p className="text-gray-400 mb-8">
+                    Comprehensive portfolio analytics and performance insights will be available in the next update.
+                  </p>
+                </div>
+              </TabsContent>
+              
+              <TabsContent value="social" className="space-y-6">
+                <SocialTradingFeed />
+              </TabsContent>
+            </Tabs>
           </div>
         </main>
       </div>

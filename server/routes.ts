@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
+import { unifiedApi } from "./api/unified";
 // Feedback routes will be added inline
 import { tradingEngine } from "./services/tradingEngine";
 import { aiOrchestrator } from "./services/aiAgents";

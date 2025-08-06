@@ -16,8 +16,17 @@ interface Position {
   quantity: number;
   avgPrice: number;
   currentPrice: number;
-  pnl: number;
-  pnlPercent: number;
+  unrealizedPnl: number;
+}
+
+interface PortfolioSummary {
+  positions: Position[];
+  summary: {
+    totalValue: number;
+    totalPnL: number;
+    positionCount: number;
+    lastUpdated: string | Date;
+  };
 }
 
 export default function SimplifiedDashboard() {
@@ -26,19 +35,20 @@ export default function SimplifiedDashboard() {
     refetchInterval: 30000,
   });
 
-  const { data: positions } = useQuery<Position[]>({
-    queryKey: ['/api/positions'],
+  const { data: portfolioData } = useQuery<PortfolioSummary>({
+    queryKey: ['/api/portfolio/summary'],
     refetchInterval: 10000,
   });
 
-  const { data: agentStatus } = useQuery({
+  const { data: agentStatus } = useQuery<Record<string, string>>({
     queryKey: ['/api/ai/status'],
     refetchInterval: 30000,
   });
 
-  // Calculate portfolio metrics
-  const totalPnL = positions?.reduce((sum, pos) => sum + pos.pnl, 0) || 0;
-  const totalValue = positions?.reduce((sum, pos) => sum + (pos.quantity * pos.currentPrice), 0) || 0;
+  // Extract portfolio metrics
+  const positions = portfolioData?.positions || [];
+  const totalPnL = portfolioData?.summary.totalPnL || 0;
+  const totalValue = portfolioData?.summary.totalValue || 0;
 
   return (
     <div className="p-6 space-y-6">
@@ -105,7 +115,7 @@ export default function SimplifiedDashboard() {
             <div>
               <div className="text-sm text-gray-400">Open Positions</div>
               <div className="text-lg font-medium text-white">
-                {positions?.length || 0}
+                {positions.length}
               </div>
             </div>
           </CardContent>
@@ -129,14 +139,15 @@ export default function SimplifiedDashboard() {
                     </div>
                     <div className="text-right">
                       <div className={`font-medium ${
-                        position.pnl >= 0 ? 'text-green-400' : 'text-red-400'
+                        position.unrealizedPnl >= 0 ? 'text-green-400' : 'text-red-400'
                       }`}>
-                        ${position.pnl > 0 ? '+' : ''}{position.pnl.toFixed(2)}
+                        ${position.unrealizedPnl > 0 ? '+' : ''}{position.unrealizedPnl.toFixed(2)}
                       </div>
                       <div className={`text-sm ${
-                        position.pnlPercent >= 0 ? 'text-green-400' : 'text-red-400'
+                        ((position.unrealizedPnl / (position.quantity * position.avgPrice)) * 100) >= 0 ? 'text-green-400' : 'text-red-400'
                       }`}>
-                        {position.pnlPercent > 0 ? '+' : ''}{position.pnlPercent.toFixed(2)}%
+                        {((position.unrealizedPnl / (position.quantity * position.avgPrice)) * 100) > 0 ? '+' : ''}
+                        {((position.unrealizedPnl / (position.quantity * position.avgPrice)) * 100).toFixed(2)}%
                       </div>
                     </div>
                   </div>

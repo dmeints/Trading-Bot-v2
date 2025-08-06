@@ -20,7 +20,7 @@ async function apiRequest(endpoint, options = {}) {
     };
     
     // Add admin secret for admin endpoints
-    if (endpoint.includes('/admin') || endpoint.includes('/metrics') || endpoint.includes('/flags') || endpoint.includes('/feature-flags')) {
+    if (endpoint.includes('/admin') || endpoint.includes('/metrics') || endpoint.includes('/flags') || endpoint.includes('/feature-flags') || endpoint.includes('/copilot')) {
       const adminSecret = process.env.ADMIN_SECRET || 'admin_secret_123';
       headers['x-admin-secret'] = adminSecret;
     }

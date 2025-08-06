@@ -378,7 +378,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     stopPrice: z.number().optional(),
   });
 
-  app.post('/api/trading/execute', rateLimiters.trading, isAuthenticated, async (req: any, res) => {
+  app.post('/api/trading/execute', rateLimiters.trading, isDevelopment ? devBypass : isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const tradeRequest = tradeRequestSchema.parse(req.body);

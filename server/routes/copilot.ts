@@ -5,8 +5,17 @@ import { insightEngine } from '../services/insightEngine';
 
 const router = Router();
 
+// Development bypass middleware
+const isDevelopment = process.env.NODE_ENV === 'development';
+const devBypass = (req: any, res: any, next: any) => {
+  if (isDevelopment && !req.user) {
+    req.user = { claims: { sub: 'dev-user-123' } };
+  }
+  next();
+};
+
 // Ask AI Copilot a question
-router.post('/ask', isAuthenticated, async (req: any, res) => {
+router.post('/ask', isDevelopment ? devBypass : isAuthenticated, async (req: any, res) => {
   try {
     const userId = req.user.claims.sub;
     const { question, context } = req.body;

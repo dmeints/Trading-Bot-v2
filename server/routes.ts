@@ -36,6 +36,7 @@ import pluginRoutes from "./routes/pluginRoutes";
 import docsRoutes from "./routes/docsRoutes";
 import { startRetrainingJobs } from "./jobs/retrainingCron";
 import { AlertingIntegration } from "./services/alertingIntegration";
+import stevieRoutes from './routes/stevieRoutes';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Development bypass middleware - fix authentication
@@ -78,6 +79,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Unified API routes
   app.use('/api', unifiedApi);
+
+  // Stevie AI Companion routes
+  app.use('/api/stevie', stevieRoutes);
 
   // Health & monitoring routes
   app.use('/api', healthRoutes);

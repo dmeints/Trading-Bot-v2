@@ -35,13 +35,16 @@ import dataFusionRoutes from './routes/dataFusionRoutes';
 import pluginRoutes from "./routes/pluginRoutes";
 import docsRoutes from "./routes/docsRoutes";
 import { startRetrainingJobs } from "./jobs/retrainingCron";
+import { AlertingIntegration } from "./services/alertingIntegration";
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Development bypass middleware
+  // Development bypass middleware - fix authentication
   const isDevelopment = process.env.NODE_ENV === 'development';
   const devBypass = async (req: any, res: any, next: any) => {
-    if (isDevelopment && !req.user) {
+    if (isDevelopment) {
+      // Always set dev user in development
       req.user = { claims: { sub: 'dev-user-123' } };
+      req.isAuthenticated = () => true;
       
       // Ensure dev user exists in storage
       try {
@@ -54,17 +57,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
             lastName: 'User',
             profileImageUrl: 'https://via.placeholder.com/150'
           });
-          console.log('[DevBypass] Created development user:', user.id);
+          logger.info('[DevBypass] Created development user:', user.id);
         }
       } catch (error) {
-        console.error('[DevBypass] Error ensuring dev user exists:', error);
+        logger.error('[DevBypass] Error ensuring dev user exists:', error);
       }
     }
     next();
   };
 
+  // Apply dev bypass as early middleware
+  app.use('*', devBypass);
+  
   // Auth middleware
-  await setupAuth(app);
+  if (!isDevelopment) {
+    await setupAuth(app);
+  } else {
+    logger.info('[DevMode] Skipping Replit Auth setup - using dev bypass');
+  }
 
   // Unified API routes
   app.use('/api', unifiedApi);

@@ -1,0 +1,63 @@
+🎯 STEVIE ADVANCED BENCHMARK REPORT - VERSION 1.1
+================================================================
+
+EXECUTIVE SUMMARY
+-----------------
+Overall Performance Score: 47/100
+Generated: 2025-08-07T05:38:54.543Z
+Analysis Period: 2024-08-07 to 2025-08-06
+Total Trades: 8
+
+KEY PERFORMANCE METRICS
+------------------------
+Total Return:           10.14%
+Annualized Return:      10.76%
+Annualized Volatility:  39.43%
+Sharpe Ratio:           0.197
+Calmar Ratio:           1.016
+Max Drawdown:           10.60%
+Win Rate:               37.50%
+Profit Factor:          0.65
+Average Win:            $389.95
+Average Loss:           $359.20
+Expectancy:             $-78.27
+
+WALK-FORWARD ANALYSIS
+---------------------
+In-Sample Periods:      21
+Out-of-Sample Periods:  21
+Consistency Correlation: 0.000
+Overall Sharpe (WF):    -0.083
+
+HYPERPARAMETER OPTIMIZATION
+----------------------------
+Best Parameters:
+  maShort: 10
+  maLong: 50
+  positionSize: 0.2
+  stopLoss: 0.95
+
+Optimized Performance:
+  Sharpe Ratio: 0.451
+  Total Return: 22.90%
+  Max Drawdown: 18.49%
+
+PERFORMANCE IMPROVEMENTS
+------------------------
+• Optimized parameters achieved Sharpe ratio of 0.451
+• Walk-forward analysis shows 0.000 consistency correlation
+• Generated comprehensive performance report with 8 trades analyzed
+
+TOP RECOMMENDATIONS
+-------------------
+1. Risk-Adjusted Returns: Focus on improving Sharpe ratio through better risk management
+2. Trade Selection: Improve entry signals to increase win rate
+
+VISUALIZATIONS GENERATED
+-------------------------
+• Equity Curve: equity_curve_1.1_2025-08-07T05-38-54-534Z.json
+• Drawdown Analysis: drawdowns_1.1_2025-08-07T05-38-54-534Z.json
+• Returns Distribution: returns_hist_1.1_2025-08-07T05-38-54-534Z.json
+
+================================================================
+End of Report

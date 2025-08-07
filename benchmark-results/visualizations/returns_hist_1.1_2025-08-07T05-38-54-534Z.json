@@ -1,0 +1,88 @@
+{
+  "title": "Stevie v1.1 - Daily Returns Distribution",
+  "data": [
+    {
+      "bin": "-9.26%",
+      "frequency": 8
+    },
+    {
+      "bin": "-8.29%",
+      "frequency": 0
+    },
+    {
+      "bin": "-7.33%",
+      "frequency": 0
+    },
+    {
+      "bin": "-6.37%",
+      "frequency": 0
+    },
+    {
+      "bin": "-5.41%",
+      "frequency": 0
+    },
+    {
+      "bin": "-4.44%",
+      "frequency": 0
+    },
+    {
+      "bin": "-3.48%",
+      "frequency": 0
+    },
+    {
+      "bin": "-2.52%",
+      "frequency": 0
+    },
+    {
+      "bin": "-1.55%",
+      "frequency": 0
+    },
+    {
+      "bin": "-0.59%",
+      "frequency": 329
+    },
+    {
+      "bin": "0.37%",
+      "frequency": 0
+    },
+    {
+      "bin": "1.33%",
+      "frequency": 0
+    },
+    {
+      "bin": "2.30%",
+      "frequency": 0
+    },
+    {
+      "bin": "3.26%",
+      "frequency": 0
+    },
+    {
+      "bin": "4.22%",
+      "frequency": 0
+    },
+    {
+      "bin": "5.19%",
+      "frequency": 0
+    },
+    {
+      "bin": "6.15%",
+      "frequency": 0
+    },
+    {
+      "bin": "7.11%",
+      "frequency": 0
+    },
+    {
+      "bin": "8.07%",
+      "frequency": 0
+    },
+    {
+      "bin": "9.04%",
+      "frequency": 8
+    }
+  ],
+  "type": "histogram",
+  "xAxis": "return",
+  "yAxis": "frequency"
+}

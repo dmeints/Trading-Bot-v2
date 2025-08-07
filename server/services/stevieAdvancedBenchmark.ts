@@ -199,9 +199,9 @@ export class StevieAdvancedBenchmarkSuite {
   /**
    * Prepare historical market data for backtesting
    */
-  private async prepareMarketData(): Promise<any[]> {
+  private async prepareMarketData(daysBack: number = 365): Promise<any[]> {
     // Generate realistic market data for backtesting
-    const days = 365; // 1 year of data
+    const days = daysBack;
     const marketData = [];
     const basePrice = 50000; // Starting BTC price
     let currentPrice = basePrice;

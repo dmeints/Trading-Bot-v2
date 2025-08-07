@@ -1,14 +1,14 @@
 {
-  "version": "2.0.0-omega",
-  "timestamp": 1754555889387,
-  "duration": 0.2194600000000264,
+  "version": "2.0.0-alpha",
+  "timestamp": 1754555889358,
+  "duration": 1.2841399999999794,
   "config": {
-    "version": "2.0.0-omega",
+    "version": "2.0.0-alpha",
     "days": 1,
-    "marketShocks": 1,
+    "marketShocks": 1.5,
     "noiseLevel": 7.027182905931308,
-    "slippageRate": 0.1,
-    "minTradesRequired": 5
+    "slippageRate": 0.19,
+    "minTradesRequired": 20
   },
   "performance": {
     "totalReturn": 0,
@@ -21,21 +21,21 @@
     "calmarRatio": 0
   },
   "difficulty": {
-    "level": 4,
+    "level": 4.5,
     "modifiers": [
-      "Market shocks: 1",
+      "Market shocks: 1.5",
       "Price noise: 7.027182905931308%",
-      "Slippage: 0.1%"
+      "Slippage: 0.19%"
     ]
   },
   "metadata": {
     "dataPoints": 96,
     "marketRegimes": [
-      "sideways_market"
+      "bear_market"
     ],
     "testPeriod": {
-      "start": "2025-08-06T08:38:09.387Z",
-      "end": "2025-08-07T08:38:09.387Z"
+      "start": "2025-08-06T08:38:09.358Z",
+      "end": "2025-08-07T08:38:09.359Z"
     }
   }
 }

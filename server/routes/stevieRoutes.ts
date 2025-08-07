@@ -477,4 +477,114 @@ router.get('/weekly-report', isAuthenticated, async (req: any, res) => {
   }
 });
 
+// Benchmarking endpoints
+router.post('/benchmark/run', isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user.claims.sub;
+    const { stevieBenchmark } = await import('../services/stevieBenchmark');
+    
+    logger.info(`[Benchmark] Starting benchmark for user ${userId}`);
+    const report = await stevieBenchmark.runBenchmark(userId);
+    const formattedReport = stevieBenchmark.formatBenchmarkReport(report);
+
+    res.json({
+      success: true,
+      data: {
+        report,
+        formattedReport,
+        summary: {
+          version: report.version,
+          overallScore: report.overallScore,
+          scoreImprovement: report.scoreImprovement,
+          topRecommendations: report.topRecommendations.slice(0, 2)
+        }
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Error running benchmark', { error });
+    res.status(500).json({ success: false, error: 'Failed to run benchmark' });
+  }
+});
+
+router.post('/benchmark/update-version', isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user.claims.sub;
+    const { version } = z.object({ version: z.string() }).parse(req.body);
+    const { stevieBenchmark } = await import('../services/stevieBenchmark');
+    
+    const report = await stevieBenchmark.updateVersion(version, userId);
+    const formattedReport = stevieBenchmark.formatBenchmarkReport(report);
+
+    res.json({
+      success: true,
+      data: {
+        message: `Stevie updated to version ${version}`,
+        report,
+        formattedReport,
+        improvement: report.scoreImprovement
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Error updating benchmark version', { error });
+    res.status(500).json({ success: false, error: 'Failed to update version' });
+  }
+});
+
+router.get('/benchmark/history', isAuthenticated, (req, res) => {
+  try {
+    const { stevieBenchmark } = require('../services/stevieBenchmark');
+    const history = stevieBenchmark.getBenchmarkHistory();
+    const latest = stevieBenchmark.getLatestBenchmark();
+
+    res.json({
+      success: true,
+      data: {
+        history,
+        latest,
+        totalVersions: history.length
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Error getting benchmark history', { error });
+    res.status(500).json({ success: false, error: 'Failed to get benchmark history' });
+  }
+});
+
+router.get('/benchmark/latest', isAuthenticated, (req, res) => {
+  try {
+    const { stevieBenchmark } = require('../services/stevieBenchmark');
+    const latest = stevieBenchmark.getLatestBenchmark();
+
+    if (!latest) {
+      return res.json({
+        success: true,
+        data: { message: 'No benchmark results available. Run your first benchmark!' },
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    const formattedReport = stevieBenchmark.formatBenchmarkReport(latest);
+
+    res.json({
+      success: true,
+      data: {
+        report: latest,
+        formattedReport,
+        summary: {
+          version: latest.version,
+          overallScore: latest.overallScore,
+          topRecommendations: latest.topRecommendations.slice(0, 2)
+        }
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Error getting latest benchmark', { error });
+    res.status(500).json({ success: false, error: 'Failed to get latest benchmark' });
+  }
+});
+
 export default router;

@@ -67,6 +67,11 @@ COMMUNICATION STYLE:
     return basePrompt + contextSpecific[context];
   }
 
+  // Quick greeting method for benchmarking
+  static getGreeting(): string {
+    return this.getGreetingMessage().content;
+  }
+
   // Predefined message variations for common scenarios
   static getGreetingMessage(): StevieMessage {
     const greetings = [

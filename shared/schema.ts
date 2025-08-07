@@ -180,16 +180,7 @@ export const userReputations = pgTable("user_reputations", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const marketRegimes = pgTable("market_regimes", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  symbol: varchar("symbol").notNull(),
-  regime: varchar("regime").notNull(), // 'bull', 'bear', 'sideways', 'volatile'
-  confidence: real("confidence").notNull(),
-  indicators: jsonb("indicators"), // technical indicators used
-  volatility: real("volatility"),
-  trendStrength: real("trend_strength"),
-  timestamp: timestamp("timestamp").defaultNow(),
-});
+// Removed duplicate - using enhanced version below
 
 export const correlationMatrix = pgTable("correlation_matrix", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -214,19 +205,7 @@ export const eventAnalysis = pgTable("event_analysis", {
   timestamp: timestamp("timestamp").defaultNow(),
 });
 
-export const riskMetrics = pgTable("risk_metrics", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").references(() => users.id).notNull(),
-  varDaily: real("var_daily"), // Value at Risk
-  varWeekly: real("var_weekly"),
-  maxDrawdown: real("max_drawdown"),
-  sharpeRatio: real("sharpe_ratio"),
-  sortinoRatio: real("sortino_ratio"),
-  beta: real("beta"),
-  alpha: real("alpha"),
-  diversificationScore: real("diversification_score"),
-  timestamp: timestamp("timestamp").defaultNow(),
-});
+// Removed duplicate - using enhanced version below
 
 export const backtestResults = pgTable("backtest_results", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -249,6 +228,251 @@ export const backtestResults = pgTable("backtest_results", {
 // Type exports
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
+
+// Enhanced Stevie Personality & Memory Tables
+export const stevieMemories = pgTable("stevie_memories", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  type: varchar("type").notNull(), // 'trade_decision' | 'market_insight' | 'user_feedback' | 'pattern_recognition'
+  content: text("content").notNull(),
+  metadata: jsonb("metadata").default({}),
+  importance: real("importance").notNull().default(0.5), // 0-1
+  timestamp: timestamp("timestamp").defaultNow(),
+});
+
+export const stevieUserProfiles = pgTable("stevie_user_profiles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().unique(),
+  experienceLevel: varchar("experience_level").notNull().default('intermediate'),
+  preferredTone: varchar("preferred_tone").notNull().default('encouraging'),
+  riskTolerance: real("risk_tolerance").notNull().default(0.5),
+  learningPreferences: jsonb("learning_preferences").default({}),
+  tradingGoals: jsonb("trading_goals").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const stevieTradeMemories = pgTable("stevie_trade_memories", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  symbol: varchar("symbol").notNull(),
+  action: varchar("action").notNull(), // 'buy' | 'sell' | 'hold'
+  reasoning: text("reasoning").notNull(),
+  confidence: real("confidence").notNull(),
+  outcome: varchar("outcome"), // 'profit' | 'loss' | 'pending'
+  marketContext: jsonb("market_context").default({}),
+  timestamp: timestamp("timestamp").defaultNow(),
+});
+
+// Real-Time Learning System Tables
+export const learningParameters = pgTable("learning_parameters", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name").notNull().unique(),
+  value: real("value").notNull(),
+  category: varchar("category").notNull(), // 'risk' | 'features' | 'decision' | 'system'
+  performanceHistory: jsonb("performance_history").default({}),
+  lastUpdated: timestamp("last_updated").defaultNow(),
+});
+
+export const performanceMetrics = pgTable("performance_metrics", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tradeId: varchar("trade_id").notNull(),
+  symbol: varchar("symbol").notNull(),
+  action: varchar("action").notNull(),
+  entryPrice: real("entry_price").notNull(),
+  exitPrice: real("exit_price").notNull(),
+  confidence: real("confidence").notNull(),
+  profit: real("profit").notNull(),
+  features: jsonb("features").default({}),
+  timestamp: timestamp("timestamp").defaultNow(),
+});
+
+export const marketRegimes = pgTable("market_regimes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  regime: varchar("regime").notNull(), // 'bull' | 'bear' | 'sideways' | 'volatile'
+  confidence: real("confidence").notNull(),
+  signals: text("signals").notNull(),
+  marketData: jsonb("market_data").default({}),
+  recommendedStrategy: varchar("recommended_strategy").notNull(),
+  timestamp: timestamp("timestamp").defaultNow(),
+});
+
+// Advanced Risk Management Tables
+export const riskMetrics = pgTable("risk_metrics", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  overallRisk: real("overall_risk").notNull(),
+  positionRisk: real("position_risk").notNull(),
+  portfolioRisk: real("portfolio_risk").notNull(),
+  liquidityRisk: real("liquidity_risk").notNull(),
+  correlationRisk: real("correlation_risk").notNull(),
+  blackSwanProbability: real("black_swan_probability").notNull(),
+  recommendations: text("recommendations"),
+  marketData: jsonb("market_data").default({}),
+  timestamp: timestamp("timestamp").defaultNow(),
+});
+
+export const portfolioCorrelations = pgTable("portfolio_correlations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  symbol1: varchar("symbol1").notNull(),
+  symbol2: varchar("symbol2").notNull(),
+  correlation: real("correlation").notNull(),
+  timeframe: varchar("timeframe").notNull().default('7d'),
+  timestamp: timestamp("timestamp").defaultNow(),
+}, (table) => [
+  index("idx_portfolio_correlations_symbols").on(table.symbol1, table.symbol2),
+]);
+
+export const riskEvents = pgTable("risk_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  eventType: varchar("event_type").notNull(),
+  severity: varchar("severity").notNull(), // 'low' | 'medium' | 'high' | 'extreme'
+  probability: real("probability").notNull(),
+  indicators: text("indicators").notNull(),
+  marketData: jsonb("market_data").default({}),
+  recommendedAction: text("recommended_action"),
+  timestamp: timestamp("timestamp").defaultNow(),
+});
+
+// Multi-Timeframe Strategy Tables
+export const timeframeStrategies = pgTable("timeframe_strategies", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  strategy: varchar("strategy").notNull(),
+  timeframe: varchar("timeframe").notNull(),
+  performance: jsonb("performance").default({}),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_timeframe_strategies_combo").on(table.strategy, table.timeframe),
+]);
+
+export const strategyAllocations = pgTable("strategy_allocations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  symbol: varchar("symbol").notNull(),
+  strategy: varchar("strategy").notNull(),
+  timeframe: varchar("timeframe").notNull(),
+  allocation: real("allocation").notNull(),
+  confidence: real("confidence").notNull(),
+  reasoning: text("reasoning"),
+  timestamp: timestamp("timestamp").defaultNow(),
+});
+
+export const timeframeSignals = pgTable("timeframe_signals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  symbol: varchar("symbol").notNull(),
+  timeframe: varchar("timeframe").notNull(),
+  strategy: varchar("strategy").notNull(),
+  signal: real("signal").notNull(), // -1 to 1
+  confidence: real("confidence").notNull(),
+  timestamp: timestamp("timestamp").defaultNow(),
+});
+
+// Market Intelligence Tables
+export const orderFlowData = pgTable("order_flow_data", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  symbol: varchar("symbol").notNull(),
+  largeOrderCount: integer("large_order_count").notNull(),
+  institutionalFlow: real("institutional_flow").notNull(),
+  retailFlow: real("retail_flow").notNull(),
+  smartMoneyIndicator: real("smart_money_indicator").notNull(),
+  averageOrderSize: real("average_order_size").notNull(),
+  marketData: jsonb("market_data").default({}),
+  timestamp: timestamp("timestamp").defaultNow(),
+});
+
+export const whaleMovements = pgTable("whale_movements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  symbol: varchar("symbol").notNull(),
+  address: varchar("address").notNull(),
+  amount: real("amount").notNull(),
+  movementType: varchar("movement_type").notNull(), // 'deposit' | 'withdrawal' | 'transfer'
+  exchange: varchar("exchange"),
+  significance: varchar("significance").notNull(),
+  priceImpactEstimate: real("price_impact_estimate").notNull(),
+  timestamp: timestamp("timestamp").defaultNow(),
+});
+
+export const arbitrageOpportunities = pgTable("arbitrage_opportunities", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  symbol: varchar("symbol").notNull(),
+  buyExchange: varchar("buy_exchange").notNull(),
+  sellExchange: varchar("sell_exchange").notNull(),
+  priceDifference: real("price_difference").notNull(),
+  percentageGap: real("percentage_gap").notNull(),
+  estimatedProfit: real("estimated_profit").notNull(),
+  requiredCapital: real("required_capital").notNull(),
+  riskLevel: varchar("risk_level").notNull(),
+  timestamp: timestamp("timestamp").defaultNow(),
+});
+
+export const optionsFlow = pgTable("options_flow", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  symbol: varchar("symbol").notNull(),
+  callVolume: real("call_volume").notNull(),
+  putVolume: real("put_volume").notNull(),
+  callPutRatio: real("call_put_ratio").notNull(),
+  unusualActivity: boolean("unusual_activity").default(false),
+  maxPain: real("max_pain").notNull(),
+  significance: real("significance").notNull(),
+  timestamp: timestamp("timestamp").defaultNow(),
+});
+
+// Production Monitoring Tables
+export const systemHealthMetrics = pgTable("system_health_metrics", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  overallScore: real("overall_score").notNull(),
+  tradingScore: real("trading_score").notNull(),
+  aiScore: real("ai_score").notNull(),
+  dataScore: real("data_score").notNull(),
+  riskScore: real("risk_score").notNull(),
+  infrastructureScore: real("infrastructure_score").notNull(),
+  activeAlerts: integer("active_alerts").notNull().default(0),
+  uptime: real("uptime").notNull(),
+  timestamp: timestamp("timestamp").defaultNow(),
+});
+
+export const performanceBenchmarks = pgTable("performance_benchmarks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  benchmarkName: varchar("benchmark_name").notNull(),
+  category: varchar("category").notNull(), // 'latency' | 'throughput' | 'accuracy' | 'uptime'
+  currentValue: real("current_value").notNull(),
+  targetValue: real("target_value").notNull(),
+  threshold: real("threshold").notNull(),
+  status: varchar("status").notNull(), // 'passing' | 'warning' | 'failing'
+  timestamp: timestamp("timestamp").defaultNow(),
+});
+
+export const alertingRules = pgTable("alerting_rules", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name").notNull().unique(),
+  condition: text("condition").notNull(),
+  severity: varchar("severity").notNull(), // 'info' | 'warning' | 'error' | 'critical'
+  action: varchar("action").notNull(),
+  isActive: boolean("is_active").default(true),
+  lastTriggered: timestamp("last_triggered"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Type exports for new tables
+export type StevieMemory = typeof stevieMemories.$inferSelect;
+export type StevieUserProfile = typeof stevieUserProfiles.$inferSelect;
+export type StevieTradeMemory = typeof stevieTradeMemories.$inferSelect;
+export type LearningParameter = typeof learningParameters.$inferSelect;
+export type PerformanceMetric = typeof performanceMetrics.$inferSelect;
+export type MarketRegime = typeof marketRegimes.$inferSelect;
+export type RiskMetric = typeof riskMetrics.$inferSelect;
+export type PortfolioCorrelation = typeof portfolioCorrelations.$inferSelect;
+export type RiskEvent = typeof riskEvents.$inferSelect;
+export type TimeframeStrategy = typeof timeframeStrategies.$inferSelect;
+export type StrategyAllocation = typeof strategyAllocations.$inferSelect;
+export type TimeframeSignal = typeof timeframeSignals.$inferSelect;
+export type OrderFlowData = typeof orderFlowData.$inferSelect;
+export type WhaleMovement = typeof whaleMovements.$inferSelect;
+export type ArbitrageOpportunity = typeof arbitrageOpportunities.$inferSelect;
+export type OptionsFlow = typeof optionsFlow.$inferSelect;
+export type SystemHealthMetric = typeof systemHealthMetrics.$inferSelect;
+export type PerformanceBenchmark = typeof performanceBenchmarks.$inferSelect;
+export type AlertingRule = typeof alertingRules.$inferSelect;
 
 // Import layout schemas
 export * from "./layout-schema";

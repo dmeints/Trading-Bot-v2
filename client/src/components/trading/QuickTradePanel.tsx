@@ -27,6 +27,7 @@ export default function QuickTradePanel() {
   const [amount, setAmount] = useState('1000');
   const [orderType, setOrderType] = useState('market');
   const [limitPrice, setLimitPrice] = useState('');
+  const [balance] = useState(10000); // Mock balance for display
 
   const executeTradeMutation = useMutation({
     mutationFn: async (tradeRequest: TradeRequest) => {
@@ -136,7 +137,10 @@ export default function QuickTradePanel() {
         {/* Trade Form */}
         <div className="space-y-fluid-2 flex-1">
           <div>
-            <Label className="text-fluid-xs text-gray-400 mb-1 block">Amount (USD)</Label>
+            <div className="flex items-center justify-between mb-1">
+              <Label className="text-fluid-xs text-gray-400">Amount (USD)</Label>
+              <span className="text-fluid-xs text-gray-400">Balance: ${balance.toLocaleString()}</span>
+            </div>
             <Input
               type="number"
               value={amount}
@@ -145,6 +149,41 @@ export default function QuickTradePanel() {
               placeholder="1000"
               data-testid="input-trade-amount"
             />
+            {/* Balance Presets */}
+            <div className="flex gap-1 mt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setAmount((balance * 0.25).toString())}
+                className="flex-1 text-xs bg-gray-800 border-gray-600 hover:bg-gray-700 text-gray-300"
+              >
+                25%
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setAmount((balance * 0.5).toString())}
+                className="flex-1 text-xs bg-gray-800 border-gray-600 hover:bg-gray-700 text-gray-300"
+              >
+                50%
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setAmount((balance * 0.75).toString())}
+                className="flex-1 text-xs bg-gray-800 border-gray-600 hover:bg-gray-700 text-gray-300"
+              >
+                75%
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setAmount(balance.toString())}
+                className="flex-1 text-xs bg-gray-800 border-gray-600 hover:bg-gray-700 text-gray-300"
+              >
+                MAX
+              </Button>
+            </div>
           </div>
           
           <div>

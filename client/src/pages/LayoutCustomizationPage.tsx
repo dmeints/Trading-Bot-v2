@@ -5,6 +5,7 @@ import { Settings, Layout, TestTube, Users } from 'lucide-react';
 import { LayoutEditor } from '@/components/layout/LayoutEditor';
 import { ExperimentDashboard } from '@/components/experiments/ExperimentDashboard';
 import { LanguageSwitcher } from '@/components/i18n/LanguageSwitcher';
+import LayoutPresets from '@/components/trading/LayoutPresets';
 import { useIntl } from 'react-intl';
 import { useExperiment } from '@/hooks/useExperiment';
 
@@ -88,54 +89,7 @@ export default function LayoutCustomizationPage() {
         <main id="main-content">
           {activeTab === 'layouts' && (
             <div className="space-y-6">
-              <Card className="bg-gray-800 border-gray-600">
-                <CardHeader>
-                  <CardTitle className="text-white flex items-center">
-                    <Layout className="w-5 h-5 mr-2" />
-                    Layout Presets
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="bg-gray-700 p-4 rounded-lg hover:bg-gray-600 cursor-pointer transition-colors">
-                    <h3 className="font-medium text-white mb-2">Trading Focus</h3>
-                    <p className="text-sm text-gray-400 mb-3">
-                      Optimized for active trading with charts and order book prominently displayed
-                    </p>
-                    <div className="grid grid-cols-2 gap-1 h-16">
-                      <div className="bg-blue-500 rounded"></div>
-                      <div className="bg-gray-600 rounded"></div>
-                      <div className="bg-gray-600 rounded"></div>
-                      <div className="bg-gray-600 rounded"></div>
-                    </div>
-                  </div>
-                  
-                  <div className="bg-gray-700 p-4 rounded-lg hover:bg-gray-600 cursor-pointer transition-colors">
-                    <h3 className="font-medium text-white mb-2">Analytics Focus</h3>
-                    <p className="text-sm text-gray-400 mb-3">
-                      Perfect for analysis with charts, portfolio, and market data
-                    </p>
-                    <div className="grid grid-cols-2 gap-1 h-16">
-                      <div className="bg-purple-500 rounded"></div>
-                      <div className="bg-gray-600 rounded"></div>
-                      <div className="bg-green-500 rounded"></div>
-                      <div className="bg-gray-600 rounded"></div>
-                    </div>
-                  </div>
-                  
-                  <div className="bg-gray-700 p-4 rounded-lg hover:bg-gray-600 cursor-pointer transition-colors">
-                    <h3 className="font-medium text-white mb-2">AI Copilot Focus</h3>
-                    <p className="text-sm text-gray-400 mb-3">
-                      Emphasizes AI insights and recommendations for smarter trading
-                    </p>
-                    <div className="grid grid-cols-2 gap-1 h-16">
-                      <div className="bg-orange-500 rounded"></div>
-                      <div className="bg-gray-600 rounded"></div>
-                      <div className="bg-gray-600 rounded"></div>
-                      <div className="bg-blue-500 rounded"></div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              <LayoutPresets />
 
               {variant === 'enhanced' && (
                 <Card className="bg-gray-800 border-gray-600">

@@ -1,0 +1,137 @@
+Layout & Information Architecture
+
+TradingView uses a minimalist top nav with collapsible side panels: charts dominate, and tools (watchlists, indicators, drawing tools) live in context-sensitive sidebars.
+
+Binance and Coinbase Pro employ a left sidebar for navigation (Markets, Trade, Derivatives, Wallet) and a top bar for account/actions. Their panels are tabbed rather than fully drag-and-drop, which keeps layout predictable.
+
+Skippy’s collapsible sidebar plus draggable/resizable grid offers maximum flexibility, but at the cost of discoverability. Users of traditional trading platforms expect a more guided, consistent layout:
+
+Recommendation: Retain grid customization for power users but add a set of fixed layout presets (“Classic Trading,” “Analytics-First,” “AI-Copilot”) that snap panels into familiar positions.
+
+Trading Interface Design
+
+Order Entry & Management
+
+TradingView provides a compact order panel docked to the chart with quick toggle between order types, visible balance, and fee info.
+
+Binance groups Market/Limit/OCO tabs into a tight form with live validation, one-click presets (e.g. 25%/50%/75% of balance), and a clear “Buy/Sell” distinction.
+
+Skippy’s real-time form works, but adding balance presets, fee estimates, and one-click max-size buttons will speed execution and reduce cognitive load.
+
+Market Data & Charts
+
+TradingView’s charts are widget-rich: multiple drawing toolsets, indicator overlays, time-frame shortcuts.
+
+Coinbase Pro offers simpler charts but with quick time-range buttons and depth overlays.
+
+Skippy should elevate its “basic implementation” by:
+
+Exposing multi-timeframe presets (1m, 5m, 1h, 1d) as one-click buttons
+
+Embedding depth-of-market or order-book heatmap overlays
+
+Surfacing indicator library (e.g. RSI, MACD) via a dropdown or sidebar
+
+Position Tracking & Portfolio Views
+
+Binance shows real-time P&L for each position, breach alerts, and color-coded profit/loss.
+
+Coinbase Pro displays open orders, positions side by side with trade history.
+
+Skippy could improve by adding:
+
+Inline P&L sparklines next to each position
+
+Stop-loss / take-profit markers on chart overlay
+
+Quick-close buttons with confirmation on each open position
+
+Real-Time Data Presentation
+
+Leaders use micro-animations (e.g. price ticks fading), toast notifications for fills, and live price tooltips on hover.
+
+Skippy’s WebSocket feed is solid; add:
+
+Fading price highlights when new ticks arrive
+
+Notification banner on order fills or strategy signals
+
+Visual Design & User Experience
+
+Color & Hierarchy
+
+TradingView: dark theme with high-contrast candlesticks and neon accents for key controls.
+
+Binance: deep charcoal base with bright green/red accents on P&L and orders.
+
+Skippy’s shadcn/Tailwind palette is coherent; ensure your action buttons (Buy/Sell, Retrain) use a standout accent color (e.g. brand primary) and reserve red/green only for profits/losses.
+
+Typography & Readability
+
+Leaders use a compact, mono-digit font for price grids and a legible sans-serif for labels.
+
+Skippy should adopt a variable-width font for body text and a discreet monospace for tables/grids.
+
+Component Interactions
+
+TradingView: panels snap/unsnap smoothly, with micro-animations on drag.
+
+Skippy’s drag-and-drop grid works, but add snap-to-grid guides and drag handles that appear on hover for discoverability.
+
+Mobile vs Desktop
+
+Binance’s mobile app collapses side panels into bottom navigation and uses gesture-friendly charts.
+
+Skippy should ensure its mobile breakpoint:
+
+Switch sidebar to bottom tab bar
+
+Use full-screen chart mode with swipe-in trade panel
+
+Maintain ≥44 px touch targets on all interactive elements
+
+Advanced Features Implementation
+
+AI Insights
+
+Modern platforms don’t yet integrate GPT-style agents, but Skippy’s contextual AI panel is unique. To match the polish of chart overlays:
+
+Turn recommendations into annotated chart markers (e.g. “Buy signal: candle pattern + sentiment”)
+
+Offer one-click “apply trade” from the AI panel
+
+Plugin/Extensibility
+
+Industry UIs are closed-source; your plugin concept is cutting-edge but can feel experimental.
+
+Recommendation: Limit initial plugin exposure to data-source adapters only, and surface them in a simple dropdown rather than a full marketplace UI.
+
+Customization
+
+Binance allows order-book depth toggle, custom watchlists, and chart templates.
+
+Skippy’s drag layout is powerful—add save/load layout presets and a “Restore Default” button to avoid broken dashboards.
+
+Missing UI/UX Elements
+
+Quick-Access Watchlist with pinned symbols and alerts.
+
+Depth-of-Market / Order-Book Visualization adjacent to the main chart.
+
+Market News / Sentiment Ticker banner (date-stamped headlines).
+
+Trade Confirmation Modal summarizing fees, slippage, and PnL impact.
+
+Improvement Recommendations
+
+Introduce Layout Presets: prebuilt panel arrangements for common workflows.
+
+Enhance Order Ticket: add balance presets (25/50/75%), fee estimates, and one-click max allocation.
+
+Polish Charts: time-range buttons, indicator overlays, heatmap/depth views, and animated price ticks.
+
+Elevate AI Insights: integrate signals directly on charts and allow “execute signal” with one click.
+
+Save & Share Configs: let users export their chart + order workflows as sharable JSON.
+
+By focusing on these concrete, battle-tested patterns from TradingView, Binance, and Coinbase Pro, Skippy can level up its UI/UX to feel instantly familiar to power users while retaining its unique AI-driven edge.

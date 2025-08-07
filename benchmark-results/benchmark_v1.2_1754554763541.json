@@ -1,7 +1,7 @@
 {
   "version": "1.2",
-  "timestamp": 1754554763548,
-  "duration": 0.2897499999999127,
+  "timestamp": 1754554763541,
+  "duration": 0.3447599999999511,
   "config": {
     "version": "1.2",
     "days": 9,
@@ -32,11 +32,11 @@
   "metadata": {
     "dataPoints": 864,
     "marketRegimes": [
-      "bull_market"
+      "sideways_market"
     ],
     "testPeriod": {
-      "start": "2025-07-29T08:19:23.548Z",
-      "end": "2025-08-07T08:19:23.548Z"
+      "start": "2025-07-29T08:19:23.541Z",
+      "end": "2025-08-07T08:19:23.541Z"
     }
   }
 }

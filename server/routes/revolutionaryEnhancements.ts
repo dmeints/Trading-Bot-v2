@@ -11,7 +11,8 @@ import { predictiveAnalyticsEngine } from '../services/predictiveAnalytics';
 import { intelligentAutomationEngine } from '../services/intelligentAutomation';
 import { metaLearningEngine } from '../services/metaLearning';
 import { crossMarketIntelligenceEngine } from '../services/crossMarketIntelligence';
-import { quantumAnalyticsEngine } from '../services/quantumAnalytics';
+// Quantum Analytics now integrated into Phase 3 Universal Consciousness
+// import { QuantumAnalyticsFramework } from '../services/quantumAnalytics';
 import { realTimeOptimizationEngine } from '../services/realTimeOptimization';
 import { logger } from '../utils/logger';
 

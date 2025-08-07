@@ -42,6 +42,7 @@ import featureRoutes from './routes/featureRoutes';
 import stevieRoutes from './routes/stevieRoutes';
 import { registerEnhancementRoutes } from './routes/enhancementRoutes';
 import { temporalRoutes } from './routes/temporalRoutes';
+import universalRoutes from './routes/universalRoutes';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -1141,6 +1142,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Temporal Omniscience routes (Phase 2)
   app.use('/', temporalRoutes);
+  app.use('/api/universal', universalRoutes);
 
   // Start MLOps cron jobs
   if (process.env.NODE_ENV === 'production' || process.env.ENABLE_MLOPS_JOBS === 'true') {

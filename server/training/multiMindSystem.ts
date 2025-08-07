@@ -12,6 +12,8 @@ import path from 'path';
 import { TemporalAnalyzer } from '../services/temporalAnalyzer';
 import { CausalInference } from '../services/causalInference';
 import { PredictionAccuracy } from '../services/predictionAccuracy';
+import { UniversalMarketConsciousness } from '../services/universalMarketConsciousness';
+import { QuantumAnalyticsFramework } from '../services/quantumAnalytics';
 import { StevieVersionedBenchmark, BenchmarkConfig } from './benchmarkTest';
 
 interface StevieMind {
@@ -53,6 +55,7 @@ interface StevieMind {
   };
   
   // Phase 2: Temporal Omniscience capabilities
+  // Phase 3: Universal Market Consciousness integration
   temporalInsights: {
     shortTermAccuracy: number;
     mediumTermAccuracy: number;

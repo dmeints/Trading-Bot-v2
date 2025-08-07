@@ -36,9 +36,9 @@ import pluginRoutes from "./routes/pluginRoutes";
 import docsRoutes from "./routes/docsRoutes";
 import { startRetrainingJobs } from "./jobs/retrainingCron";
 import { AlertingIntegration } from "./services/alertingIntegration";
-import stevieRoutes from './routes/stevieRoutes';
 import stevieSupertainRoutes from './routes/stevie-supertrain';
 import featureRoutes from './routes/featureRoutes';
+import stevieRoutes from './routes/stevieRoutes';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Development bypass middleware - fix authentication
@@ -107,6 +107,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Feature routes (Stevie v1.3 data ingestion)
   app.use(featureRoutes);
+  
+  // Stevie explanation routes (v1.4 LLM integration)
+  app.use('/api/stevie', stevieRoutes);
   
   // Data fusion routes (on-chain + sentiment)
   app.use('/api/fusion', dataFusionRoutes);

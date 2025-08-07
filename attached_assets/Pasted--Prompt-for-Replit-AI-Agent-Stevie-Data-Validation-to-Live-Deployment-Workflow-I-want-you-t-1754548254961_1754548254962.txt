@@ -1,0 +1,86 @@
+### 🤖 Prompt for Replit AI Agent — Stevie Data Validation to Live Deployment Workflow
+
+I want you to execute the next-phase workflow to validate data, run warm-up and full simulations, analyze results, integrate LLM explanations, and prepare for a live canary deployment. Run all steps end-to-end, then return a concise report of outcomes, metrics, and any manual follow-ups.
+
+---
+
+## 1. Data Validation  
+- **Smoke-test CSVs**: load a few random rows from each `/data/historical/*.csv` (bars, depth, whales, sentiment, funding, events).  
+- **Unit-test FeatureService**: call `featureService.getFeatures(symbol, timestamp)` for several timestamps; confirm valid `FeatureVector` outputs.
+
+## 2. Warm-Up Simulation  
+```bash
+skippy simulate:auto \
+  --days 7 \
+  --max-iterations 3 \
+  --stop-threshold 0.005
+
+Run on a 7-day slice; verify end-to-end flow (data ingestion → RLTradingEnv → metrics → recommendations).
+
+
+3. Full 30-Day Auto-Tuning Loop
+
+skippy simulate:auto \
+  --days 30 \
+  --max-iterations 10 \
+  --stop-threshold 0.005
+
+Execute the complete 30-day simulation and auto-tuning cycle; log all model_runs and applied tweaks.
+
+
+4. Analysis & Iteration
+
+Report:
+
+skippy simulate:report --plot
+skippy recommend --top 3
+
+Review performance vs. iteration charts and top-3 hyperparameter suggestions; note any necessary tweaks.
+
+
+5. LLM Explanations Integration
+
+Hook “Ask Stevie” to fetch feature vectors on demand via /api/features, /api/sentiment, etc.
+
+Prompt Stevie to explain trade decisions:
+
+“Stevie, why did you buy 0.5 BTC at timestamp X? Show your feature analysis.”
+
+
+6. Live Canary Deployment Prep
+
+Merge enriched simulation env into LIVE_TRADING_ENABLED codepath.
+
+Run a short paper-trade with enriched features; confirm no runtime errors.
+
+Document steps to flip LIVE_TRADING_ENABLED=true for a small-capital canary test, monitor PnL, and use the “Kill Switch” if needed.
+
+
+
+---
+
+📦 Deliverables
+
+1. Data validation results and unit-test logs
+
+
+2. Warm-up simulation summary (7-day run)
+
+
+3. Full 30-day simulation & auto-tuning report
+
+
+4. Performance plots and recommended hyperparameters
+
+
+5. Confirmation of LLM explanation integration and sample chat outputs
+
+
+6. Live canary deployment guide and validation checklist
+
+
+
+Run this in one pass and return a summary of each step’s outcome, key metrics, and any manual actions required to go live.
+
+
+

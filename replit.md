@@ -1,142 +1,34 @@
 # Overview
-Skippy is a professional cryptocurrency trading platform that combines real-time market analysis, intelligent AI insights, and comprehensive portfolio management. The platform features live market data streaming, automated trading strategies, risk management tools, and an integrated AI system for market analysis and decision support. The system integrates a React frontend with an Express.js backend, utilizing PostgreSQL for data persistence and WebSockets for real-time market data and quantum-enhanced AI coordination.
+Skippy is a professional cryptocurrency trading platform that combines real-time market analysis, intelligent AI insights, and comprehensive portfolio management. It features live market data streaming, automated trading strategies, risk management tools, and an integrated AI system for market analysis and decision support. The platform aims to provide a robust, scalable, and user-friendly experience for traders.
 
 # User Preferences
 Preferred communication style: Simple, everyday language.
 Technical Focus: Remove conceptual overhead and focus on practical, measurable trading functionality.
 Architecture Preference: Consolidated, efficient systems over complex multi-agent architectures.
 
-# Recent Production-Hardened Implementation (August 6, 2025)
-## COMPREHENSIVE ENTERPRISE TRANSFORMATION COMPLETE ✓ (August 6, 2025)
-Successfully transformed Skippy from prototype to production-hardened enterprise platform:
-
-### System Robustness & Quality Assurance ✓
-- **Database Migration System**: Complete schema transition from 15+ tables to 8-10 optimized design
-- **Comprehensive Testing Suite**: E2E, visual regression, accessibility (WCAG 2.1 AA), and load testing
-- **CI/CD Pipeline**: Full GitHub Actions pipeline with automated quality gates
-- **Performance Monitoring**: Lighthouse CI integration with <450KB bundle size maintained
-
-### Data Intelligence & AI Enhancement ✓
-- **Vector Database Integration**: OpenAI embeddings for trade similarity search and contextual insights
-- **Closed-Loop RL Retraining**: AI models learn from real trade performance data
-- **AI Copilot Extension**: Enhanced insights with "find similar scenario" capabilities
-- **Real-time Market Data**: Authentic CoinGecko integration with WebSocket streaming
-
-### Developer Experience & Extensibility ✓
-- **Plugin Architecture**: Complete four-point extensibility system (data connectors, signal transformers, UI panels, trading strategies)
-- **CLI Toolkit**: Unified command-line interface with 25+ management commands
-- **API Versioning**: Structured endpoints with OpenAPI documentation ready
-- **Developer Workflow**: Hot-reloadable plugins with comprehensive testing
-
-### UX & Accessibility Excellence ✓
-- **Mobile-First Design**: Responsive layouts from 320px to 1536px+ with touch targets ≥44px
-- **A11y Compliance**: Full WCAG 2.1 AA compliance with axe-core integration
-- **Performance Optimization**: Code splitting and lazy loading maintaining <450KB target
-- **Cross-platform Support**: High contrast, reduced motion, and screen reader compatibility
-
-### Operational Excellence & Monitoring ✓
-- **Distributed Tracing**: OpenTelemetry-compatible end-to-end request tracking
-- **Metrics & Alerting**: Prometheus-compatible metrics with agent-specific counters
-- **Load Testing**: k6 scripts testing 100+ concurrent WebSocket connections
-- **Production Deployment**: Complete deployment guides and troubleshooting resources
-
-## PRODUCTION READINESS ACHIEVED ✓ (August 6, 2025)
-Enterprise-grade platform with:
-- **Zero Breaking Changes**: All existing functionality preserved and enhanced
-- **Comprehensive Documentation**: DEPLOYMENT.md, CLI.md, and plugin development guides
-- **Security & Performance**: Sub-200ms API responses, authenticated sessions, input validation
-- **Scalability**: Distributed architecture supporting horizontal scaling
-- **Monitoring**: Full observability stack with health checks and performance metrics
-
-# Recent Revolutionary Enhancements (August 6-7, 2025)
-
-## UI/UX Industry Standards Implementation ✓ (August 7, 2025)
-Following comprehensive comparison with TradingView, Binance, and Coinbase Pro:
-
-### Enhanced Order Entry System ✓
-- **Balance Presets**: Added 25%/50%/75%/MAX buttons with live balance display
-- **Fine-Grain Slider**: Implemented 50%-to-MAX slider for fluid adjustments (Binance pattern)
-- **Fee Transparency**: Dynamic maker/taker fee rates with tooltip info (0.10%/0.12%)
-- **Keyboard Shortcuts**: Added pro tips for ↑/↓ arrows to adjust amount, Enter to submit
-- **Cost Breakdown**: Real-time fee estimates with transparent total calculations
-
-### Professional Layout Presets ✓
-- **Classic Trading**: TradingView-style chart-focused arrangement
-- **Analytics-First**: Binance-style multi-panel analytics dashboard  
-- **AI Copilot**: Unique AI-first interface with contextual recommendations
-- **Mobile-Optimized**: Touch-friendly layout for mobile trading
-- **My Favorites**: Custom user-saved layout arrangement with advanced panels
-
-### Advanced Trading Components ✓
-- **Watchlist Panel**: Collapsible watchlist with real-time updates, price alerts, and quick star/unstar
-- **Depth-of-Market Heatmap**: Visual order book with bid/ask intensity colors and hover details
-- **Chart Indicators Library**: 15+ indicators (RSI, MACD, Bollinger Bands, SMA, EMA) with category filtering
-- **Trade Confirmation Modal**: Detailed cost breakdown with P&L impact and risk warnings
-
-### Professional Trading Interface ✓
-- **4-Column Layout**: Left (watchlist + depth) → Chart (2 columns) → Right (trade + indicators + AI)
-- **Real-time Data Integration**: All panels connected to live market data streams
-- **Visual Polish**: Industry-standard color coding, typography, and interaction patterns
-
-## PILLAR 5: SCALE, MONITORING & RESILIENCE ✓ (August 7, 2025)
-- **Distributed Tracing Infrastructure**: Complete X-Trace-Id header propagation with simplified telemetry system
-- **Prometheus Metrics Integration**: Comprehensive /metrics endpoint with HTTP, WebSocket, AI agent, and system metrics
-- **Service Level Dashboard**: Real-time SLA monitoring at /service-level with 95th-percentile latency alerts
-- **Load Testing Suite**: k6 WebSocket testing for 500-1000 concurrent users with chaos engineering capabilities
-- **Disaster Recovery CLI**: One-command restore script with automated smoke tests and comprehensive validation
-- **Real-time Telemetry & Alerting**: CPU/memory >80% alerts, error rate >1% detection, drift monitoring
-- **Production Monitoring**: Complete observability stack with health checks, alert rules, and performance tracking
-## High-Impact Production Features Implemented
-- **AI Copilot System**: Intelligent assistant for trading explanations and guidance
-- **InsightEngine**: Unified analytics consolidating backtest, RL, and WebSocket streams  
-- **Metrics Service**: Prometheus-style monitoring with intelligent alerting
-- **Feature Flags**: Dynamic feature control with gradual rollout capabilities
-- **CLI Toolkit**: Comprehensive command-line interface with 25+ management commands
-- **Nightly Jobs**: Automated backtest sweeps, health reports, and system analytics
-- **Experience Replay**: Manual correction system for AI learning improvement
-
-## PILLAR 2: VECTOR-FIRST MEMORY & RETRIEVAL ✓ (August 7, 2025)
-- **Vector Intelligence System**: Complete OpenAI embeddings-based semantic search infrastructure
-- **Historical Analogues Engine**: Find similar trades, signals, and backtests using contextual similarity
-- **Vector CLI Operations**: `index:rebuild` and `index:query` commands for vector management
-- **On-Chain Data Fusion**: Real-time whale transfer monitoring and large transaction tracking
-- **Sentiment Analysis Integration**: Multi-source social media and news sentiment scoring
-- **Data Fusion Dashboard**: Combined on-chain + sentiment visualization and analysis
-- **Vector Search UI**: "Find Similar" buttons integrated across trading components
-- **Automated Indexing**: Hourly vector database updates and daily sentiment collection
-
-## PILLAR 3: DEVELOPER-FIRST EXTENSIBILITY ✓ (August 7, 2025)
-- **Complete Plugin Architecture**: Four-point extensibility system with data connectors, signal transformers, UI panels, and trading strategies
-- **Strategy Builder**: Visual drag-and-drop strategy creation with TypeScript export capabilities
-- **Plugin Marketplace**: Full distribution system with packaging, validation, and installation
-- **Automatic Plugin Discovery**: Dynamic loading with hot-reload support for development
-- **OpenAPI Documentation**: Self-generating API documentation with interactive exploration
-- **Plugin CLI Tools**: Complete command-line interface for plugin development and management
-- **Hot Reloading**: Real-time plugin updates during development without server restart
-- **Comprehensive Documentation**: EXTENSIBILITY.md and PLUGINS.md with complete developer guides
-
 # System Architecture
 
 ## Frontend Architecture
-The client is built with React 18 and Vite. It features a component-based architecture using shadcn/ui (Radix UI + Tailwind CSS) for UI. Zustand manages client-side state, TanStack Query handles server state, and Wouter is used for routing. Custom WebSocket hooks facilitate real-time market data and AI agent updates.
+The client is built with React 18 and Vite, utilizing a component-based architecture. UI components are built using shadcn/ui (Radix UI + Tailwind CSS). Zustand manages client-side state, TanStack Query handles server state, and Wouter is used for routing. Custom WebSocket hooks facilitate real-time market data and AI agent updates. The design prioritizes mobile-first responsiveness, accessibility (WCAG 2.1 AA compliance), and performance optimization with a target bundle size under 450KB. It includes enhanced order entry, professional layout presets, advanced trading components (e.g., watchlist, depth-of-market, chart indicators), and comprehensive drawing tools.
 
 ## Backend Architecture
-The server follows a RESTful API design using Express.js. It includes middleware for logging, authentication, and error handling. Drizzle ORM provides type-safe database interactions with PostgreSQL. A WebSocket server enables real-time communication. The core features include a multi-agent AI system for market analysis, news sentiment, trading decisions, and risk assessment, alongside a trading engine for execution and position management.
+The server follows a RESTful API design using Express.js with middleware for logging, authentication, and error handling. Drizzle ORM provides type-safe database interactions with PostgreSQL. A WebSocket server enables real-time communication. Core features include a multi-agent AI system for market analysis, news sentiment, trading decisions, and risk assessment, alongside a trading engine for execution and position management. The architecture is designed for scalability, security (sub-200ms API responses, authenticated sessions), and observability with distributed tracing and Prometheus-compatible metrics.
 
 ## Data Storage Solutions
-PostgreSQL is the primary database, featuring comprehensive schemas for users, trading data, and AI activities. It utilizes appropriate data types for financial precision and JSONB for metadata. Drizzle Kit manages schema migrations.
+PostgreSQL is the primary database, with comprehensive schemas for users, trading data, and AI activities. Drizzle Kit manages schema migrations. A vector database is integrated for OpenAI embeddings, enabling trade similarity search and contextual insights, with automated indexing.
 
 ## Authentication and Authorization
 Replit's OpenID Connect (OIDC) via Passport.js handles secure authentication. Server-side sessions are stored in PostgreSQL. Route-level authorization protects endpoints, and user management includes automatic creation and profile synchronization with Replit accounts.
 
 ## AI System Architecture
-The platform features a practical AI system designed for real-world trading:
-- **Market Insight Agent**: Unified AI agent providing technical analysis, sentiment analysis, and news interpretation.
-- **Real-time Analysis**: Continuous market data processing with pattern recognition and trend identification.
+The platform features a practical AI system for real-world trading, focusing on measurable performance improvements. Key components include:
+- **Market Insight Agent**: Provides technical analysis, sentiment analysis, and news interpretation.
+- **Real-time Analysis**: Continuous market data processing with pattern recognition.
 - **Risk Assessment**: Automated portfolio risk evaluation and position sizing recommendations.
 - **Strategy Backtesting**: Historical performance validation for trading strategies.
-- **Performance Learning**: System learns from successful trades and market patterns.
-The AI system focuses on practical trading insights and measurable performance improvements.
+- **Performance Learning**: Closed-loop RL retraining where AI models learn from real trade outcomes.
+- **Vector Intelligence System**: Utilizes OpenAI embeddings for semantic search, enabling "find similar scenario" and historical analogues.
+- **Data Fusion Engine**: Combines on-chain data (e.g., whale transfers) with multi-source sentiment analysis.
 
 ## Trading Engine Design
 The trading engine supports:
@@ -146,39 +38,29 @@ The trading engine supports:
 - **Risk Management**: Integrated controls and position sizing based on user risk tolerance.
 
 ## Core Trading Components
-- **Market Insight Agent**: Unified AI providing technical analysis, sentiment analysis, and news interpretation
-- **Risk Assessment System**: Automated portfolio risk evaluation and position sizing recommendations  
-- **Real-time Analysis**: Continuous market data processing with pattern recognition and trend identification
-- **Strategy Backtesting**: Historical performance validation with comprehensive testing infrastructure
-- **Performance Learning**: Closed-loop RL system learning from real trade outcomes and market patterns
-- **Portfolio Management**: Multi-position tracking with real P&L calculations and risk metrics
-- **Plugin Architecture**: Four-point extensibility system with visual strategy builder, marketplace distribution, and hot-reloadable plugins
-- **Vector Intelligence System**: Complete semantic search with OpenAI embeddings for trade similarity and historical analogues
-- **Data Fusion Engine**: On-chain whale monitoring combined with multi-source sentiment analysis
-- **Production Monitoring**: Distributed tracing, metrics collection, and automated performance analysis
+The system integrates several core components including a Market Insight Agent, Risk Assessment System, Real-time Analysis, Strategy Backtesting, Performance Learning, and Portfolio Management.
 
-## API Infrastructure
-Includes routes for RL inference, policy management, simulation services, and journal analytics.
+## Extensibility and Developer Experience
+The platform features a comprehensive four-point plugin architecture (data connectors, signal transformers, UI panels, trading strategies) with a visual strategy builder, a plugin marketplace, and automatic plugin discovery with hot-reloading. It includes a unified CLI toolkit with 25+ management commands and OpenAPI documentation for structured API versioning.
 
 ## Deployment Architecture
-Features lazy initialization of AI services, where services are initialized only when first requested via API endpoints, optimizing startup and resource management for production environments.
+Features lazy initialization of AI services to optimize startup and resource management in production. Includes a comprehensive CI/CD pipeline, performance monitoring, and robust operational excellence features like distributed tracing and Prometheus-compatible metrics.
 
 # External Dependencies
 
 ## Database and Infrastructure
 - **Neon Database**: Serverless PostgreSQL hosting.
-- **WebSocket Library**: 'ws' package for real-time communication.
+- **ws**: WebSocket library for real-time communication.
 
 ## AI and Machine Learning
-- **OpenAI API**: GPT-4o model integration for NLP and trading insights.
-- **Multiple AI Agents**: Custom specialized trading agents.
+- **OpenAI API**: Integration for GPT-4o model and vector embeddings.
 
 ## Authentication Services
-- **Replit OIDC**: Integration with Replit's authentication system.
+- **Replit OIDC**: For authentication.
 - **Passport.js**: Authentication middleware.
 
 ## Frontend Libraries
-- **Radix UI**: Primitives for UI components.
+- **Radix UI**: UI component primitives.
 - **Tailwind CSS**: For styling.
 - **Zustand**: For state management.
 - **TanStack Query**: For server state management and caching.

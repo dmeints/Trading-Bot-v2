@@ -11,10 +11,28 @@ import SocialTradingFeed from '@/components/social/SocialTradingFeed';
 import WatchlistPanel from '@/components/trading/WatchlistPanel';
 import DepthOfMarketHeatmap from '@/components/trading/DepthOfMarketHeatmap';
 import ChartIndicatorsPanel from '@/components/trading/ChartIndicatorsPanel';
+import ChartDrawingTools from '@/components/trading/ChartDrawingTools';
+import OnboardingTour from '@/components/onboarding/OnboardingTour';
+import TradingNotifications from '@/components/notifications/TradingNotifications';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export default function Trading() {
   const { isAuthenticated, isLoading } = useAuth();
+  const [selectedDrawingTool, setSelectedDrawingTool] = useState<'select' | 'trendline' | 'horizontal' | 'vertical' | 'rectangle' | 'circle' | 'text' | 'fibonacci'>('select');
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
+  // Show onboarding for first-time users (check localStorage)
+  useEffect(() => {
+    const hasSeenTour = localStorage.getItem('skippy-tour-completed');
+    if (!hasSeenTour && isAuthenticated) {
+      setShowOnboarding(true);
+    }
+  }, [isAuthenticated]);
+
+  const handleCompleteTour = () => {
+    localStorage.setItem('skippy-tour-completed', 'true');
+    setShowOnboarding(false);
+  };
 
   if (isLoading) {
     return (
@@ -59,7 +77,7 @@ export default function Trading() {
               <TabsContent value="trading" className="space-y-6">
                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[calc(100vh-16rem)]">
                   {/* Left sidebar with watchlist and depth */}
-                  <div className="space-y-6">
+                  <div className="space-y-6" data-tour="watchlist-panel">
                     <div className="h-1/2">
                       <WatchlistPanel />
                     </div>
@@ -69,7 +87,7 @@ export default function Trading() {
                   </div>
                   
                   {/* Trading Chart - Takes 2 columns */}
-                  <div className="lg:col-span-2">
+                  <div className="lg:col-span-2" data-testid="trading-chart">
                     <TradingChart />
                   </div>
                   

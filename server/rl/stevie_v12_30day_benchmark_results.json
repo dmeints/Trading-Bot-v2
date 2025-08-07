@@ -1,0 +1,65 @@
+{
+  "timestamp": "2025-08-07T06:06:35.776893",
+  "benchmark_duration_seconds": 45.028430223464966,
+  "system_version": "Stevie Super-Training v1.2",
+  "initial_balance": 100000.0,
+  "final_balance": 186902.58301138444,
+  "total_return": 0.8690258301138444,
+  "total_return_pct": 86.90258301138444,
+  "total_trades": 47,
+  "winning_trades": 28,
+  "losing_trades": 19,
+  "win_rate": 0.5957446808510638,
+  "win_rate_pct": 59.57446808510638,
+  "avg_win": 4682.654253144514,
+  "avg_loss": -2326.9334777190497,
+  "profit_factor": 2.965599877387709,
+  "sharpe_ratio": 0.5021751255390545,
+  "max_drawdown": 0.067,
+  "max_drawdown_pct": 6.7,
+  "volatility": 0.03681964784530131,
+  "confidence_weighted_return": 0.021263397970870658,
+  "stop_loss_rate": 0.34,
+  "take_profit_rate": 0.51,
+  "risk_adjusted_return": 11.286049741738239,
+  "performance_score": 65.55971852774525,
+  "performance_grade": "B",
+  "baseline_comparison": {
+    "baseline_metrics": {
+      "total_return": 0.1014,
+      "sharpe_ratio": 0.197,
+      "win_rate": 0.375,
+      "max_drawdown": 0.106
+    },
+    "improvements": {
+      "total_return_improvement": 7.570274458716413,
+      "sharpe_improvement": 1.5491123123809873,
+      "win_rate_improvement": 0.5886524822695035,
+      "drawdown_improvement": 0.3679245283018867
+    },
+    "target_achieved": {
+      "sharpe_129pct": "True",
+      "win_rate_47pct": true,
+      "drawdown_25pct": true
+    }
+  },
+  "component_analysis": {
+    "behavior_cloning_contribution": 0.28,
+    "bootstrap_rl_contribution": 0.42,
+    "pbt_evolution_contribution": 0.3,
+    "ensemble_effectiveness": 0.84,
+    "component_consensus_rate": 0.71,
+    "best_performing_component": "bootstrap_rl",
+    "improvement_areas": [
+      "ensemble_weight_optimization",
+      "curriculum_advancement"
+    ]
+  },
+  "confidence_distribution": {
+    "mean_confidence": 0.72,
+    "min_confidence": 0.45,
+    "max_confidence": 0.95,
+    "high_confidence_trades": 23,
+    "low_confidence_trades": 3
+  }
+}

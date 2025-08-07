@@ -587,4 +587,73 @@ router.get('/benchmark/latest', isAuthenticated, (req, res) => {
   }
 });
 
+// Advanced benchmarking endpoints
+router.post('/benchmark/advanced/run', isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user.claims.sub;
+    const { version = '1.1' } = req.body || {};
+    const { stevieAdvancedBenchmark } = await import('../services/stevieAdvancedBenchmark');
+    
+    logger.info(`[AdvancedBenchmark] Starting comprehensive benchmark suite v${version}`, { userId });
+    const report = await stevieAdvancedBenchmark.runComprehensiveBenchmark(userId, version);
+
+    res.json({
+      success: true,
+      data: {
+        message: `Advanced benchmark completed for Stevie v${version}`,
+        report,
+        summary: {
+          version: report.version,
+          overallScore: report.summary.overallScore,
+          totalTrades: report.backtestResult.trades.length,
+          sharpeRatio: report.backtestResult.metrics.sharpeRatio,
+          maxDrawdown: report.backtestResult.metrics.maxDrawdown,
+          winRate: report.backtestResult.metrics.winRate,
+          consistency: report.walkForwardResult.consistency,
+          bestParams: report.optimizationResult.bestParams,
+          topRecommendations: report.summary.recommendations
+        }
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Error running advanced benchmark', { error });
+    res.status(500).json({ success: false, error: 'Failed to run advanced benchmark' });
+  }
+});
+
+router.get('/benchmark/advanced/latest', isAuthenticated, async (req, res) => {
+  try {
+    const { stevieAdvancedBenchmark } = await import('../services/stevieAdvancedBenchmark');
+    const latest = await stevieAdvancedBenchmark.getLatestReport();
+
+    if (!latest) {
+      return res.json({
+        success: true,
+        data: { message: 'No advanced benchmark results available. Run your first advanced benchmark!' },
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        report: latest,
+        summary: {
+          version: latest.version,
+          overallScore: latest.summary.overallScore,
+          totalTrades: latest.backtestResult.trades.length,
+          keyMetrics: latest.summary.keyMetrics,
+          topRecommendations: latest.summary.recommendations,
+          visualizations: Object.keys(latest.visualizations).length
+        }
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Error getting latest advanced benchmark', { error });
+    res.status(500).json({ success: false, error: 'Failed to get latest advanced benchmark' });
+  }
+});
+
 export default router;

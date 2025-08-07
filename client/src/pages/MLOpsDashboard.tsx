@@ -6,7 +6,10 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useToast } from '@/hooks/use-toast';
-import { Brain, TrendingUp, AlertTriangle, Clock, Zap, Target, Activity } from 'lucide-react';
+import { Brain, TrendingUp, AlertTriangle, Clock, Zap, Target, Activity, Search, Database, MessageCircle } from 'lucide-react';
+import { FindSimilarButton } from '@/components/FindSimilarButton';
+import { OnChainEvents } from '@/components/OnChainEvents';
+import { SentimentIndicator } from '@/components/SentimentIndicator';
 import { apiRequest } from '@/lib/queryClient';
 
 interface ModelRun {
@@ -189,6 +192,8 @@ export default function MLOpsDashboard() {
           <TabsTrigger value="performance">Model Performance</TabsTrigger>
           <TabsTrigger value="drift">Drift Monitoring</TabsTrigger>
           <TabsTrigger value="sweeps">Hyperparameter Sweeps</TabsTrigger>
+          <TabsTrigger value="vector">Vector Intelligence</TabsTrigger>
+          <TabsTrigger value="fusion">Data Fusion</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
@@ -543,6 +548,210 @@ export default function MLOpsDashboard() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="vector" className="space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <Card data-testid="vector-search-card" className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Search className="h-5 w-5" />
+                  Vector Search Demo
+                </CardTitle>
+                <CardDescription>
+                  Find similar trades and scenarios using semantic search
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex flex-wrap gap-2">
+                    <FindSimilarButton 
+                      recordId="trade_demo_001" 
+                      recordType="trade"
+                      variant="outline"
+                    />
+                    <FindSimilarButton 
+                      recordId="signal_demo_001" 
+                      recordType="signal"
+                      variant="outline"
+                    />
+                    <FindSimilarButton 
+                      recordId="backtest_demo_001" 
+                      recordType="backtest"
+                      variant="outline"
+                    />
+                  </div>
+                  <div className="p-4 bg-muted rounded-lg">
+                    <h4 className="font-medium mb-2">How Vector Search Works:</h4>
+                    <ul className="text-sm text-muted-foreground space-y-1">
+                      <li>• Converts trade data into semantic embeddings</li>
+                      <li>• Finds similar trades based on context, not just metadata</li>
+                      <li>• Surfaces historical analogues for better decision-making</li>
+                      <li>• Updates automatically with new trade data</li>
+                    </ul>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card data-testid="vector-stats-card">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Database className="h-5 w-5" />
+                  Index Statistics
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold">1,247</div>
+                    <p className="text-xs text-muted-foreground">Indexed Records</p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div>
+                      <div className="text-lg font-medium">523</div>
+                      <p className="text-xs text-muted-foreground">Trades</p>
+                    </div>
+                    <div>
+                      <div className="text-lg font-medium">491</div>
+                      <p className="text-xs text-muted-foreground">Signals</p>
+                    </div>
+                    <div>
+                      <div className="text-lg font-medium">233</div>
+                      <p className="text-xs text-muted-foreground">Backtests</p>
+                    </div>
+                  </div>
+                  <div className="pt-2 border-t">
+                    <div className="text-xs text-muted-foreground">
+                      Last Updated: {new Date().toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="fusion" className="space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <OnChainEvents token="BTC" maxItems={6} />
+            <SentimentIndicator showSparkline={true} />
+          </div>
+          
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <Card data-testid="data-fusion-overview">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Activity className="h-5 w-5" />
+                  Data Fusion Overview
+                </CardTitle>
+                <CardDescription>
+                  Multi-source market intelligence integration
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">On-Chain Data</span>
+                    <Badge variant="secondary">Live</Badge>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">Sentiment Analysis</span>
+                    <Badge variant="secondary">Daily</Badge>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">Whale Alerts</span>
+                    <Badge variant="secondary">Real-time</Badge>
+                  </div>
+                  <div className="pt-2 border-t">
+                    <p className="text-xs text-muted-foreground">
+                      Combines blockchain activity with social sentiment for comprehensive market context
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card data-testid="fusion-metrics">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5" />
+                  Fusion Metrics
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm">Whale Activity</span>
+                      <span className="text-sm font-medium">High</span>
+                    </div>
+                    <div className="w-full bg-secondary rounded-full h-2">
+                      <div className="bg-orange-500 h-2 rounded-full" style={{width: '75%'}}></div>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm">Market Sentiment</span>
+                      <span className="text-sm font-medium">Positive</span>
+                    </div>
+                    <div className="w-full bg-secondary rounded-full h-2">
+                      <div className="bg-green-500 h-2 rounded-full" style={{width: '60%'}}></div>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm">Social Volume</span>
+                      <span className="text-sm font-medium">25.3K</span>
+                    </div>
+                    <div className="w-full bg-secondary rounded-full h-2">
+                      <div className="bg-blue-500 h-2 rounded-full" style={{width: '85%'}}></div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card data-testid="fusion-actions">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Zap className="h-5 w-5" />
+                  Quick Actions
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="w-full justify-start"
+                    data-testid="refresh-onchain-data"
+                  >
+                    <Database className="h-4 w-4 mr-2" />
+                    Refresh On-Chain Data
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="w-full justify-start"
+                    data-testid="update-sentiment"
+                  >
+                    <MessageCircle className="h-4 w-4 mr-2" />
+                    Update Sentiment
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="w-full justify-start"
+                    data-testid="rebuild-vector-index"
+                  >
+                    <Search className="h-4 w-4 mr-2" />
+                    Rebuild Vector Index
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
     </div>

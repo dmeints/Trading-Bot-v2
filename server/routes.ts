@@ -26,6 +26,8 @@ import { logger } from "./utils/logger";
 import type { RequestWithId } from "./middleware/requestId";
 import { healthRoutes } from "./routes/healthRoutes";
 import { mlopsRoutes } from "./routes/mlopsRoutes";
+import vectorRoutes from './routes/vectorRoutes';
+import dataFusionRoutes from './routes/dataFusionRoutes';
 import { startRetrainingJobs } from "./jobs/retrainingCron";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -66,6 +68,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // MLOps routes
   app.use('/api/mlops', mlopsRoutes);
+  
+  // Vector routes
+  app.use('/api/vector', vectorRoutes);
+  
+  // Data fusion routes (on-chain + sentiment)
+  app.use('/api/fusion', dataFusionRoutes);
 
   // Auth status endpoint
   app.get('/api/me', async (req: any, res) => {

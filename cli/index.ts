@@ -517,4 +517,23 @@ systemCommand
   });
 
 // Parse and execute
+// Vector indexing commands
+program
+  .command('index:rebuild')
+  .description('Rebuild the complete vector index from all historical data')
+  .action(async () => {
+    const { rebuildIndex } = await import('./commands/vector');
+    await rebuildIndex();
+  });
+
+program
+  .command('index:query')
+  .description('Query similar records by ID')
+  .option('--id <recordId>', 'Record ID to find similar items for')
+  .option('--top <number>', 'Number of similar results to return', '5')
+  .action(async (options) => {
+    const { queryIndex } = await import('./commands/vector');
+    await queryIndex(options);
+  });
+
 program.parse();

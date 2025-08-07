@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
+import { advancedFeaturesRouter } from "./routes/advancedFeatures";
 import layoutRoutes from "./routes/layoutRoutes";
 import experimentRoutes from "./routes/experimentRoutes";
 import preferencesRoutes from "./routes/preferencesRoutes";
@@ -42,6 +43,12 @@ import stevieRoutes from './routes/stevieRoutes';
 import { registerEnhancementRoutes } from './routes/enhancementRoutes';
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Auth middleware
+  await setupAuth(app);
+
+  // Advanced features routes
+  app.use(advancedFeaturesRouter);
+
   // Development bypass middleware - fix authentication
   const isDevelopment = process.env.NODE_ENV === 'development';
   const devBypass = async (req: any, res: any, next: any) => {

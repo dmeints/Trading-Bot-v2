@@ -1,9 +1,9 @@
 {
-  "version": "1.4.1",
-  "timestamp": 1754555095176,
-  "duration": 1.5595090000000482,
+  "version": "1.0",
+  "timestamp": 1754555090523,
+  "duration": 1.6081889999999817,
   "config": {
-    "version": "1.4.1",
+    "version": "1.0",
     "days": 5,
     "marketShocks": 0,
     "noiseLevel": 5,
@@ -30,11 +30,11 @@
   "metadata": {
     "dataPoints": 480,
     "marketRegimes": [
-      "sideways_market"
+      "bear_market"
     ],
     "testPeriod": {
-      "start": "2025-08-02T08:24:55.176Z",
-      "end": "2025-08-07T08:24:55.177Z"
+      "start": "2025-08-02T08:24:50.523Z",
+      "end": "2025-08-07T08:24:50.524Z"
     }
   }
 }

@@ -1,50 +1,91 @@
-import { Request, Response, NextFunction } from 'express';
-import { analyticsLogger } from '../services/analyticsLogger';
+/**
+ * Admin Authentication Middleware
+ * 
+ * Validates admin access using ADMIN_SECRET environment variable
+ */
 
-export interface AdminRequest extends Request {
+import { Request, Response, NextFunction } from 'express';
+import { env } from '../config/env';
+import { logger } from '../utils/logger';
+
+export interface any extends Request {
   isAdmin?: boolean;
 }
 
-export function adminAuthGuard(req: AdminRequest, res: Response, next: NextFunction) {
-  const adminSecret = process.env.ADMIN_SECRET;
-  const providedSecret = req.headers['x-admin-secret'] as string;
-  
-  if (!adminSecret) {
-    analyticsLogger.logError({
-      timestamp: new Date().toISOString(),
-      level: 'error',
-      message: 'ADMIN_SECRET not configured',
-      endpoint: req.originalUrl,
-    });
-    return res.status(500).json({ error: 'admin_not_configured' });
-  }
-  
-  if (!providedSecret || providedSecret !== adminSecret) {
-    analyticsLogger.logError({
-      timestamp: new Date().toISOString(),
-      level: 'warn',
-      message: 'Unauthorized admin access attempt',
-      endpoint: req.originalUrl,
-      metadata: {
+export function adminAuth(req: any, res: Response, next: NextFunction): void {
+  try {
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader) {
+      logger.warn('Admin route accessed without authorization header', {
+        path: req.path,
         ip: req.ip,
-        userAgent: req.headers['user-agent'],
-        hasSecret: !!providedSecret,
-      },
-    });
-    return res.status(401).json({ error: 'unauthorized' });
-  }
-  
-  req.isAdmin = true;
-  next();
-}
+        userAgent: req.get('User-Agent')
+      });
+      
+      res.status(401).json({
+        success: false,
+        error: 'Authorization required',
+        message: 'Admin access requires authorization header'
+      });
+      return;
+    }
 
-export function optionalAdminAuth(req: AdminRequest, res: Response, next: NextFunction) {
-  const adminSecret = process.env.ADMIN_SECRET;
-  const providedSecret = req.headers['x-admin-secret'] as string;
-  
-  if (adminSecret && providedSecret === adminSecret) {
+    const [scheme, token] = authHeader.split(' ');
+    
+    if (scheme !== 'Bearer') {
+      res.status(401).json({
+        success: false,
+        error: 'Invalid authorization scheme',
+        message: 'Use Bearer token authorization'
+      });
+      return;
+    }
+
+    if (!token) {
+      res.status(401).json({
+        success: false,
+        error: 'Missing token',
+        message: 'Authorization token required'
+      });
+      return;
+    }
+
+    // Validate admin token
+    if (token !== env.ADMIN_SECRET) {
+      logger.warn('Invalid admin token used', {
+        path: req.path,
+        ip: req.ip,
+        userAgent: req.get('User-Agent')
+      });
+      
+      res.status(403).json({
+        success: false,
+        error: 'Invalid admin token',
+        message: 'Access denied'
+      });
+      return;
+    }
+
+    // Add admin flag to request
     req.isAdmin = true;
+    
+    logger.info('Admin access granted', {
+      path: req.path,
+      ip: req.ip
+    });
+    
+    next();
+
+  } catch (error) {
+    logger.error('Admin authentication error', { 
+      error: error instanceof Error ? error.message : String(error),
+      path: req.path 
+    });
+    
+    res.status(500).json({
+      success: false,
+      error: 'Authentication system error'
+    });
   }
-  
-  next();
 }

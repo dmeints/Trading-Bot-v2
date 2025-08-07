@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { featureFlagService } from '../services/featureFlags';
 import { isAuthenticated } from '../replitAuth';
-import { adminAuthGuard, AdminRequest } from '../middleware/adminAuth';
+import { adminAuth } from '../middleware/adminAuth';
 import { rateLimiters } from '../middleware/rateLimiter';
 
 const router = Router();
@@ -22,7 +22,7 @@ router.get('/check/:flagId', isAuthenticated, async (req: any, res) => {
 });
 
 // Get all feature flags (admin only)
-router.get('/all', rateLimiters.admin, adminAuthGuard, async (req: AdminRequest, res) => {
+router.get('/all', rateLimiters.admin, adminAuth, async (req: any, res) => {
   try {
     const flags = await featureFlagService.getAllFlags();
     res.json(flags);
@@ -33,7 +33,7 @@ router.get('/all', rateLimiters.admin, adminAuthGuard, async (req: AdminRequest,
 });
 
 // Get a specific feature flag (admin only)
-router.get('/:flagId', rateLimiters.admin, adminAuthGuard, async (req: AdminRequest, res) => {
+router.get('/:flagId', rateLimiters.admin, adminAuth, async (req: any, res) => {
   try {
     const { flagId } = req.params;
     const flag = await featureFlagService.getFlag(flagId);
@@ -50,7 +50,7 @@ router.get('/:flagId', rateLimiters.admin, adminAuthGuard, async (req: AdminRequ
 });
 
 // Create a new feature flag (admin only)
-router.post('/', rateLimiters.admin, adminAuthGuard, async (req: AdminRequest, res) => {
+router.post('/', rateLimiters.admin, adminAuth, async (req: any, res) => {
   try {
     const { name, description, enabled, rolloutPercentage, userGroups, environments } = req.body;
     
@@ -75,7 +75,7 @@ router.post('/', rateLimiters.admin, adminAuthGuard, async (req: AdminRequest, r
 });
 
 // Update a feature flag (admin only)
-router.put('/:flagId', rateLimiters.admin, adminAuthGuard, async (req: AdminRequest, res) => {
+router.put('/:flagId', rateLimiters.admin, adminAuth, async (req: any, res) => {
   try {
     const { flagId } = req.params;
     const updates = req.body;
@@ -94,7 +94,7 @@ router.put('/:flagId', rateLimiters.admin, adminAuthGuard, async (req: AdminRequ
 });
 
 // Toggle a feature flag (admin only)
-router.post('/:flagId/toggle', rateLimiters.admin, adminAuthGuard, async (req: AdminRequest, res) => {
+router.post('/:flagId/toggle', rateLimiters.admin, adminAuth, async (req: any, res) => {
   try {
     const { flagId } = req.params;
     const success = await featureFlagService.toggleFlag(flagId);
@@ -116,7 +116,7 @@ router.post('/:flagId/toggle', rateLimiters.admin, adminAuthGuard, async (req: A
 });
 
 // Set rollout percentage (admin only)
-router.put('/:flagId/rollout', rateLimiters.admin, adminAuthGuard, async (req: AdminRequest, res) => {
+router.put('/:flagId/rollout', rateLimiters.admin, adminAuth, async (req: any, res) => {
   try {
     const { flagId } = req.params;
     const { percentage } = req.body;
@@ -139,7 +139,7 @@ router.put('/:flagId/rollout', rateLimiters.admin, adminAuthGuard, async (req: A
 });
 
 // Delete a feature flag (admin only)
-router.delete('/:flagId', rateLimiters.admin, adminAuthGuard, async (req: AdminRequest, res) => {
+router.delete('/:flagId', rateLimiters.admin, adminAuth, async (req: any, res) => {
   try {
     const { flagId } = req.params;
     const success = await featureFlagService.deleteFlag(flagId);

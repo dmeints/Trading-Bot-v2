@@ -1,0 +1,137 @@
+# Prometheus Alert Rules for Skippy Trading Platform
+
+groups:
+  - name: skippy_trading_alerts
+    rules:
+      # Application Health Alerts
+      - alert: SkippyApplicationDown
+        expr: up{job="skippy-trading-platform"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Skippy Trading Platform is down"
+          description: "The Skippy Trading Platform has been unreachable for more than 1 minute"
+
+      - alert: SkippyHighErrorRate
+        expr: rate(http_requests_total{job="skippy-trading-platform",status=~"5.."}[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value }} errors per second over the last 5 minutes"
+
+      - alert: SkippySlowResponseTimes
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="skippy-trading-platform"}[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slow response times"
+          description: "95th percentile response time is {{ $value }}s over the last 5 minutes"
+
+      # Trading Specific Alerts
+      - alert: TradingOrderFailed
+        expr: increase(trading_orders_failed_total[1m]) > 3
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Multiple trading orders failed"
+          description: "{{ $value }} trading orders failed in the last minute"
+
+      - alert: LiveTradingEnabled
+        expr: trading_live_mode_enabled == 1
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Live trading mode is enabled"
+          description: "Live trading with real money is currently enabled"
+
+      - alert: PositionSizeExceeded
+        expr: trading_position_size_usd > 10000
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Large position size detected"
+          description: "Position size of ${{ $value }} exceeds normal limits"
+
+      - alert: DailyLossLimit
+        expr: trading_daily_pnl_usd < -1000
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Daily loss limit exceeded"
+          description: "Daily P&L is ${{ $value }}, exceeding loss limit"
+
+      # System Resource Alerts
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes{job="skippy-trading-platform"} / 1024 / 1024 / 1024 > 1.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is {{ $value }}GB"
+
+      - alert: DatabaseConnectionFailed
+        expr: database_connections_failed_total > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Database connection failures"
+          description: "{{ $value }} database connection failures detected"
+
+      # AI Services Alerts
+      - alert: AIServiceDown
+        expr: ai_service_health == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "AI service unavailable"
+          description: "AI services are not responding"
+
+      - alert: HighAILatency
+        expr: ai_request_duration_seconds > 10
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High AI service latency"
+          description: "AI service response time is {{ $value }}s"
+
+  - name: skippy_business_alerts
+    rules:
+      # Risk Management Alerts
+      - alert: PortfolioDrawdown
+        expr: (portfolio_high_water_mark - portfolio_current_value) / portfolio_high_water_mark > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Portfolio drawdown exceeded 10%"
+          description: "Current drawdown is {{ $value | humanizePercentage }}"
+
+      - alert: UnusualVolumeSpike
+        expr: rate(trading_volume_usd[5m]) > 10 * rate(trading_volume_usd[1h])
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Unusual trading volume spike"
+          description: "Trading volume is {{ $value }}x higher than normal"
+
+      - alert: MarketDataStale
+        expr: time() - market_data_last_update_timestamp > 300
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Market data is stale"
+          description: "Market data hasn't been updated for {{ $value }}s"

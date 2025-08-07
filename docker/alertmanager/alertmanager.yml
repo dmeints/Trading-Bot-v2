@@ -1,0 +1,102 @@
+# AlertManager Configuration for Skippy Trading Platform
+
+global:
+  smtp_smarthost: 'localhost:587'
+  smtp_from: 'alerts@skippy-trading.com'
+  resolve_timeout: 10m
+
+# Templates for alert messages
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+route:
+  group_by: ['alertname', 'severity']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 1h
+  receiver: 'web.hook'
+  routes:
+    # Critical alerts go to multiple channels
+    - match:
+        severity: critical
+      receiver: 'critical-alerts'
+      group_wait: 0s
+      repeat_interval: 5m
+
+    # Trading alerts get special handling
+    - match_re:
+        alertname: ^Trading.*|.*Trading.*
+      receiver: 'trading-alerts'
+      group_wait: 5s
+      repeat_interval: 15m
+
+    # Warning alerts
+    - match:
+        severity: warning
+      receiver: 'warning-alerts'
+      repeat_interval: 2h
+
+receivers:
+  # Default webhook receiver
+  - name: 'web.hook'
+    webhook_configs:
+      - url: 'http://skippy-app:5000/api/webhooks/alerts'
+        send_resolved: true
+        http_config:
+          bearer_token: '${ALERT_WEBHOOK_TOKEN}'
+
+  # Critical alerts - multiple channels
+  - name: 'critical-alerts'
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL}'
+        channel: '#trading-alerts'
+        title: '🚨 CRITICAL ALERT - Skippy Trading Platform'
+        text: '{{ range .Alerts }}{{ .Annotations.summary }} - {{ .Annotations.description }}{{ end }}'
+        send_resolved: true
+        color: 'danger'
+        
+    webhook_configs:
+      - url: 'http://skippy-app:5000/api/webhooks/alerts/critical'
+        send_resolved: true
+        http_config:
+          bearer_token: '${ALERT_WEBHOOK_TOKEN}'
+
+  # Trading specific alerts
+  - name: 'trading-alerts'
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL}'
+        channel: '#trading-alerts'
+        title: '📊 Trading Alert - Skippy Platform'
+        text: '{{ range .Alerts }}{{ .Annotations.summary }} - {{ .Annotations.description }}{{ end }}'
+        send_resolved: true
+        color: 'warning'
+
+    webhook_configs:
+      - url: 'http://skippy-app:5000/api/webhooks/alerts/trading'
+        send_resolved: true
+
+  # Warning alerts
+  - name: 'warning-alerts'
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL}'
+        channel: '#skippy-monitoring'
+        title: '⚠️ Warning - Skippy Platform'
+        text: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+        send_resolved: true
+        color: 'warning'
+
+# Inhibition rules to prevent spam
+inhibit_rules:
+  # If application is down, inhibit all other alerts
+  - source_match:
+      alertname: SkippyApplicationDown
+    target_match_re:
+      alertname: ^(?!SkippyApplicationDown).*
+    equal: ['instance']
+
+  # If live trading is disabled, inhibit trading alerts
+  - source_match:
+      alertname: LiveTradingDisabled
+    target_match_re:
+      alertname: ^Trading.*
+    equal: ['instance']

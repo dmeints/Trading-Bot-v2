@@ -31,6 +31,11 @@ export const env = cleanEnv(process.env, {
   // Feature Flags
   FEATURE_BACKTEST: str({ default: 'true', desc: 'Enable backtesting features' }),
   FEATURE_TRADING: str({ default: 'true', desc: 'Enable live trading features' }),
+  LIVE_TRADING_ENABLED: str({ default: 'false', desc: 'Enable live trading with real money (false=paper mode)' }),
+  
+  // Exchange Configuration
+  EXCHANGE_API_KEY: str({ default: '', desc: 'Exchange API key for live trading' }),
+  EXCHANGE_API_SECRET: str({ default: '', desc: 'Exchange API secret for live trading' }),
   
   // Runtime
   NODE_ENV: str({ choices: ['development', 'production'], default: 'development' }),

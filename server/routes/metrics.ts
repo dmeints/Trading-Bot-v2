@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { metricsService } from '../services/metricsService';
 import { isAuthenticated } from '../replitAuth';
-import { adminAuthGuard, AdminRequest } from '../middleware/adminAuth';
+import { adminAuth } from '../middleware/adminAuth';
 import { rateLimiters } from '../middleware/rateLimiter';
 
 const isDevelopment = process.env.NODE_ENV === 'development';
@@ -27,7 +27,7 @@ router.get('/prometheus', async (req, res) => {
 });
 
 // Get system metrics with time range
-router.get('/system', rateLimiters.admin, isDevelopment ? devBypass : adminAuthGuard, async (req: AdminRequest, res) => {
+router.get('/system', rateLimiters.admin, isDevelopment ? devBypass : adminAuth, async (req: any, res) => {
   try {
     const timeRange = req.query.range as '1h' | '24h' | '7d' | '30d' || '24h';
     const metrics = await metricsService.getMetrics(timeRange);
@@ -39,7 +39,7 @@ router.get('/system', rateLimiters.admin, isDevelopment ? devBypass : adminAuthG
 });
 
 // Get active alerts
-router.get('/alerts', rateLimiters.admin, adminAuthGuard, async (req: AdminRequest, res) => {
+router.get('/alerts', rateLimiters.admin, adminAuth, async (req: any, res) => {
   try {
     const alerts = await metricsService.getActiveAlerts();
     res.json(alerts);
@@ -50,7 +50,7 @@ router.get('/alerts', rateLimiters.admin, adminAuthGuard, async (req: AdminReque
 });
 
 // Acknowledge an alert
-router.put('/alerts/:alertId/acknowledge', rateLimiters.admin, adminAuthGuard, async (req: AdminRequest, res) => {
+router.put('/alerts/:alertId/acknowledge', rateLimiters.admin, adminAuth, async (req: any, res) => {
   try {
     const { alertId } = req.params;
     const success = await metricsService.acknowledgeAlert(alertId);
@@ -67,7 +67,7 @@ router.put('/alerts/:alertId/acknowledge', rateLimiters.admin, adminAuthGuard, a
 });
 
 // Add a new alert rule
-router.post('/alert-rules', rateLimiters.admin, adminAuthGuard, async (req: AdminRequest, res) => {
+router.post('/alert-rules', rateLimiters.admin, adminAuth, async (req: any, res) => {
   try {
     const { metric, threshold, operator, severity, description } = req.body;
     
@@ -92,7 +92,7 @@ router.post('/alert-rules', rateLimiters.admin, adminAuthGuard, async (req: Admi
 });
 
 // Remove an alert rule
-router.delete('/alert-rules/:ruleId', rateLimiters.admin, adminAuthGuard, async (req: AdminRequest, res) => {
+router.delete('/alert-rules/:ruleId', rateLimiters.admin, adminAuth, async (req: any, res) => {
   try {
     const { ruleId } = req.params;
     const success = await metricsService.removeAlertRule(ruleId);

@@ -8,6 +8,9 @@ import express from 'express';
 import { z } from 'zod';
 import { isAuthenticated } from '../replitAuth';
 import SteviePersonality from '../services/steviePersonality';
+import { stevieLLM } from '../services/stevieLLMInterface';
+import { stevieRL } from '../services/stevieRL';
+import StevieUIPersonality from '../services/stevieUIPersonality';
 import { storage } from '../storage';
 import { logger } from '../utils/logger';
 import OpenAI from 'openai';
@@ -122,44 +125,8 @@ router.post('/chat', isAuthenticated, async (req: any, res) => {
     const userId = req.user.claims.sub;
     const { message, context } = chatRequestSchema.parse(req.body);
     
-    // Get user profile for personalization
-    const user = await storage.getUser(userId);
-    const marketData = {}; // Would get from market data service
-    
-    let response: string;
-    
-    if (openai) {
-      // Use OpenAI for sophisticated responses
-      const systemPrompt = SteviePersonality.getSystemPrompt('chat');
-      const userContext = `User: ${user?.firstName || 'Trader'}, Risk Tolerance: ${user?.riskTolerance || 'medium'}`;
-      
-      try {
-        const completion = await openai.chat.completions.create({
-          model: "gpt-4o", // Latest model as per blueprint
-          messages: [
-            { role: "system", content: `${systemPrompt}\n\n${userContext}` },
-            { role: "user", content: message }
-          ],
-          max_tokens: 300,
-          temperature: 0.7
-        });
-        
-        response = completion.choices[0].message.content || 
-          "Hmm, I'm processing a lot right now. Can you try that question again?";
-          
-      } catch (aiError) {
-        logger.error('OpenAI error in Stevie chat', { aiError });
-        // Fallback to personality-driven response
-        response = await SteviePersonality.generateContextualResponse(
-          message, marketData, user
-        );
-      }
-    } else {
-      // Use personality-driven responses without OpenAI
-      response = await SteviePersonality.generateContextualResponse(
-        message, marketData, user
-      );
-    }
+    // Use advanced LLM interface for sophisticated conversation
+    const response = await stevieLLM.processConversation(userId, message);
     
     // Log the interaction for learning
     logger.info('Stevie chat interaction', {
@@ -184,6 +151,176 @@ router.post('/chat', isAuthenticated, async (req: any, res) => {
       success: false, 
       error: 'Failed to process chat message' 
     });
+  }
+});
+
+// Advanced LLM endpoints for specific queries
+router.post('/explain-trade', isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user.claims.sub;
+    const { tradeId } = z.object({ tradeId: z.string() }).parse(req.body);
+    
+    const explanation = await stevieLLM.processConversation(
+      userId, 
+      `Please explain the decision-making process behind my trade with ID ${tradeId}. What factors influenced this trade?`
+    );
+    
+    res.json({
+      success: true,
+      data: { explanation },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Error explaining trade', { error });
+    res.status(500).json({ success: false, error: 'Failed to explain trade' });
+  }
+});
+
+router.get('/portfolio-summary', isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user.claims.sub;
+    
+    const summary = await stevieLLM.processConversation(
+      userId,
+      'Please provide a comprehensive summary of my portfolio performance including key metrics and insights.'
+    );
+    
+    res.json({
+      success: true,
+      data: { summary },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Error generating portfolio summary', { error });
+    res.status(500).json({ success: false, error: 'Failed to generate portfolio summary' });
+  }
+});
+
+router.post('/strategy-suggestions', isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user.claims.sub;
+    const { drawdownPeriod } = z.object({ 
+      drawdownPeriod: z.string().optional().default('7d')
+    }).parse(req.body);
+    
+    const suggestions = await stevieLLM.processConversation(
+      userId,
+      `Based on my recent ${drawdownPeriod} drawdown, what specific strategy tweaks do you recommend?`
+    );
+    
+    res.json({
+      success: true,
+      data: { suggestions },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Error generating strategy suggestions', { error });
+    res.status(500).json({ success: false, error: 'Failed to generate strategy suggestions' });
+  }
+});
+
+// RL Training endpoints
+router.post('/rl/train', isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user.claims.sub;
+    const { episodes } = z.object({ 
+      episodes: z.number().min(10).max(1000).default(100)
+    }).parse(req.body);
+    
+    logger.info(`[StevieRL] Starting training for user ${userId}`);
+    const metrics = await stevieRL.trainOnHistoricalData(userId, episodes);
+    
+    res.json({
+      success: true,
+      data: {
+        message: `Training completed! Stevie learned from ${episodes} episodes.`,
+        metrics,
+        agentStatus: stevieRL.getAgentStatus()
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Error training RL agent', { error });
+    res.status(500).json({ success: false, error: 'Failed to train RL agent' });
+  }
+});
+
+router.get('/rl/status', isAuthenticated, (req, res) => {
+  try {
+    const status = stevieRL.getAgentStatus();
+    
+    res.json({
+      success: true,
+      data: status,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Error getting RL status', { error });
+    res.status(500).json({ success: false, error: 'Failed to get RL status' });
+  }
+});
+
+// UI Personality endpoints
+router.post('/ui/notification', isAuthenticated, async (req: any, res) => {
+  try {
+    const { type, symbol, amount, price, confidence } = z.object({
+      type: z.enum(['buy', 'sell']),
+      symbol: z.string(),
+      amount: z.number(),
+      price: z.number(),
+      confidence: z.number().optional()
+    }).parse(req.body);
+    
+    const notification = StevieUIPersonality.getTradeNotification(
+      type, symbol, amount, price, confidence
+    );
+    
+    res.json({
+      success: true,
+      data: notification,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Error generating UI notification', { error });
+    res.status(500).json({ success: false, error: 'Failed to generate notification' });
+  }
+});
+
+router.post('/ui/risk-alert', isAuthenticated, async (req: any, res) => {
+  try {
+    const { level, reason, portfolioValue } = z.object({
+      level: z.enum(['low', 'medium', 'high']),
+      reason: z.string(),
+      portfolioValue: z.number()
+    }).parse(req.body);
+    
+    const alert = StevieUIPersonality.getRiskWarningNotification(
+      level, reason, portfolioValue
+    );
+    
+    res.json({
+      success: true,
+      data: alert,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Error generating risk alert', { error });
+    res.status(500).json({ success: false, error: 'Failed to generate risk alert' });
+  }
+});
+
+router.get('/ui/quick-tip', (req, res) => {
+  try {
+    const tip = StevieUIPersonality.getQuickTip();
+    
+    res.json({
+      success: true,
+      data: { tip },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Error getting quick tip', { error });
+    res.status(500).json({ success: false, error: 'Failed to get quick tip' });
   }
 });
 
@@ -286,6 +423,57 @@ router.post('/encouragement', isAuthenticated, async (req: any, res) => {
       success: false, 
       error: 'Failed to generate encouragement' 
     });
+  }
+});
+
+// Feedback endpoints
+router.post('/feedback', isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user.claims.sub;
+    const feedback = z.object({
+      interactionType: z.enum(['chat', 'trade_suggestion', 'risk_alert', 'market_analysis']),
+      feedback: z.enum(['positive', 'negative', 'neutral']),
+      rating: z.number().min(1).max(5),
+      comment: z.string().optional()
+    }).parse(req.body);
+
+    const { stevieFeedback } = await import('../services/stevieFeedback');
+    await stevieFeedback.recordFeedback({
+      userId,
+      ...feedback,
+      context: {}
+    });
+
+    res.json({
+      success: true,
+      data: { message: 'Feedback recorded successfully' },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Error recording feedback', { error });
+    res.status(500).json({ success: false, error: 'Failed to record feedback' });
+  }
+});
+
+router.get('/weekly-report', isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user.claims.sub;
+    const { stevieFeedback } = await import('../services/stevieFeedback');
+    
+    const report = await stevieFeedback.generateWeeklyReport(userId);
+    const formattedMessage = stevieFeedback.formatWeeklyReportMessage(report);
+
+    res.json({
+      success: true,
+      data: {
+        report,
+        formattedMessage
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Error generating weekly report', { error });
+    res.status(500).json({ success: false, error: 'Failed to generate weekly report' });
   }
 });
 

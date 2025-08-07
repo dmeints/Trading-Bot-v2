@@ -15,6 +15,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Send, Bot, User, TrendingUp, AlertTriangle, Heart } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import StevieFeedback from './StevieFeedback';
 
 interface ChatMessage {
   id: string;

@@ -1,0 +1,69 @@
+{
+  "config": {
+    "days": 7,
+    "startingBalance": 1000,
+    "symbols": [
+      "BTC-USD",
+      "ETH-USD",
+      "SOL-USD",
+      "ADA-USD",
+      "DOT-USD"
+    ],
+    "maxPositionSize": 1000,
+    "riskPerTrade": 0.02,
+    "strategy": "momentum"
+  },
+  "metrics": {
+    "totalReturn": 2945.5899647340398,
+    "sharpeRatio": 0.4466653983012278,
+    "maxDrawdown": 0.9756350953909686,
+    "winRate": 0,
+    "avgWin": 0,
+    "avgLoss": -0.03145505170631822,
+    "totalTrades": 2,
+    "profitableTrades": 0,
+    "finalBalance": 2946589.9647340397,
+    "dailyReturns": [
+      -0.9756350953909686,
+      0.8839151040825468,
+      -8.638454069649183e-7,
+      102.5053094218925,
+      0,
+      -0.004575770458108543
+    ]
+  },
+  "trades": [
+    {
+      "timestamp": 1754541023947,
+      "symbol": "DOT-USD",
+      "side": "sell",
+      "quantity": 5.302592322814287,
+      "entryPrice": 3.652678181343006,
+      "exitPrice": 3.646435785241929,
+      "pnl": -0.033100881641535074,
+      "commission": 0.01933556240045914,
+      "reason": "Strong downward momentum"
+    },
+    {
+      "timestamp": 1754541023950,
+      "symbol": "DOT-USD",
+      "side": "sell",
+      "quantity": 5.14910348361639,
+      "entryPrice": 3.652678181343006,
+      "exitPrice": 3.6468889751509086,
+      "pnl": -0.02980922177110136,
+      "commission": 0.01877820872631175,
+      "reason": "Strong downward momentum"
+    }
+  ],
+  "dailyBalances": [
+    623050.4320029597,
+    15180.56434236793,
+    28598.894453083878,
+    28598.86974806026,
+    2960134.8623893782,
+    2960134.8623893782,
+    2946589.9647340397
+  ],
+  "generatedAt": "2025-08-07T04:30:23.955Z"
+}

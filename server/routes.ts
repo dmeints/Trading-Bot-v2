@@ -37,6 +37,7 @@ import docsRoutes from "./routes/docsRoutes";
 import { startRetrainingJobs } from "./jobs/retrainingCron";
 import { AlertingIntegration } from "./services/alertingIntegration";
 import stevieRoutes from './routes/stevieRoutes';
+import stevieSupertainRoutes from './routes/stevie-supertrain';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Development bypass middleware - fix authentication
@@ -82,6 +83,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Stevie AI Companion routes
   app.use('/api/stevie', stevieRoutes);
+  
+  // Stevie Super-Training routes (v1.2 advanced RL system)
+  app.use('/api/stevie/supertrain', stevieSupertainRoutes);
 
   // Health & monitoring routes
   app.use('/api', healthRoutes);

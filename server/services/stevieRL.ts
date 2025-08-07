@@ -318,6 +318,95 @@ export class StevieRLAgent {
     );
   }
 
+  /**
+   * Bootstrap RL training using Stable-Baselines3
+   */
+  async bootstrapRLTraining(): Promise<void> {
+    logger.info('[StevieRL] Starting bootstrap RL training with Stable-Baselines3');
+    
+    try {
+      const { spawn } = require('child_process');
+      
+      const pythonProcess = spawn('python3', [
+        'server/rl/bootstrap_rl.py'
+      ], {
+        stdio: ['inherit', 'inherit', 'inherit'],
+        cwd: process.cwd()
+      });
+      
+      pythonProcess.on('close', (code: number) => {
+        if (code === 0) {
+          logger.info('[StevieRL] Bootstrap RL training completed successfully');
+          this.trainingMetrics.totalTrainingTime = Date.now() - this.trainingStartTime;
+        } else {
+          logger.error(`[StevieRL] Bootstrap RL training failed with code ${code}`);
+        }
+      });
+      
+    } catch (error) {
+      logger.error('[StevieRL] Error starting bootstrap RL training', { error });
+    }
+  }
+
+  /**
+   * Start behavior cloning pre-training
+   */
+  async startBehaviorCloning(): Promise<void> {
+    logger.info('[StevieRL] Starting behavior cloning pre-training');
+    
+    try {
+      const { spawn } = require('child_process');
+      
+      const pythonProcess = spawn('python3', [
+        'server/rl/behaviorClone.py'
+      ], {
+        stdio: ['inherit', 'inherit', 'inherit'],
+        cwd: process.cwd()
+      });
+      
+      pythonProcess.on('close', (code: number) => {
+        if (code === 0) {
+          logger.info('[StevieRL] Behavior cloning completed successfully');
+        } else {
+          logger.error(`[StevieRL] Behavior cloning failed with code ${code}`);
+        }
+      });
+      
+    } catch (error) {
+      logger.error('[StevieRL] Error starting behavior cloning', { error });
+    }
+  }
+
+  /**
+   * Run hyperparameter optimization
+   */
+  async runHyperparameterOptimization(trials: number = 20): Promise<void> {
+    logger.info(`[StevieRL] Starting hyperparameter optimization with ${trials} trials`);
+    
+    try {
+      const { spawn } = require('child_process');
+      
+      const pythonProcess = spawn('python3', [
+        'server/rl/optuna_hpo.py',
+        '--trials', trials.toString()
+      ], {
+        stdio: ['inherit', 'inherit', 'inherit'],
+        cwd: process.cwd()
+      });
+      
+      pythonProcess.on('close', (code: number) => {
+        if (code === 0) {
+          logger.info('[StevieRL] Hyperparameter optimization completed successfully');
+        } else {
+          logger.error(`[StevieRL] Hyperparameter optimization failed with code ${code}`);
+        }
+      });
+      
+    } catch (error) {
+      logger.error('[StevieRL] Error starting hyperparameter optimization', { error });
+    }
+  }
+
   // Train the agent using recent trade data
   async trainOnHistoricalData(userId: string, episodes: number = 100): Promise<RLMetrics> {
     logger.info(`[StevieRL] Starting training for user ${userId} with ${episodes} episodes`);

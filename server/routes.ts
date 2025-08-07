@@ -41,6 +41,7 @@ import stevieSupertainRoutes from './routes/stevie-supertrain';
 import featureRoutes from './routes/featureRoutes';
 import stevieRoutes from './routes/stevieRoutes';
 import { registerEnhancementRoutes } from './routes/enhancementRoutes';
+import { temporalRoutes } from './routes/temporalRoutes';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -1137,6 +1138,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       version: process.env.npm_package_version || '1.0.0'
     });
   });
+
+  // Temporal Omniscience routes (Phase 2)
+  app.use('/', temporalRoutes);
 
   // Start MLOps cron jobs
   if (process.env.NODE_ENV === 'production' || process.env.ENABLE_MLOPS_JOBS === 'true') {

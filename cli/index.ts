@@ -11,6 +11,7 @@ import { deployCommand } from './commands/deploy';
 import { trainingCommand } from './commands/training';
 import { transcendenceCommand } from './commands/transcendence';
 import { advancedCommand } from './commands/advancedFeatures';
+import { temporalCommand } from './commands/temporal';
 
 const program = new Command();
 
@@ -25,6 +26,7 @@ program.addCommand(deployCommand);
 program.addCommand(trainingCommand);
 program.addCommand(transcendenceCommand);
 program.addCommand(advancedCommand);
+program.addCommand(temporalCommand);
 
 // Parse command line arguments
 program.parse();

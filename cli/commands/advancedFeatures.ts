@@ -305,4 +305,10 @@ advancedCommand
     }
   });
 
+// Import temporal command
+import { temporalCommand } from './temporal';
+
+// Add temporal commands
+advancedCommand.addCommand(temporalCommand);
+
 export { advancedCommand };

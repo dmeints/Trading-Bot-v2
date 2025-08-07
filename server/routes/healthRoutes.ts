@@ -130,7 +130,7 @@ router.get('/metrics', async (_req, res) => {
       const logsDir = await fs.readdir('logs');
       const modelsDir = await fs.readdir('models');
       
-      metrics.application.files = {
+      (metrics.application as any).files = {
         logs: logsDir.length,
         models: modelsDir.length
       };

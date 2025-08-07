@@ -1,3 +1,4 @@
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import TopNavigation from '@/components/layout/TopNavigation';
 import SidebarNavigation from '@/components/layout/SidebarNavigation';

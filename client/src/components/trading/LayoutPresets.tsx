@@ -7,7 +7,8 @@ import {
   Brain, 
   TrendingUp,
   Monitor,
-  Smartphone 
+  Smartphone,
+  Star
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -65,6 +66,18 @@ const layoutPresets: LayoutPreset[] = [
       layout: 'mobile',
       chartSize: 'fullscreen',
       panels: ['chart', 'quick-trade', 'positions']
+    }
+  },
+  {
+    id: 'favorites',
+    name: 'My Favorites',
+    description: 'Your personalized saved layout arrangement',
+    icon: <Star className="w-4 h-4" />,
+    badge: 'Custom',
+    config: {
+      layout: 'custom',
+      chartSize: 'large',
+      panels: ['chart', 'watchlist', 'depth-heatmap', 'indicators', 'quick-trade']
     }
   }
 ];

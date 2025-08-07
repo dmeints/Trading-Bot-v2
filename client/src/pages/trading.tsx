@@ -8,6 +8,9 @@ import AdvancedOrderPanel from '@/components/trading/AdvancedOrderPanel';
 import OrderBook from '@/components/trading/OrderBook';
 import AIRecommendations from '@/components/trading/AIRecommendations';
 import SocialTradingFeed from '@/components/social/SocialTradingFeed';
+import WatchlistPanel from '@/components/trading/WatchlistPanel';
+import DepthOfMarketHeatmap from '@/components/trading/DepthOfMarketHeatmap';
+import ChartIndicatorsPanel from '@/components/trading/ChartIndicatorsPanel';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export default function Trading() {
@@ -54,18 +57,31 @@ export default function Trading() {
               </TabsList>
               
               <TabsContent value="trading" className="space-y-6">
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-16rem)]">
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[calc(100vh-16rem)]">
+                  {/* Left sidebar with watchlist and depth */}
+                  <div className="space-y-6">
+                    <div className="h-1/2">
+                      <WatchlistPanel />
+                    </div>
+                    <div className="h-1/2">
+                      <DepthOfMarketHeatmap />
+                    </div>
+                  </div>
+                  
                   {/* Trading Chart - Takes 2 columns */}
                   <div className="lg:col-span-2">
                     <TradingChart />
                   </div>
                   
-                  {/* Right sidebar with trade panel and recommendations */}
+                  {/* Right sidebar with trade panel and indicators */}
                   <div className="space-y-6">
-                    <div className="h-1/2">
+                    <div className="h-1/3">
                       <QuickTradePanel />
                     </div>
-                    <div className="h-1/2">
+                    <div className="h-1/3">
+                      <ChartIndicatorsPanel />
+                    </div>
+                    <div className="h-1/3">
                       <AIRecommendations />
                     </div>
                   </div>

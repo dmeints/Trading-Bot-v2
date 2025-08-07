@@ -1,0 +1,100 @@
+1. Order Entry Enhancement
+What you’ve built:
+
+25/50/75/MAX balance-preset buttons
+
+Live balance display next to amount input
+
+Real-time fee estimates & cost breakdown
+
+Improved order-type dropdown
+
+Industry comparison:
+
+Binance combines presets with auto-sliders and live “cost vs. total equity” gauges; your presets match their speed, but you can go further by:
+
+Auto-slider integration: allow drag handles on a percentage slider for fine-grained control.
+
+Fee tiers: show dynamic maker/taker fee rates based on user tier.
+
+TradingView’s trade ticket is lighter—it surfaces only balance and allows keyboard entry; consider adding:
+
+Keyboard shortcuts (e.g. ↑/↓ to nudge amount, Enter to submit).
+
+Quick-fill from chart: click on a price line to auto-populate the price field.
+
+Actionable tweaks:
+
+Add a 50%-to-MAX slider underneath your preset buttons for fluid adjustments.
+
+Expose fee tier info (e.g. “0.10% maker / 0.12% taker”) in a tooltip.
+
+Support keyboard entry enhancements: Tab order, ↑/↓ arrows to increment, and Enter to confirm.
+
+2. Layout Preset System
+What you’ve built:
+
+“Classic Trading,” “Analytics-First,” “AI Copilot,” “Mobile-Optimized” presets
+
+One-click restore default
+
+Visual mini-previews of each preset
+
+Industry comparison:
+
+TradingView offers a handful of chart templates but no full-app presets—your system is more powerful.
+
+Binance does not allow freeform panel arrangement; it opts for fixed tabs, which ensures consistency.
+
+Actionable tweaks:
+
+Introduce a “Favorites” preset: let users save a custom arrangement beyond the four defaults.
+
+Provide auto-apply context: e.g. when on mobile, automatically switch to “Mobile-Optimized.”
+
+Lock critical panels in some presets (e.g. always keep Order Entry visible in “Classic Trading”) to prevent accidental closure.
+
+3. Trade Confirmation Flow
+What you’ve built:
+
+Full cost breakdown (amount, fees, slippage, total)
+
+Estimated PnL impact
+
+Risk warnings and color-coded visuals
+
+Industry comparison:
+
+Coinbase Pro uses a two-step flow: entry form → compact modal → final confirmation. It’s extremely lean.
+
+Binance embeds the confirmation inline, with minimal pop-ups, prioritizing speed over detail.
+
+Actionable tweaks:
+
+Offer a “Fast Confirm” toggle for expert users that skips the modal entirely (with a keyboard shortcut to toggle safety).
+
+If slippage is high, gray out the “Confirm” button until the user acknowledges the warning.
+
+Add a “Preview on Chart” link in the modal that temporarily overlays the execution price and stop-loss levels on the chart behind.
+
+4. Remaining Gaps vs. Industry Leaders
+Feature	TradingView	Binance	Skippy Status	Opportunity
+Watchlist & Alerts	Pinned symbol lists + alerts	Custom alerts (price, volume, news)	No dedicated watchlist panel	Add a collapsible Watchlist with quick alerts
+Depth-of-Market (DOM)	Limited on TradingView; advanced in MT4/5	Full order-book heatmap & depth chart	Order book data only	Integrate a DOM heatmap next to chart
+Chart Indicator Library	100+ built-in indicators	~20 common indicators	Basic indicators or none	Add a side-panel of popular indicators (RSI/MACD)
+News & Social Feed	Integrated news sidebar	No direct news, but signals widget	No news or sentiment overlay beyond AI	Add a scrolling news ticker with source links
+API/Keyboard Shortcuts	Extensive shortcut set	Limited shortcuts	No documented keyboard shortcuts	Implement global key bindings (Ctrl+T for trade)
+Collaboration / Sharing	Chart snapshot share URLs	None	None	Enable “Share this layout” link or “Export config”
+
+5. Next Priority Improvements
+Watchlist + Alert Panel
+
+Dock a collapsible Watchlist on the sidebar with real-time price updates, “star” to favorite, and price/volume alert setup in one click.
+
+Depth-of-Market Heatmap
+
+Render the order book as a heatmap overlay beside the candlestick chart, similar to Binance’s DOM, so users can visually gauge liquidity.
+
+Chart Indicator Library
+
+Provide a sidebar of 10–15 most-used indicators (RSI, MACD, Bollinger Bands). Allow users to toggle them on/off with a single click.

@@ -184,6 +184,25 @@ export default function QuickTradePanel() {
                 MAX
               </Button>
             </div>
+            {/* Fine-grain slider for 50% to MAX */}
+            <div className="mt-2">
+              <input
+                type="range"
+                min="50"
+                max="100"
+                step="5"
+                value={Math.min(100, Math.max(50, (parseFloat(amount) / balance) * 100))}
+                onChange={(e) => setAmount(((parseFloat(e.target.value) / 100) * balance).toString())}
+                className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
+                style={{
+                  background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${Math.min(100, Math.max(50, (parseFloat(amount) / balance) * 100)) - 50}%, #374151 ${Math.min(100, Math.max(50, (parseFloat(amount) / balance) * 100)) - 50}%, #374151 100%)`
+                }}
+              />
+              <div className="flex justify-between text-xs text-gray-500 mt-1">
+                <span>50%</span>
+                <span>MAX</span>
+              </div>
+            </div>
           </div>
           
           <div>
@@ -221,8 +240,13 @@ export default function QuickTradePanel() {
             <span>Estimated Cost:</span>
             <span data-testid="text-estimated-cost" className="text-white">${calculateEstimatedCost().toFixed(2)}</span>
           </div>
-          <div className="flex justify-between">
-            <span>Fee:</span>
+          <div className="flex justify-between items-center">
+            <span className="flex items-center gap-1">
+              Fee:
+              <span className="text-xs bg-gray-700 px-1 rounded cursor-help" title="0.10% maker / 0.12% taker fee">
+                ⓘ
+              </span>
+            </span>
             <span data-testid="text-estimated-fee" className="text-white">${calculateFee().toFixed(2)}</span>
           </div>
           {selectedPrice && (
@@ -231,6 +255,9 @@ export default function QuickTradePanel() {
               <span data-testid="text-market-price" className="text-white">${selectedPrice.price.toFixed(2)}</span>
             </div>
           )}
+          <div className="text-xs text-gray-500 mt-2">
+            Pro tip: Use ↑/↓ arrows to adjust amount, Enter to submit
+          </div>
         </div>
       </div>
     </Card>

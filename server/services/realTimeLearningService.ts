@@ -36,8 +36,17 @@ export class RealTimeLearningService {
   
   constructor() {
     // Initialize parameters lazily when first API call is made
-    // this.initializeParameters();
+    this.ensureInitialized();
   }
+
+  private async ensureInitialized(): Promise<void> {
+    if (!this.initialized) {
+      await this.initializeParameters();
+      this.initialized = true;
+    }
+  }
+
+  private initialized = false;
 
   async recordTradeOutcome(
     tradeId: string,
@@ -49,6 +58,7 @@ export class RealTimeLearningService {
     features: any,
     profit: number
   ): Promise<void> {
+    await this.ensureInitialized();
     // Record performance metric
     await db.insert(performanceMetrics).values({
       tradeId,
@@ -72,6 +82,7 @@ export class RealTimeLearningService {
   }
 
   async detectMarketRegime(marketData: any): Promise<MarketRegimeDetection> {
+    await this.ensureInitialized();
     const signals: string[] = [];
     let bullishSignals = 0;
     let bearishSignals = 0;

@@ -36,6 +36,8 @@ export class SteviePersonalityService {
     this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   }
 
+  private initialized = false;
+
   async initializeUserProfile(userId: string, experienceLevel: 'beginner' | 'intermediate' | 'advanced' = 'intermediate'): Promise<StevieUserProfile> {
     const [profile] = await db
       .insert(stevieUserProfiles)

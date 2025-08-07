@@ -124,17 +124,17 @@ export default function TradingChart() {
             <polyline 
               fill="none" 
               stroke="#0EA5E9" 
-              strokeWidth="clamp(1.5, 0.5vw, 3)" 
+              strokeWidth="2" 
               points="0,200 50,180 100,160 150,170 200,150 250,140 300,130 350,125 400,135 450,145 500,140 550,130 600,125 650,120 700,115 750,110 800,105"
             />
             
             {/* Volume bars - responsive */}
             <g fill="#0EA5E9" fillOpacity="0.3">
-              <rect x="10" y="350" width="clamp(6, 1vw, 12)" height="30"/>
-              <rect x="30" y="340" width="clamp(6, 1vw, 12)" height="40"/>
-              <rect x="50" y="360" width="clamp(6, 1vw, 12)" height="20"/>
-              <rect x="70" y="330" width="clamp(6, 1vw, 12)" height="50"/>
-              <rect x="90" y="345" width="clamp(6, 1vw, 12)" height="35"/>
+              <rect x="10" y="350" width="8" height="30"/>
+              <rect x="30" y="340" width="8" height="40"/>
+              <rect x="50" y="360" width="8" height="20"/>
+              <rect x="70" y="330" width="8" height="50"/>
+              <rect x="90" y="345" width="8" height="35"/>
             </g>
           </svg>
           

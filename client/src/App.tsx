@@ -15,6 +15,8 @@ const Settings = lazy(() => import("@/pages/settings"));
 const Analytics = lazy(() => import("@/pages/analytics"));
 const AIInsights = lazy(() => import("@/pages/AIInsights"));
 const MLOpsDashboard = lazy(() => import("@/pages/MLOpsDashboard"));
+const PluginMarketplace = lazy(() => import("@/pages/PluginMarketplace"));
+const StrategyBuilder = lazy(() => import("@/pages/StrategyBuilderPage"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 
 function Router() {
@@ -45,6 +47,8 @@ function Router() {
             <Route path="/analytics" component={Analytics} />
             <Route path="/ai-insights" component={AIInsights} />
             <Route path="/mlops" component={MLOpsDashboard} />
+            <Route path="/plugins" component={PluginMarketplace} />
+            <Route path="/strategy-builder" component={StrategyBuilder} />
             <Route path="/settings" component={Settings} />
           </>
         )}

@@ -28,6 +28,8 @@ import { healthRoutes } from "./routes/healthRoutes";
 import { mlopsRoutes } from "./routes/mlopsRoutes";
 import vectorRoutes from './routes/vectorRoutes';
 import dataFusionRoutes from './routes/dataFusionRoutes';
+import pluginRoutes from "./routes/pluginRoutes";
+import docsRoutes from "./routes/docsRoutes";
 import { startRetrainingJobs } from "./jobs/retrainingCron";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -74,6 +76,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Data fusion routes (on-chain + sentiment)
   app.use('/api/fusion', dataFusionRoutes);
+  
+  // Plugin system routes
+  app.use('/api/plugins', pluginRoutes);
+  
+  // API documentation routes
+  app.use('/api', docsRoutes);
 
   // Auth status endpoint
   app.get('/api/me', async (req: any, res) => {

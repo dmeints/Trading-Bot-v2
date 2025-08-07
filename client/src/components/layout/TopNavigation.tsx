@@ -2,7 +2,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useTradingStore } from '@/stores/tradingStore';
 import { Button } from '@/components/ui/button';
 import { CommandPalette } from '@/components/ui/command-palette';
-import { Brain, FlaskConical, LayoutDashboard, TrendingUp, Wallet, TestTube, BookOpen, BarChart3, Settings } from 'lucide-react';
+import { Brain, FlaskConical, LayoutDashboard, TrendingUp, Wallet, TestTube, BookOpen, BarChart3, Settings, Boxes, Package } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Link, useLocation } from 'wouter';
 
@@ -19,6 +19,8 @@ export default function TopNavigation() {
     { href: '/simulation', icon: TestTube, label: 'Simulation' },
     { href: '/journal', icon: BookOpen, label: 'Journal' },
     { href: '/analytics', icon: BarChart3, label: 'Analytics' },
+    { href: '/strategy-builder', icon: Boxes, label: 'Strategy Builder' },
+    { href: '/plugins', icon: Package, label: 'Plugins' },
     { href: '/settings', icon: Settings, label: 'Settings' },
   ];
 

@@ -1,0 +1,9 @@
+{
+  "name": "ema-crossover-strategy",
+  "version": "1.0.0",
+  "description": "Example EMA crossover trading strategy with dashboard panel",
+  "author": "Skippy Team",
+  "dependencies": [],
+  "permissions": ["market_data", "portfolio_access"],
+  "entry": "index.js"
+}

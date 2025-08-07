@@ -4,7 +4,7 @@
  */
 
 import OpenAI from 'openai';
-import FeatureService from './featureService';
+import { featureService } from './featureService';
 import VectorService from './vectorService';
 
 interface TradeExplanation {
@@ -35,12 +35,12 @@ interface TradeExplanation {
 
 export class StevieExplanationService {
   private openai: OpenAI;
-  private featureService: FeatureService;
+  private featureService = featureService;
   private vectorService: VectorService;
 
   constructor() {
     this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    this.featureService = new FeatureService();
+    // featureService is already assigned as class property
     this.vectorService = new VectorService({
       provider: 'memory',
       openaiApiKey: process.env.OPENAI_API_KEY

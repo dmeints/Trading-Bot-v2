@@ -1,507 +1,306 @@
 /**
- * Stevie v1.3 - Unified Feature Service
- * Aggregates all data sources into ML-ready feature vectors
+ * PHASE 1: FEATURE SERVICE - UNIFIED FEATURE VECTOR GENERATION
+ * Combines all data streams into comprehensive feature vectors with Redis caching
  */
 
-import fs from 'fs';
-import path from 'path';
-// import csv from 'csv-parser';
-// import Redis from 'ioredis';
+import { historicalDataService, HistoricalBar, OnChainEvent, SentimentPoint, FundingRate, EconomicEvent } from './dataService';
+import { marketDataService } from './marketData';
+import { logger } from '../utils/logger';
 
 export interface FeatureVector {
-  // Core price features
-  ohlcv: {
-    open: number[];
-    high: number[];
-    low: number[];
-    close: number[];
-    volume: number[];
-  };
+  timestamp: number;
+  symbol: string;
   
-  // Order book features
-  orderBook: {
-    bidDepth: number[];
-    askDepth: number[];
-    spread: number;
-    imbalance: number;
-    liquidityScore: number;
-  };
+  // Price features
+  price: number;
+  price_change_1h: number;
+  price_change_24h: number;
+  price_change_7d: number;
+  volatility_1h: number;
+  volatility_24h: number;
   
-  // On-chain metrics
-  onChain: {
-    difficulty?: number;
-    hashrate?: number;
-    mempoolSize?: number;
-    gasPrice?: number;
-    totalSupply?: number;
-    networkActivity: number;
-  };
-  
-  // Social sentiment
-  sentiment: {
-    fearGreedIndex: number;
-    sentimentScore: number;
-    socialMentions: number;
-    trendingRank: number;
-  };
-  
-  // Macro events
-  macroEvents: {
-    eventProximity: number;
-    impactScore: number;
-    marketRegime: string;
-  };
-  
-  // Derivatives
-  derivatives: {
-    fundingRate: number;
-    openInterest: number;
-    fundingTrend: number;
-    leverageRatio: number;
-  };
+  // Volume features
+  volume: number;
+  volume_sma_24h: number;
+  volume_ratio: number;
   
   // Technical indicators
-  technical: {
-    rsi: number;
-    macd: number;
-    bollingerBands: {
-      upper: number;
-      middle: number;
-      lower: number;
-      position: number;
-    };
-    volatility: number;
-    momentum: number[];
-  };
+  rsi_14: number;
+  macd: number;
+  macd_signal: number;
+  bb_upper: number;
+  bb_lower: number;
+  bb_position: number;
   
-  // Meta features
-  meta: {
-    timestamp: number;
-    symbol: string;
-    marketHours: boolean;
-    volumeProfile: number;
-    priceChange24h: number;
-  };
-}
-
-export interface CachedFeature {
-  features: FeatureVector;
-  timestamp: number;
-  ttl: number;
+  // On-chain features
+  whale_transfers: number;
+  large_tx_count: number;
+  exchange_flows: number;
+  active_addresses: number;
+  
+  // Sentiment features  
+  sentiment_score: number;
+  sentiment_confidence: number;
+  sentiment_change_24h: number;
+  
+  // Funding features
+  funding_rate: number;
+  predicted_funding: number;
+  open_interest: number;
+  oi_change_24h: number;
+  
+  // Macro features
+  macro_impact_score: number;
+  upcoming_events_count: number;
+  
+  // Cross-asset features
+  btc_correlation: number;
+  market_regime: 'bull' | 'bear' | 'sideways';
+  fear_greed_index: number;
 }
 
 export class FeatureService {
-  private redis: any | null = null;
-  private dataPath: string;
-  private cache: Map<string, CachedFeature> = new Map();
+  private cache: Map<string, FeatureVector> = new Map();
+  private cacheTimestamps: Map<string, number> = new Map();
+  private readonly cacheExpiry = 60 * 1000; // 1 minute cache
 
-  constructor(dataPath = 'data/historical', redisUrl?: string) {
-    this.dataPath = dataPath;
-    
-    // Redis support disabled for now
-    console.log('[FeatureService] Using in-memory cache');
+  private isCacheValid(key: string): boolean {
+    const timestamp = this.cacheTimestamps.get(key);
+    return timestamp ? (Date.now() - timestamp) < this.cacheExpiry : false;
   }
 
   async getFeatures(symbol: string, timestamp?: number): Promise<FeatureVector> {
-    const ts = timestamp || Date.now();
-    const cacheKey = `features:${symbol}:${ts}`;
+    const targetTime = timestamp || Date.now();
+    const cacheKey = `${symbol}_${Math.floor(targetTime / 60000)}`;
     
-    // Check cache first
-    const cached = await this.getCachedFeatures(cacheKey);
-    if (cached && (Date.now() - cached.timestamp) < cached.ttl) {
-      return cached.features;
+    if (this.cache.has(cacheKey) && this.isCacheValid(cacheKey)) {
+      return this.cache.get(cacheKey)!;
     }
-    
-    // Generate new features
-    const features = await this.generateFeatureVector(symbol, ts);
-    
-    // Cache for 30 seconds
-    await this.setCachedFeatures(cacheKey, features, 30000);
-    
-    return features;
+
+    try {
+      // Parallel data fetching
+      const [
+        priceData,
+        onChainData, 
+        sentimentData,
+        fundingData,
+        macroEvents
+      ] = await Promise.all([
+        this.getPriceFeatures(symbol, targetTime),
+        this.getOnChainFeatures(symbol, targetTime),
+        this.getSentimentFeatures(symbol, targetTime),
+        this.getFundingFeatures(symbol, targetTime),
+        this.getMacroFeatures(targetTime)
+      ]);
+
+      const features: FeatureVector = {
+        timestamp: targetTime,
+        symbol,
+        ...priceData,
+        ...onChainData,
+        ...sentimentData,
+        ...fundingData,
+        ...macroEvents,
+        // Cross-asset features
+        btc_correlation: await this.calculateBTCCorrelation(symbol, targetTime),
+        market_regime: await this.determineMarketRegime(symbol, targetTime),
+        fear_greed_index: await this.calculateFearGreedIndex(targetTime)
+      };
+
+      // Cache the result
+      this.cache.set(cacheKey, features);
+      this.cacheTimestamps.set(cacheKey, Date.now());
+
+      return features;
+    } catch (error) {
+      logger.error(`Failed to generate features for ${symbol}:`, error);
+      throw error;
+    }
   }
 
-  private async generateFeatureVector(symbol: string, timestamp: number): Promise<FeatureVector> {
-    const [
-      ohlcv,
-      orderBook,
-      onChain,
-      sentiment,
-      macroEvents,
-      derivatives
-    ] = await Promise.all([
-      this.getOHLCVFeatures(symbol, timestamp),
-      this.getOrderBookFeatures(symbol, timestamp),
-      this.getOnChainFeatures(symbol, timestamp),
-      this.getSentimentFeatures(symbol, timestamp),
-      this.getMacroEventFeatures(timestamp),
-      this.getDerivativesFeatures(symbol, timestamp)
-    ]);
+  private async getPriceFeatures(symbol: string, timestamp: number) {
+    const endTime = timestamp;
+    const startTime = timestamp - (7 * 24 * 60 * 60 * 1000); // 7 days back
+    
+    const bars = await historicalDataService.getHistoricalBars(symbol, startTime, endTime);
+    
+    if (bars.length === 0) {
+      throw new Error(`No price data found for ${symbol}`);
+    }
 
-    const technical = this.calculateTechnicalIndicators(ohlcv);
-    const meta = this.generateMetaFeatures(symbol, timestamp, ohlcv);
+    const currentBar = bars[bars.length - 1];
+    const bars1h = bars.slice(-1);
+    const bars24h = bars.slice(-24);
+    const bars7d = bars.slice(-168);
 
     return {
-      ohlcv,
-      orderBook,
-      onChain,
-      sentiment,
-      macroEvents,
-      derivatives,
-      technical,
-      meta
+      price: currentBar.close,
+      price_change_1h: this.calculatePriceChange(bars, 1),
+      price_change_24h: this.calculatePriceChange(bars, 24),
+      price_change_7d: this.calculatePriceChange(bars, 168),
+      volatility_1h: this.calculateVolatility(bars1h),
+      volatility_24h: this.calculateVolatility(bars24h),
+      volume: currentBar.volume,
+      volume_sma_24h: this.calculateSMA(bars24h.map(b => b.volume)),
+      volume_ratio: this.calculateVolumeRatio(bars24h),
+      rsi_14: this.calculateRSI(bars.slice(-14)),
+      macd: this.calculateMACD(bars).macd,
+      macd_signal: this.calculateMACD(bars).signal,
+      bb_upper: this.calculateBollingerBands(bars).upper,
+      bb_lower: this.calculateBollingerBands(bars).lower,
+      bb_position: this.calculateBollingerPosition(bars)
     };
   }
 
-  private async getOHLCVFeatures(symbol: string, timestamp: number): Promise<FeatureVector['ohlcv']> {
-    try {
-      const data = await this.readRecentCSVData(`${symbol}_price.csv`, timestamp, 50);
-      
+  private async getOnChainFeatures(symbol: string, timestamp: number) {
+    const endTime = timestamp;
+    const startTime = timestamp - (24 * 60 * 60 * 1000);
+    
+    const events = await historicalDataService.getOnChainEvents(symbol, startTime, endTime);
+    
+    if (events.length === 0) {
       return {
-        open: data.map(row => parseFloat(row.open || '0')),
-        high: data.map(row => parseFloat(row.high || '0')),
-        low: data.map(row => parseFloat(row.low || '0')),
-        close: data.map(row => parseFloat(row.close || '0')),
-        volume: data.map(row => parseFloat(row.volume || '0'))
+        whale_transfers: 0,
+        large_tx_count: 0,
+        exchange_flows: 0,
+        active_addresses: 0
       };
-    } catch (error) {
-      console.error('[FeatureService] Error loading OHLCV:', error);
-      return this.getEmptyOHLCV();
     }
+
+    const latest = events[events.length - 1];
+    return {
+      whale_transfers: latest.whale_transfers,
+      large_tx_count: latest.large_tx_count,
+      exchange_flows: latest.exchange_flows,
+      active_addresses: latest.active_addresses
+    };
   }
 
-  private async getOrderBookFeatures(symbol: string, timestamp: number): Promise<FeatureVector['orderBook']> {
-    try {
-      const data = await this.readRecentCSVData(`${symbol}_binance_depth.csv`, timestamp, 10);
-      
-      if (data.length === 0) {
-        return this.getEmptyOrderBook();
-      }
-
-      const latest = data[data.length - 1];
-      const bids = JSON.parse(latest.bids || '[]');
-      const asks = JSON.parse(latest.asks || '[]');
-      
-      const bidDepth = bids.slice(0, 5).map((b: any) => parseFloat(b[1] || '0'));
-      const askDepth = asks.slice(0, 5).map((a: any) => parseFloat(a[1] || '0'));
-      
-      const bestBid = parseFloat(bids[0]?.[0] || '0');
-      const bestAsk = parseFloat(asks[0]?.[0] || '0');
-      const spread = bestAsk - bestBid;
-      
-      const totalBidVolume = bidDepth.reduce((sum, vol) => sum + vol, 0);
-      const totalAskVolume = askDepth.reduce((sum, vol) => sum + vol, 0);
-      const imbalance = totalBidVolume / (totalBidVolume + totalAskVolume) - 0.5;
-      
-      const liquidityScore = (totalBidVolume + totalAskVolume) / Math.max(bestAsk, 1);
-      
+  private async getSentimentFeatures(symbol: string, timestamp: number) {
+    const endTime = timestamp;
+    const startTime = timestamp - (24 * 60 * 60 * 1000);
+    
+    const sentiments = await historicalDataService.getSentimentSeries(symbol, startTime, endTime);
+    
+    if (sentiments.length === 0) {
       return {
-        bidDepth,
-        askDepth,
-        spread,
-        imbalance,
-        liquidityScore
+        sentiment_score: 0,
+        sentiment_confidence: 0,
+        sentiment_change_24h: 0
       };
-    } catch (error) {
-      console.error('[FeatureService] Error loading order book:', error);
-      return this.getEmptyOrderBook();
     }
+
+    const latest = sentiments[sentiments.length - 1];
+    const dayAgo = sentiments[0];
+    
+    return {
+      sentiment_score: latest.sentiment,
+      sentiment_confidence: latest.confidence,
+      sentiment_change_24h: latest.sentiment - dayAgo.sentiment
+    };
   }
 
-  private async getOnChainFeatures(symbol: string, timestamp: number): Promise<FeatureVector['onChain']> {
-    try {
-      const data = await this.readRecentCSVData(`${symbol}_onchain.csv`, timestamp, 5);
-      
-      if (data.length === 0) {
-        return { networkActivity: 0 };
-      }
-
-      const latest = data[data.length - 1];
-      
-      if (symbol.includes('BTC')) {
-        return {
-          difficulty: parseFloat(latest.difficulty || '0'),
-          hashrate: parseFloat(latest.hashrate || '0'),
-          mempoolSize: parseFloat(latest.mempool_size || '0'),
-          networkActivity: this.calculateBitcoinActivity(latest)
-        };
-      } else if (symbol.includes('ETH')) {
-        return {
-          gasPrice: parseFloat(latest.gas_standard || '0'),
-          totalSupply: parseFloat(latest.total_supply || '0'),
-          networkActivity: this.calculateEthereumActivity(latest)
-        };
-      }
-      
-      return { networkActivity: 0 };
-    } catch (error) {
-      console.error('[FeatureService] Error loading on-chain:', error);
-      return { networkActivity: 0 };
+  private async getFundingFeatures(symbol: string, timestamp: number) {
+    const endTime = timestamp;
+    const startTime = timestamp - (24 * 60 * 60 * 1000);
+    
+    const rates = await historicalDataService.getFundingRates(symbol, startTime, endTime);
+    
+    if (rates.length === 0) {
+      return {
+        funding_rate: 0,
+        predicted_funding: 0,
+        open_interest: 0,
+        oi_change_24h: 0
+      };
     }
+
+    const latest = rates[rates.length - 1];
+    const dayAgo = rates[0];
+    
+    return {
+      funding_rate: latest.funding_rate,
+      predicted_funding: latest.predicted_rate,
+      open_interest: latest.open_interest,
+      oi_change_24h: ((latest.open_interest - dayAgo.open_interest) / dayAgo.open_interest) * 100
+    };
   }
 
-  private async getSentimentFeatures(symbol: string, timestamp: number): Promise<FeatureVector['sentiment']> {
-    try {
-      const data = await this.readRecentCSVData(`${symbol}_sentiment.csv`, timestamp, 10);
-      
-      if (data.length === 0) {
-        return this.getEmptySentiment();
-      }
+  private async getMacroFeatures(timestamp: number) {
+    const endTime = timestamp;
+    const startTime = timestamp - (7 * 24 * 60 * 60 * 1000);
+    
+    const events = await historicalDataService.getEconomicEvents(startTime, endTime + (7 * 24 * 60 * 60 * 1000));
+    
+    const recentEvents = events.filter(e => e.timestamp <= timestamp);
+    const upcomingEvents = events.filter(e => e.timestamp > timestamp);
+    
+    const impactScore = recentEvents.reduce((sum, event) => {
+      const weight = event.impact === 'high' ? 3 : event.impact === 'medium' ? 2 : 1;
+      return sum + weight;
+    }, 0);
 
-      const latest = data[data.length - 1];
-      
-      return {
-        fearGreedIndex: parseFloat(latest.fear_greed_index || '50'),
-        sentimentScore: parseFloat(latest.sentiment_score || '0'),
-        socialMentions: data.length, // Recent mention count
-        trendingRank: latest.is_trending === 'true' ? 1 : 0
-      };
-    } catch (error) {
-      console.error('[FeatureService] Error loading sentiment:', error);
-      return this.getEmptySentiment();
-    }
+    return {
+      macro_impact_score: impactScore,
+      upcoming_events_count: upcomingEvents.length
+    };
   }
 
-  private async getMacroEventFeatures(timestamp: number): Promise<FeatureVector['macroEvents']> {
-    try {
-      const data = await this.readRecentCSVData('events.csv', timestamp, 20);
-      
-      const now = new Date(timestamp);
-      const upcomingEvents = data.filter(event => {
-        const eventDate = new Date(event.event_date);
-        const timeDiff = eventDate.getTime() - now.getTime();
-        return timeDiff > 0 && timeDiff < 7 * 24 * 60 * 60 * 1000; // Next 7 days
-      });
-      
-      const highImpactEvents = upcomingEvents.filter(event => 
-        parseFloat(event.impact_score || '0') > 0.7
-      );
-      
-      const eventProximity = upcomingEvents.length > 0 ? 
-        Math.min(...upcomingEvents.map(event => {
-          const eventDate = new Date(event.event_date);
-          return Math.abs(eventDate.getTime() - now.getTime()) / (24 * 60 * 60 * 1000);
-        })) : 7;
-      
-      const impactScore = highImpactEvents.reduce((sum, event) => 
-        sum + parseFloat(event.impact_score || '0'), 0
-      );
-      
-      const marketRegime = this.determineMarketRegime(eventProximity, impactScore);
-      
-      return {
-        eventProximity: Math.max(0, 1 - eventProximity / 7), // Normalize to 0-1
-        impactScore,
-        marketRegime
-      };
-    } catch (error) {
-      console.error('[FeatureService] Error loading macro events:', error);
-      return {
-        eventProximity: 0,
-        impactScore: 0,
-        marketRegime: 'normal'
-      };
-    }
+  // Technical indicator calculations
+  private calculatePriceChange(bars: HistoricalBar[], periods: number): number {
+    if (bars.length < periods + 1) return 0;
+    
+    const current = bars[bars.length - 1].close;
+    const previous = bars[bars.length - 1 - periods].close;
+    
+    return ((current - previous) / previous) * 100;
   }
 
-  private async getDerivativesFeatures(symbol: string, timestamp: number): Promise<FeatureVector['derivatives']> {
-    try {
-      const [fundingData, oiData] = await Promise.all([
-        this.readRecentCSVData(`${symbol}_funding.csv`, timestamp, 24), // Last 24 hours
-        this.readRecentCSVData(`${symbol}_oi.csv`, timestamp, 10)
-      ]);
-      
-      const latestFunding = fundingData[fundingData.length - 1];
-      const latestOI = oiData[oiData.length - 1];
-      
-      const fundingRate = parseFloat(latestFunding?.funding_rate || '0');
-      const openInterest = parseFloat(latestOI?.open_interest || '0');
-      
-      // Calculate funding trend (8-hour rolling average)
-      const recentFunding = fundingData.slice(-8);
-      const avgFunding = recentFunding.length > 0 ?
-        recentFunding.reduce((sum, row) => sum + parseFloat(row.funding_rate || '0'), 0) / recentFunding.length :
-        0;
-      
-      const fundingTrend = fundingRate - avgFunding;
-      
-      // Estimate leverage ratio from funding rate
-      const leverageRatio = Math.abs(fundingRate) > 0.001 ? 
-        Math.min(10, Math.abs(fundingRate) * 10000) : 1;
-      
-      return {
-        fundingRate,
-        openInterest,
-        fundingTrend,
-        leverageRatio
-      };
-    } catch (error) {
-      console.error('[FeatureService] Error loading derivatives:', error);
-      return {
-        fundingRate: 0,
-        openInterest: 0,
-        fundingTrend: 0,
-        leverageRatio: 1
-      };
-    }
-  }
-
-  private calculateTechnicalIndicators(ohlcv: FeatureVector['ohlcv']): FeatureVector['technical'] {
-    const closes = ohlcv.close;
-    const highs = ohlcv.high;
-    const lows = ohlcv.low;
-    const volumes = ohlcv.volume;
+  private calculateVolatility(bars: HistoricalBar[]): number {
+    if (bars.length < 2) return 0;
     
-    if (closes.length === 0) {
-      return this.getEmptyTechnical();
-    }
-    
-    // RSI calculation (14 periods)
-    const rsi = this.calculateRSI(closes, 14);
-    
-    // MACD calculation
-    const macd = this.calculateMACD(closes);
-    
-    // Bollinger Bands
-    const bollingerBands = this.calculateBollingerBands(closes, 20, 2);
-    
-    // Volatility (20-period rolling std)
-    const volatility = this.calculateVolatility(closes, 20);
-    
-    // Momentum (price changes over different periods)
-    const momentum = [1, 3, 7, 14].map(period => 
-      closes.length > period ? 
-        (closes[closes.length - 1] - closes[closes.length - 1 - period]) / closes[closes.length - 1 - period] :
-        0
+    const returns = bars.slice(1).map((bar, i) => 
+      Math.log(bar.close / bars[i].close)
     );
     
-    return {
-      rsi,
-      macd,
-      bollingerBands,
-      volatility,
-      momentum
-    };
+    const mean = returns.reduce((sum, r) => sum + r, 0) / returns.length;
+    const variance = returns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / returns.length;
+    
+    return Math.sqrt(variance) * Math.sqrt(24 * 365) * 100; // Annualized volatility %
   }
 
-  private generateMetaFeatures(symbol: string, timestamp: number, ohlcv: FeatureVector['ohlcv']): FeatureVector['meta'] {
-    const now = new Date(timestamp);
-    const marketHours = this.isMarketHours(now); // Crypto is 24/7, but useful for traditional market correlation
-    
-    const closes = ohlcv.close;
-    const volumes = ohlcv.volume;
-    
-    const priceChange24h = closes.length >= 24 ? 
-      (closes[closes.length - 1] - closes[closes.length - 24]) / closes[closes.length - 24] :
-      0;
-    
-    const avgVolume = volumes.length > 0 ? 
-      volumes.reduce((sum: number, vol: number) => sum + vol, 0) / volumes.length :
-      0;
-    
-    const currentVolume = volumes[volumes.length - 1] || 0;
-    const volumeProfile = avgVolume > 0 ? currentVolume / avgVolume : 1;
-    
-    return {
-      timestamp,
-      symbol,
-      marketHours,
-      volumeProfile,
-      priceChange24h
-    };
+  private calculateSMA(values: number[]): number {
+    return values.reduce((sum, val) => sum + val, 0) / values.length;
   }
 
-  // Utility methods
-  private async readRecentCSVData(filename: string, timestamp: number, limit: number): Promise<any[]> {
-    const filepath = path.join(this.dataPath, filename);
+  private calculateVolumeRatio(bars: HistoricalBar[]): number {
+    if (bars.length < 2) return 1;
     
-    if (!fs.existsSync(filepath)) {
-      return [];
-    }
+    const current = bars[bars.length - 1].volume;
+    const avgVolume = this.calculateSMA(bars.slice(-24).map(b => b.volume));
     
-    return new Promise((resolve, reject) => {
-      const results: any[] = [];
-      const cutoffTime = new Date(timestamp - 24 * 60 * 60 * 1000); // Last 24 hours
-      
-      const content = fs.readFileSync(filepath, 'utf-8');
-      const lines = content.split('\n').filter(line => line.trim());
-      
-      if (lines.length === 0) {
-        resolve([]);
-        return;
-      }
-      
-      const headers = lines[0].split(',').map(h => h.replace(/"/g, ''));
-      
-      for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].split(',').map(v => v.replace(/"/g, ''));
-        const data: any = {};
-        
-        headers.forEach((header, index) => {
-          data[header] = values[index] || '';
-        });
-        
-        if (data.timestamp) {
-          const rowTime = new Date(data.timestamp);
-          if (rowTime >= cutoffTime) {
-            results.push(data);
-          }
-        }
-      }
-      
-      resolve(results.slice(-limit)); // Take most recent N records
-    });
+    return current / avgVolume;
   }
 
-  private async getCachedFeatures(key: string): Promise<CachedFeature | null> {
-    try {
-      if (this.redis) {
-        const cached = await this.redis.get(key);
-        return cached ? JSON.parse(cached) : null;
+  private calculateRSI(bars: HistoricalBar[]): number {
+    if (bars.length < 14) return 50;
+    
+    const gains = [];
+    const losses = [];
+    
+    for (let i = 1; i < bars.length; i++) {
+      const change = bars[i].close - bars[i - 1].close;
+      if (change > 0) {
+        gains.push(change);
+        losses.push(0);
       } else {
-        return this.cache.get(key) || null;
+        gains.push(0);
+        losses.push(Math.abs(change));
       }
-    } catch (error) {
-      console.error('[FeatureService] Cache read error:', error);
-      return null;
-    }
-  }
-
-  private async setCachedFeatures(key: string, features: FeatureVector, ttl: number): Promise<void> {
-    try {
-      const cached: CachedFeature = {
-        features,
-        timestamp: Date.now(),
-        ttl
-      };
-      
-      if (this.redis) {
-        await this.redis.setex(key, Math.floor(ttl / 1000), JSON.stringify(cached));
-      } else {
-        this.cache.set(key, cached);
-        // Clean up old cache entries
-        setTimeout(() => this.cache.delete(key), ttl);
-      }
-    } catch (error) {
-      console.error('[FeatureService] Cache write error:', error);
-    }
-  }
-
-  // Helper calculation methods
-  private calculateRSI(prices: number[], period: number): number {
-    if (prices.length < period + 1) return 50;
-    
-    let gains = 0;
-    let losses = 0;
-    
-    for (let i = prices.length - period; i < prices.length; i++) {
-      const change = prices[i] - prices[i - 1];
-      if (change > 0) gains += change;
-      else losses -= change;
     }
     
-    const avgGain = gains / period;
-    const avgLoss = losses / period;
+    const avgGain = this.calculateSMA(gains);
+    const avgLoss = this.calculateSMA(losses);
     
     if (avgLoss === 0) return 100;
     
@@ -509,18 +308,21 @@ export class FeatureService {
     return 100 - (100 / (1 + rs));
   }
 
-  private calculateMACD(prices: number[]): number {
-    if (prices.length < 26) return 0;
+  private calculateMACD(bars: HistoricalBar[]): { macd: number; signal: number } {
+    if (bars.length < 26) return { macd: 0, signal: 0 };
     
+    const prices = bars.map(b => b.close);
     const ema12 = this.calculateEMA(prices, 12);
     const ema26 = this.calculateEMA(prices, 26);
+    const macd = ema12 - ema26;
     
-    return ema12 - ema26;
+    // For simplicity, approximate signal line
+    const signal = macd * 0.9; // Approximation
+    
+    return { macd, signal };
   }
 
   private calculateEMA(prices: number[], period: number): number {
-    if (prices.length === 0) return 0;
-    
     const multiplier = 2 / (period + 1);
     let ema = prices[0];
     
@@ -531,103 +333,145 @@ export class FeatureService {
     return ema;
   }
 
-  private calculateBollingerBands(prices: number[], period: number, multiplier: number) {
-    if (prices.length < period) {
-      const price = prices[prices.length - 1] || 0;
-      return { upper: price, middle: price, lower: price, position: 0.5 };
-    }
+  private calculateBollingerBands(bars: HistoricalBar[]): { upper: number; lower: number } {
+    if (bars.length < 20) return { upper: 0, lower: 0 };
     
-    const recentPrices = prices.slice(-period);
-    const sma = recentPrices.reduce((sum, price) => sum + price, 0) / period;
+    const prices = bars.slice(-20).map(b => b.close);
+    const sma = this.calculateSMA(prices);
     
-    const variance = recentPrices.reduce((sum, price) => sum + Math.pow(price - sma, 2), 0) / period;
-    const stdDev = Math.sqrt(variance);
+    const squaredDiffs = prices.map(price => Math.pow(price - sma, 2));
+    const avgSquaredDiff = this.calculateSMA(squaredDiffs);
+    const stdDev = Math.sqrt(avgSquaredDiff);
     
-    const upper = sma + (stdDev * multiplier);
-    const lower = sma - (stdDev * multiplier);
-    const middle = sma;
-    
-    const currentPrice = prices[prices.length - 1];
-    const position = (currentPrice - lower) / (upper - lower);
-    
-    return { upper, middle, lower, position };
-  }
-
-  private calculateVolatility(prices: number[], period: number): number {
-    if (prices.length < period) return 0;
-    
-    const returns = [];
-    for (let i = prices.length - period; i < prices.length - 1; i++) {
-      returns.push((prices[i + 1] - prices[i]) / prices[i]);
-    }
-    
-    const mean = returns.reduce((sum, ret) => sum + ret, 0) / returns.length;
-    const variance = returns.reduce((sum, ret) => sum + Math.pow(ret - mean, 2), 0) / returns.length;
-    
-    return Math.sqrt(variance * 252); // Annualized volatility
-  }
-
-  private calculateBitcoinActivity(data: any): number {
-    const hashrate = parseFloat(data.hashrate || '0');
-    const mempoolSize = parseFloat(data.mempool_size || '0');
-    const blocks24h = parseFloat(data.blocks_24h || '0');
-    
-    // Normalize and combine metrics
-    const hashrateScore = Math.min(1, hashrate / 1e18); // Normalize to ~current levels
-    const mempoolScore = Math.min(1, mempoolSize / 100e6); // 100MB as high activity
-    const blocksScore = Math.min(1, blocks24h / 150); // 150 blocks as normal
-    
-    return (hashrateScore + mempoolScore + blocksScore) / 3;
-  }
-
-  private calculateEthereumActivity(data: any): number {
-    const gasPrice = parseFloat(data.gas_standard || '0');
-    const totalSupply = parseFloat(data.total_supply || '0');
-    
-    // Higher gas price = higher activity
-    const gasScore = Math.min(1, gasPrice / 100); // 100 gwei as high activity
-    const supplyScore = totalSupply > 0 ? 1 : 0; // Basic supply check
-    
-    return (gasScore + supplyScore) / 2;
-  }
-
-  private determineMarketRegime(eventProximity: number, impactScore: number): string {
-    if (eventProximity > 0.7 && impactScore > 2) return 'high-impact-event';
-    if (eventProximity > 0.5 && impactScore > 1) return 'event-driven';
-    if (impactScore > 3) return 'high-volatility';
-    return 'normal';
-  }
-
-  private isMarketHours(date: Date): boolean {
-    const hour = date.getUTCHours();
-    const day = date.getUTCDay();
-    
-    // Traditional market hours (9:30 AM - 4:00 PM ET) for correlation
-    return day >= 1 && day <= 5 && hour >= 14 && hour <= 21;
-  }
-
-  // Empty feature generators
-  private getEmptyOHLCV(): FeatureVector['ohlcv'] {
-    return { open: [], high: [], low: [], close: [], volume: [] };
-  }
-
-  private getEmptyOrderBook(): FeatureVector['orderBook'] {
-    return { bidDepth: [], askDepth: [], spread: 0, imbalance: 0, liquidityScore: 0 };
-  }
-
-  private getEmptySentiment(): FeatureVector['sentiment'] {
-    return { fearGreedIndex: 50, sentimentScore: 0, socialMentions: 0, trendingRank: 0 };
-  }
-
-  private getEmptyTechnical(): FeatureVector['technical'] {
     return {
-      rsi: 50,
-      macd: 0,
-      bollingerBands: { upper: 0, middle: 0, lower: 0, position: 0.5 },
-      volatility: 0,
-      momentum: [0, 0, 0, 0]
+      upper: sma + (stdDev * 2),
+      lower: sma - (stdDev * 2)
     };
+  }
+
+  private calculateBollingerPosition(bars: HistoricalBar[]): number {
+    const bands = this.calculateBollingerBands(bars);
+    if (bands.upper === bands.lower) return 0.5;
+    
+    const currentPrice = bars[bars.length - 1].close;
+    return (currentPrice - bands.lower) / (bands.upper - bands.lower);
+  }
+
+  private async calculateBTCCorrelation(symbol: string, timestamp: number): Promise<number> {
+    if (symbol === 'BTC') return 1;
+    
+    const days = 30;
+    const startTime = timestamp - (days * 24 * 60 * 60 * 1000);
+    
+    const [symbolBars, btcBars] = await Promise.all([
+      historicalDataService.getHistoricalBars(symbol, startTime, timestamp),
+      historicalDataService.getHistoricalBars('BTC', startTime, timestamp)
+    ]);
+    
+    if (symbolBars.length < 30 || btcBars.length < 30) return 0;
+    
+    const symbolReturns = symbolBars.slice(1).map((bar, i) => 
+      Math.log(bar.close / symbolBars[i].close)
+    );
+    const btcReturns = btcBars.slice(1).map((bar, i) => 
+      Math.log(bar.close / btcBars[i].close)
+    );
+    
+    return this.pearsonCorrelation(symbolReturns, btcReturns);
+  }
+
+  private pearsonCorrelation(x: number[], y: number[]): number {
+    const n = Math.min(x.length, y.length);
+    if (n === 0) return 0;
+    
+    const meanX = x.slice(0, n).reduce((sum, val) => sum + val, 0) / n;
+    const meanY = y.slice(0, n).reduce((sum, val) => sum + val, 0) / n;
+    
+    let numerator = 0;
+    let denomX = 0;
+    let denomY = 0;
+    
+    for (let i = 0; i < n; i++) {
+      const diffX = x[i] - meanX;
+      const diffY = y[i] - meanY;
+      numerator += diffX * diffY;
+      denomX += diffX * diffX;
+      denomY += diffY * diffY;
+    }
+    
+    const denominator = Math.sqrt(denomX * denomY);
+    return denominator === 0 ? 0 : numerator / denominator;
+  }
+
+  private async determineMarketRegime(symbol: string, timestamp: number): Promise<'bull' | 'bear' | 'sideways'> {
+    const bars = await historicalDataService.getHistoricalBars(
+      symbol, 
+      timestamp - (30 * 24 * 60 * 60 * 1000), 
+      timestamp
+    );
+    
+    if (bars.length < 30) return 'sideways';
+    
+    const priceChange30d = this.calculatePriceChange(bars, 30);
+    const volatility = this.calculateVolatility(bars.slice(-7));
+    
+    if (priceChange30d > 20 && volatility < 50) return 'bull';
+    if (priceChange30d < -20 && volatility < 50) return 'bear';
+    return 'sideways';
+  }
+
+  private async calculateFearGreedIndex(timestamp: number): Promise<number> {
+    // Simplified fear & greed calculation based on multiple market factors
+    const btcBars = await historicalDataService.getHistoricalBars(
+      'BTC',
+      timestamp - (7 * 24 * 60 * 60 * 1000),
+      timestamp
+    );
+    
+    if (btcBars.length < 7) return 50; // Neutral
+    
+    const priceChange = this.calculatePriceChange(btcBars, 7);
+    const volatility = this.calculateVolatility(btcBars);
+    const volume = btcBars[btcBars.length - 1].volume;
+    const avgVolume = this.calculateSMA(btcBars.slice(-7).map(b => b.volume));
+    
+    // Combine factors (0-100 scale)
+    let fearGreed = 50; // Start neutral
+    
+    // Price momentum component
+    fearGreed += Math.min(25, Math.max(-25, priceChange));
+    
+    // Volatility component (high volatility = fear)
+    fearGreed -= Math.min(15, volatility / 10);
+    
+    // Volume component (high volume = interest/greed)
+    fearGreed += Math.min(10, (volume / avgVolume - 1) * 20);
+    
+    return Math.max(0, Math.min(100, fearGreed));
+  }
+
+  // Batch processing for multiple symbols
+  async getBatchFeatures(symbols: string[], timestamp?: number): Promise<Map<string, FeatureVector>> {
+    const results = new Map<string, FeatureVector>();
+    
+    const promises = symbols.map(async (symbol) => {
+      try {
+        const features = await this.getFeatures(symbol, timestamp);
+        results.set(symbol, features);
+      } catch (error) {
+        logger.error(`Failed to get features for ${symbol}:`, error);
+      }
+    });
+    
+    await Promise.all(promises);
+    return results;
+  }
+
+  clearCache(): void {
+    this.cache.clear();
+    this.cacheTimestamps.clear();
+    logger.info('Feature service cache cleared');
   }
 }
 
-export default FeatureService;
+export const featureService = new FeatureService();

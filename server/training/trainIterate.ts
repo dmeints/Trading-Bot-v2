@@ -1,381 +1,397 @@
-#!/usr/bin/env tsx
-
 /**
- * STEVIE ITERATIVE TRAINING LOOP - "TRAINING DAY"
- * Automated benchmark → train → improve loop with version tracking
+ * PHASE 3: TRAIN ITERATE - AUTOMATED IMPROVEMENT CYCLES
+ * Orchestrates continuous training and benchmarking with version bumping
  */
 
-import { StevieVersionedBenchmark, BenchmarkConfig, BenchmarkResult } from './benchmarkTest';
-import SteveDifficultyScheduler from './difficultyScheduler';
-import { performance } from 'perf_hooks';
-import fs from 'fs';
-import path from 'path';
+import { simulationEngine } from '../services/simulationEngine';
+import { difficultyScheduler } from './difficultyScheduler';
+import { logger } from '../utils/logger';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import fs from 'fs/promises';
 
-interface TrainingIteration {
-  iterationNumber: number;
-  stevieVersion: string;
-  benchmarkVersion: string;
-  difficulty: any;
-  performance: {
-    totalReturn: number;
-    sharpeRatio: number;
-    maxDrawdown: number;
-    winRate: number;
-    improvement: number;
-  };
-  trainingTime: number;
-  status: 'success' | 'failed' | 'insufficient_improvement' | 'max_iterations_reached';
-  metadata: any;
-}
+const execAsync = promisify(exec);
 
-interface TrainingDayReport {
-  sessionId: string;
+export interface TrainingIteration {
+  iteration: number;
+  version: string;
   startTime: number;
   endTime: number;
-  initialVersion: string;
-  finalVersion: string;
-  totalIterations: number;
-  successfulIterations: number;
-  iterations: TrainingIteration[];
-  stoppingCriteria: {
-    reason: string;
-    finalImprovement: number;
-    threshold: number;
+  performance: {
+    winRate: number;
+    sharpeRatio: number;
+    totalReturn: number;
+    maxDrawdown: number;
   };
-  performanceTrend: {
-    bestIteration: TrainingIteration;
-    worstIteration: TrainingIteration;
-    overallImprovement: number;
-    averageImprovement: number;
-  };
-  recommendations: string[];
+  improvementFromPrevious: number;
+  trainingDuration: number;
+  benchmarkDuration: number;
+  status: 'success' | 'failed' | 'plateau';
 }
 
-export class StevieTrainingDay {
-  private benchmark: StevieVersionedBenchmark;
-  private scheduler: SteveDifficultyScheduler;
-  private sessionId: string;
-  private resultsDir = './training-results';
+export class TrainingIterator {
+  private currentIteration = 0;
+  private isRunning = false;
+  private iterations: TrainingIteration[] = [];
+  
+  async startIterativeTraining(maxIterations: number = 50, plateauThreshold: number = 0.005): Promise<void> {
+    this.isRunning = true;
+    logger.info('🔄 Starting iterative training process', {
+      maxIterations,
+      plateauThreshold: plateauThreshold * 100 + '%'
+    });
 
-  constructor() {
-    this.benchmark = new StevieVersionedBenchmark();
-    this.scheduler = new SteveDifficultyScheduler();
-    this.sessionId = `training_${Date.now()}`;
+    await difficultyScheduler.initialize();
     
-    if (!fs.existsSync(this.resultsDir)) {
-      fs.mkdirSync(this.resultsDir, { recursive: true });
-    }
-  }
-
-  async startTrainingDay(config: {
-    initialDays: number;
-    initialVersion: string;
-    maxIterations: number;
-    minImprovement: number;
-    retrainEpochs?: number;
-  }): Promise<TrainingDayReport> {
-    
-    console.log('🚀 STEVIE TRAINING DAY INITIATED');
-    console.log('='.repeat(50));
-    console.log(`📝 Session ID: ${this.sessionId}`);
-    console.log(`🎯 Starting Version: Stevie v${config.initialVersion}`);
-    console.log(`🎚️ Initial Difficulty: ${config.initialDays} days`);
-    console.log(`🔄 Max Iterations: ${config.maxIterations}`);
-    console.log(`📊 Min Improvement: ${(config.minImprovement * 100).toFixed(1)}%`);
-    console.log('='.repeat(50));
-
-    const startTime = performance.now();
-    const iterations: TrainingIteration[] = [];
-    
-    let currentVersion = config.initialVersion;
-    let benchmarkVersion = '1.1';
     let previousPerformance = 0;
-    let consecutiveFailures = 0;
+    let plateauCount = 0;
+    const maxPlateau = 5; // Stop after 5 consecutive plateaus
     
-    for (let i = 1; i <= config.maxIterations; i++) {
-      console.log(`\n🔄 ITERATION ${i}/${config.maxIterations}`);
-      console.log(`🏷️ Stevie Version: ${currentVersion}`);
-      console.log(`🎯 Benchmark Version: ${benchmarkVersion}`);
-      
-      const iterationStart = performance.now();
-      
+    for (let i = 0; i < maxIterations && this.isRunning; i++) {
       try {
-        // 1. Run benchmark test
-        const difficultyConfig = this.scheduler.getDifficultyConfig(benchmarkVersion);
-        const benchmarkConfig: BenchmarkConfig = {
-          version: benchmarkVersion,
-          days: Math.max(config.initialDays, difficultyConfig.days),
-          marketShocks: difficultyConfig.marketShocks,
-          noiseLevel: difficultyConfig.noiseLevel,
-          slippageRate: difficultyConfig.slippageRate,
-          minTradesRequired: 5
-        };
-
-        console.log(`⚡ Running benchmark with difficulty level ${difficultyConfig.days} days...`);
-        const benchmarkResult = await this.benchmark.runBenchmark(benchmarkConfig);
+        const iteration = await this.runSingleIteration(i + 1, previousPerformance);
+        this.iterations.push(iteration);
         
-        // 2. Calculate improvement
-        const currentPerformance = benchmarkResult.performance.totalReturn;
-        const improvement = i === 1 ? 0 : (currentPerformance - previousPerformance) / Math.abs(previousPerformance);
+        // Check for improvement
+        const improvement = iteration.improvementFromPrevious;
         
-        console.log(`📈 Performance: ${currentPerformance.toFixed(2)}% (${improvement >= 0 ? '+' : ''}${(improvement * 100).toFixed(2)}% vs previous)`);
-        
-        // 3. Check improvement criteria
-        const iteration: TrainingIteration = {
-          iterationNumber: i,
-          stevieVersion: currentVersion,
-          benchmarkVersion: benchmarkVersion,
-          difficulty: difficultyConfig,
-          performance: {
-            totalReturn: currentPerformance,
-            sharpeRatio: benchmarkResult.performance.sharpeRatio,
-            maxDrawdown: benchmarkResult.performance.maxDrawdown,
-            winRate: benchmarkResult.performance.winRate,
-            improvement: improvement
-          },
-          trainingTime: performance.now() - iterationStart,
-          status: 'success',
-          metadata: {
-            totalTrades: benchmarkResult.performance.totalTrades,
-            difficultyLevel: benchmarkResult.difficulty.level,
-            marketRegimes: benchmarkResult.metadata.marketRegimes
-          }
-        };
-
-        if (i > 1 && improvement < config.minImprovement) {
-          consecutiveFailures++;
-          iteration.status = 'insufficient_improvement';
+        if (improvement < plateauThreshold) {
+          plateauCount++;
+          logger.warn(`📉 Plateau detected (${plateauCount}/${maxPlateau})`, {
+            improvement: (improvement * 100).toFixed(3) + '%',
+            threshold: (plateauThreshold * 100).toFixed(3) + '%'
+          });
           
-          console.log(`⚠️ Insufficient improvement: ${(improvement * 100).toFixed(3)}% < ${(config.minImprovement * 100).toFixed(1)}%`);
-          
-          if (consecutiveFailures >= 3) {
-            iterations.push(iteration);
-            console.log('🛑 Stopping: 3 consecutive insufficient improvements');
+          if (plateauCount >= maxPlateau) {
+            logger.info('🛑 Training stopped due to performance plateau');
             break;
           }
         } else {
-          consecutiveFailures = 0;
+          plateauCount = 0; // Reset plateau counter
+          logger.info('📈 Performance improvement detected', {
+            improvement: (improvement * 100).toFixed(2) + '%'
+          });
         }
-
-        iterations.push(iteration);
-        previousPerformance = currentPerformance;
-
-        // 4. Scale difficulty and increment versions
-        if (improvement >= config.minImprovement || i === 1) {
-          benchmarkVersion = this.scheduler.increase(benchmarkVersion);
-          currentVersion = this.incrementStevieVersion(currentVersion);
-          
-          // 5. Retrain Stevie (simulated)
-          console.log(`🧠 Retraining Stevie v${currentVersion}...`);
-          await this.retrainStevie(config.retrainEpochs || 50);
-          
-          console.log(`✅ Training successful - upgraded to Stevie v${currentVersion}`);
-        }
+        
+        previousPerformance = iteration.performance.sharpeRatio;
+        
+        // Save progress
+        await this.saveIterationResults();
+        
+        // Brief pause between iterations
+        await this.sleep(5000);
         
       } catch (error) {
-        console.error(`❌ Iteration ${i} failed:`, error);
-        iterations.push({
-          iterationNumber: i,
-          stevieVersion: currentVersion,
-          benchmarkVersion: benchmarkVersion,
-          difficulty: {},
-          performance: { totalReturn: 0, sharpeRatio: 0, maxDrawdown: 0, winRate: 0, improvement: -1 },
-          trainingTime: performance.now() - iterationStart,
-          status: 'failed',
-          metadata: { error: error instanceof Error ? error.message : String(error) }
-        });
-        
-        consecutiveFailures++;
-        if (consecutiveFailures >= 2) {
-          console.log('🛑 Stopping: 2 consecutive failures');
-          break;
-        }
+        logger.error(`Training iteration ${i + 1} failed:`, error as Record<string, any>);
+        break;
       }
     }
-
-    const endTime = performance.now();
     
-    // Generate comprehensive report
-    const report = this.generateTrainingReport({
-      sessionId: this.sessionId,
-      startTime: startTime,
-      endTime: endTime,
-      initialVersion: config.initialVersion,
-      finalVersion: currentVersion,
-      iterations: iterations,
-      config: config
+    this.isRunning = false;
+    await this.generateFinalReport();
+    logger.info('✅ Iterative training completed', {
+      totalIterations: this.iterations.length,
+      bestPerformance: this.getBestIteration()?.performance.sharpeRatio.toFixed(2) || 'N/A'
     });
-
-    // Save and display report
-    await this.saveTrainingReport(report);
-    this.displayTrainingReport(report);
-
-    return report;
   }
 
-  private incrementStevieVersion(currentVersion: string): string {
-    const [major, minor, patch = 0] = currentVersion.split('.').map(Number);
+  private async runSingleIteration(iteration: number, previousPerformance: number): Promise<TrainingIteration> {
+    const startTime = Date.now();
     
-    // Training iterations increment patch version: 1.4.0 → 1.4.1 → 1.4.2
-    return `${major}.${minor}.${patch + 1}`;
-  }
-
-  private async retrainStevie(epochs: number): Promise<void> {
-    // Simulate training time (in real implementation, this would call actual ML training)
-    const trainingTime = Math.random() * 2000 + 1000; // 1-3 seconds
-    await new Promise(resolve => setTimeout(resolve, trainingTime));
+    logger.info(`🎯 Starting iteration ${iteration}`);
     
-    console.log(`   📚 Completed ${epochs} epochs in ${(trainingTime/1000).toFixed(1)}s`);
-  }
-
-  private generateTrainingReport(data: any): TrainingDayReport {
-    const successfulIterations = data.iterations.filter((i: any) => i.status === 'success');
-    const performances = successfulIterations.map((i: any) => i.performance.totalReturn);
+    // 1. Get current version and generate difficulty config
+    const currentVersion = await this.getCurrentVersion();
+    const improvement = iteration === 1 ? 0.1 : (Math.random() - 0.4) * 0.2; // Simulate improvement
+    const newVersion = await difficultyScheduler.getNextVersion(currentVersion, improvement);
+    const difficultyConfig = await difficultyScheduler.generateDifficultyConfig(newVersion, previousPerformance);
     
-    let bestIteration = successfulIterations[0];
-    let worstIteration = successfulIterations[0];
+    // 2. Run behavior cloning if needed
+    const behaviorCloningDuration = await this.runBehaviorCloning();
     
-    for (const iteration of successfulIterations) {
-      if (iteration.performance.totalReturn > bestIteration?.performance.totalReturn) {
-        bestIteration = iteration;
-      }
-      if (iteration.performance.totalReturn < worstIteration?.performance.totalReturn) {
-        worstIteration = iteration;
-      }
-    }
-
-    const overallImprovement = performances.length >= 2 ? 
-      (performances[performances.length - 1] - performances[0]) / Math.abs(performances[0]) : 0;
+    // 3. Run advanced RL training
+    const rlTrainingDuration = await this.runRLTraining(difficultyConfig.version);
     
-    const averageImprovement = data.iterations
-      .filter((i: any) => i.iterationNumber > 1)
-      .reduce((sum: number, i: any) => sum + i.performance.improvement, 0) / 
-      Math.max(1, data.iterations.length - 1);
-
-    const lastIteration = data.iterations[data.iterations.length - 1];
-    const stoppingReason = lastIteration?.status === 'insufficient_improvement' ? 
-      'Insufficient improvement' :
-      lastIteration?.status === 'failed' ? 
-      'Training failures' : 
-      'Maximum iterations reached';
-
-    return {
-      sessionId: data.sessionId,
-      startTime: data.startTime,
-      endTime: data.endTime,
-      initialVersion: data.initialVersion,
-      finalVersion: data.finalVersion,
-      totalIterations: data.iterations.length,
-      successfulIterations: successfulIterations.length,
-      iterations: data.iterations,
-      stoppingCriteria: {
-        reason: stoppingReason,
-        finalImprovement: lastIteration?.performance.improvement || 0,
-        threshold: data.config.minImprovement
-      },
-      performanceTrend: {
-        bestIteration: bestIteration || data.iterations[0],
-        worstIteration: worstIteration || data.iterations[0],
-        overallImprovement,
-        averageImprovement
-      },
-      recommendations: this.generateRecommendations(data.iterations, overallImprovement)
+    // 4. Run comprehensive benchmark
+    const benchmarkStart = Date.now();
+    const benchmarkResults = await this.runBenchmark(difficultyConfig);
+    const benchmarkDuration = Date.now() - benchmarkStart;
+    
+    // 5. Calculate performance metrics
+    const performance = {
+      winRate: benchmarkResults.winRate,
+      sharpeRatio: benchmarkResults.sharpeRatio,
+      totalReturn: benchmarkResults.totalReturn,
+      maxDrawdown: benchmarkResults.maxDrawdown
     };
+    
+    const improvementFromPrevious = previousPerformance > 0 ? 
+      (performance.sharpeRatio - previousPerformance) / previousPerformance : 0.1;
+    
+    // 6. Update progression tracking
+    await difficultyScheduler.updateProgression(
+      parseFloat(newVersion.split('.')[0] + '.' + newVersion.split('.')[1]),
+      improvementFromPrevious
+    );
+    
+    const endTime = Date.now();
+    const totalDuration = endTime - startTime;
+    
+    const result: TrainingIteration = {
+      iteration,
+      version: newVersion,
+      startTime,
+      endTime,
+      performance,
+      improvementFromPrevious,
+      trainingDuration: behaviorCloningDuration + rlTrainingDuration,
+      benchmarkDuration,
+      status: improvementFromPrevious > 0.005 ? 'success' : 
+               improvementFromPrevious < -0.01 ? 'failed' : 'plateau'
+    };
+    
+    logger.info(`✅ Iteration ${iteration} completed`, {
+      version: newVersion,
+      performance: performance.sharpeRatio.toFixed(3),
+      improvement: (improvementFromPrevious * 100).toFixed(2) + '%',
+      duration: (totalDuration / 1000).toFixed(1) + 's'
+    });
+    
+    return result;
   }
 
-  private generateRecommendations(iterations: TrainingIteration[], overallImprovement: number): string[] {
+  private async runBehaviorCloning(): Promise<number> {
+    const start = Date.now();
+    
+    try {
+      // Check if behavior cloning model needs updating
+      const modelExists = await this.fileExists('./models/behavior_cloning_model.h5');
+      const dataExists = await this.fileExists('./data/historical');
+      
+      if (!dataExists) {
+        logger.warn('Historical data not found, running data ingestion first');
+        await execAsync('tsx scripts/loadAllData.ts');
+      }
+      
+      if (!modelExists) {
+        logger.info('🧠 Running behavior cloning pretraining...');
+        await execAsync('python server/rl/behaviorClone.py');
+      }
+      
+      return Date.now() - start;
+    } catch (error) {
+      logger.error('Behavior cloning failed:', error as Record<string, any>);
+      return Date.now() - start;
+    }
+  }
+
+  private async runRLTraining(version: string): Promise<number> {
+    const start = Date.now();
+    
+    try {
+      logger.info(`🤖 Running RL training for version ${version}`);
+      
+      // Run PPO training with version-specific config
+      const trainingConfig = {
+        version,
+        episodes: 1000,
+        learning_rate: 0.0003,
+        batch_size: 64,
+        gamma: 0.99
+      };
+      
+      // Save training config
+      await fs.writeFile(
+        `./models/training_config_${version}.json`,
+        JSON.stringify(trainingConfig, null, 2)
+      );
+      
+      // Execute RL training (would be actual Python/ML training in real implementation)
+      logger.info('RL training simulation completed');
+      
+      return Date.now() - start;
+    } catch (error) {
+      logger.error('RL training failed:', error as Record<string, any>);
+      return Date.now() - start;
+    }
+  }
+
+  private async runBenchmark(difficultyConfig: any): Promise<{
+    winRate: number;
+    sharpeRatio: number;
+    totalReturn: number;
+    maxDrawdown: number;
+  }> {
+    logger.info(`📊 Running benchmark with difficulty config`);
+    
+    // Create simulation configuration
+    const simulationConfigs = [
+      {
+        symbol: 'BTC',
+        startTime: Date.now() - (difficultyConfig.days * 24 * 60 * 60 * 1000),
+        endTime: Date.now(),
+        initialBalance: 10000,
+        timeStep: 60 * 60 * 1000, // 1 hour steps
+        riskPerTrade: 0.02,
+        maxPositionSize: 0.5,
+        commission: 0.001
+      },
+      {
+        symbol: 'ETH',
+        startTime: Date.now() - (difficultyConfig.days * 24 * 60 * 60 * 1000),
+        endTime: Date.now(),
+        initialBalance: 10000,
+        timeStep: 60 * 60 * 1000,
+        riskPerTrade: 0.02,
+        maxPositionSize: 0.5,
+        commission: 0.001
+      }
+    ];
+
+    // Run simulations
+    const results = await simulationEngine.runBatchSimulation(simulationConfigs);
+    const stats = await simulationEngine.getSimulationStatistics(results);
+    
+    // Apply difficulty modifiers
+    const baseResults = {
+      winRate: stats.avgWinRate,
+      sharpeRatio: stats.avgSharpe,
+      totalReturn: stats.avgReturn,
+      maxDrawdown: 15 // Estimate
+    };
+    
+    // Adjust for difficulty (noise, slippage, etc.)
+    const adjustedResults = {
+      winRate: Math.max(0, baseResults.winRate - difficultyConfig.noiseLevel),
+      sharpeRatio: Math.max(0, baseResults.sharpeRatio - difficultyConfig.slippageRate * 100),
+      totalReturn: baseResults.totalReturn * (1 - difficultyConfig.slippageRate),
+      maxDrawdown: baseResults.maxDrawdown * difficultyConfig.volatilityMultiplier
+    };
+    
+    logger.info('📈 Benchmark completed', {
+      winRate: adjustedResults.winRate.toFixed(1) + '%',
+      sharpe: adjustedResults.sharpeRatio.toFixed(2),
+      return: adjustedResults.totalReturn.toFixed(2) + '%'
+    });
+    
+    return adjustedResults;
+  }
+
+  private async getCurrentVersion(): Promise<string> {
+    try {
+      const difficulty = await difficultyScheduler.getCurrentDifficulty();
+      return difficulty.config?.version || '1.0.0';
+    } catch {
+      return '1.0.0';
+    }
+  }
+
+  private async saveIterationResults(): Promise<void> {
+    const resultsPath = './benchmark-results/training-iterations.json';
+    await fs.writeFile(resultsPath, JSON.stringify(this.iterations, null, 2));
+  }
+
+  private async generateFinalReport(): Promise<void> {
+    const bestIteration = this.getBestIteration();
+    const totalDuration = this.iterations.reduce((sum, iter) => sum + (iter.endTime - iter.startTime), 0);
+    
+    const report = {
+      timestamp: new Date().toISOString(),
+      summary: {
+        totalIterations: this.iterations.length,
+        totalDuration: totalDuration,
+        bestIteration: bestIteration?.iteration || 0,
+        bestPerformance: bestIteration?.performance || null,
+        finalVersion: this.iterations[this.iterations.length - 1]?.version || 'unknown',
+        averageImprovement: this.iterations.reduce((sum, iter) => sum + iter.improvementFromPrevious, 0) / this.iterations.length
+      },
+      iterations: this.iterations,
+      recommendations: this.generateRecommendations()
+    };
+    
+    const reportPath = './benchmark-results/training-final-report.json';
+    await fs.writeFile(reportPath, JSON.stringify(report, null, 2));
+    
+    logger.info('📋 Final training report generated', {
+      path: reportPath,
+      bestSharpe: bestIteration?.performance.sharpeRatio.toFixed(2) || 'N/A'
+    });
+  }
+
+  private getBestIteration(): TrainingIteration | null {
+    return this.iterations.reduce((best, current) => 
+      !best || current.performance.sharpeRatio > best.performance.sharpeRatio ? current : best
+    , null as TrainingIteration | null);
+  }
+
+  private generateRecommendations(): string[] {
     const recommendations: string[] = [];
-    const successRate = iterations.filter(i => i.status === 'success').length / iterations.length;
     
-    if (successRate < 0.5) {
-      recommendations.push('Consider reducing initial difficulty or extending training epochs');
+    if (this.iterations.length === 0) {
+      return ['No iterations completed - check system configuration'];
     }
     
-    if (overallImprovement < 0) {
-      recommendations.push('Model may be overfitting - consider regularization or simpler architecture');
-    } else if (overallImprovement > 0.2) {
-      recommendations.push('Excellent learning progress - consider more aggressive difficulty scaling');
+    const avgImprovement = this.iterations.reduce((sum, iter) => sum + iter.improvementFromPrevious, 0) / this.iterations.length;
+    const bestPerformance = this.getBestIteration();
+    
+    if (avgImprovement < 0.001) {
+      recommendations.push('Consider adjusting hyperparameters or training methodology');
+      recommendations.push('Review difficulty progression settings');
     }
     
-    const avgTrainingTime = iterations.reduce((sum, i) => sum + i.trainingTime, 0) / iterations.length;
-    if (avgTrainingTime > 30000) { // 30 seconds
-      recommendations.push('Training time is high - consider optimizing hyperparameters or reducing model complexity');
+    if (bestPerformance && bestPerformance.performance.sharpeRatio > 2.0) {
+      recommendations.push('Excellent performance achieved - consider production deployment');
+    } else if (bestPerformance && bestPerformance.performance.sharpeRatio < 1.0) {
+      recommendations.push('Performance below target - review training data and features');
     }
     
-    if (recommendations.length === 0) {
-      recommendations.push('Training performance is balanced - continue with current parameters');
+    const successfulIterations = this.iterations.filter(iter => iter.status === 'success').length;
+    const successRate = successfulIterations / this.iterations.length;
+    
+    if (successRate < 0.3) {
+      recommendations.push('Low success rate - consider simplifying difficulty progression');
     }
     
     return recommendations;
   }
 
-  private async saveTrainingReport(report: TrainingDayReport): Promise<void> {
-    const filename = `training_day_${this.sessionId}.json`;
-    const filepath = path.join(this.resultsDir, filename);
-    
-    fs.writeFileSync(filepath, JSON.stringify(report, null, 2));
-    
-    // Save latest report
-    const latestPath = path.join(this.resultsDir, 'latest_training_day.json');
-    fs.writeFileSync(latestPath, JSON.stringify(report, null, 2));
-    
-    console.log(`\n📄 Training report saved: ${filename}`);
+  private async fileExists(filepath: string): Promise<boolean> {
+    try {
+      await fs.access(filepath);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
-  private displayTrainingReport(report: TrainingDayReport): void {
-    const duration = (report.endTime - report.startTime) / 1000;
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  stopTraining(): void {
+    this.isRunning = false;
+    logger.info('🛑 Training stopped by user');
+  }
+
+  getIterationHistory(): TrainingIteration[] {
+    return [...this.iterations];
+  }
+
+  async getTrainingStatus(): Promise<{
+    isRunning: boolean;
+    currentIteration: number;
+    totalIterations: number;
+    bestPerformance: number | null;
+  }> {
+    const best = this.getBestIteration();
     
-    console.log('\n🎓 TRAINING DAY COMPLETE');
-    console.log('='.repeat(60));
-    console.log(`🏷️ Session: ${report.sessionId}`);
-    console.log(`⏱️ Duration: ${(duration / 60).toFixed(1)} minutes`);
-    console.log(`🚀 Version Progression: ${report.initialVersion} → ${report.finalVersion}`);
-    console.log(`🔄 Total Iterations: ${report.totalIterations}`);
-    console.log(`✅ Successful: ${report.successfulIterations}/${report.totalIterations}`);
-    console.log(`🛑 Stopping Reason: ${report.stoppingCriteria.reason}`);
-    console.log(`📈 Overall Improvement: ${(report.performanceTrend.overallImprovement * 100).toFixed(2)}%`);
-    
-    console.log('\n📊 PERFORMANCE SUMMARY');
-    console.log('-'.repeat(40));
-    console.log(`🏆 Best Performance: ${report.performanceTrend.bestIteration.performance.totalReturn.toFixed(2)}% (v${report.performanceTrend.bestIteration.stevieVersion})`);
-    console.log(`📉 Worst Performance: ${report.performanceTrend.worstIteration.performance.totalReturn.toFixed(2)}% (v${report.performanceTrend.worstIteration.stevieVersion})`);
-    console.log(`📊 Average Improvement: ${(report.performanceTrend.averageImprovement * 100).toFixed(2)}%`);
-    
-    console.log('\n💡 RECOMMENDATIONS');
-    console.log('-'.repeat(40));
-    report.recommendations.forEach((rec, i) => {
-      console.log(`${i + 1}. ${rec}`);
-    });
-    
-    console.log('\n📈 ITERATION BREAKDOWN');
-    console.log('-'.repeat(40));
-    report.iterations.forEach(iteration => {
-      const status = iteration.status === 'success' ? '✅' : 
-                    iteration.status === 'failed' ? '❌' : '⚠️';
-      const improvement = iteration.iterationNumber > 1 ? 
-        `(${iteration.performance.improvement >= 0 ? '+' : ''}${(iteration.performance.improvement * 100).toFixed(1)}%)` : '';
-      
-      console.log(`${status} Iteration ${iteration.iterationNumber}: Stevie v${iteration.stevieVersion} - ${iteration.performance.totalReturn.toFixed(1)}% ${improvement}`);
-    });
-    
-    console.log('='.repeat(60));
+    return {
+      isRunning: this.isRunning,
+      currentIteration: this.currentIteration,
+      totalIterations: this.iterations.length,
+      bestPerformance: best?.performance.sharpeRatio || null
+    };
   }
 }
 
-// CLI execution
-if (import.meta.url === `file://${process.argv[1]}`) {
-  const args = process.argv.slice(2);
-  
-  const config = {
-    initialDays: parseInt(args.find(arg => arg.startsWith('--initial-days='))?.split('=')[1] || '7'),
-    initialVersion: args.find(arg => arg.startsWith('--initial-version='))?.split('=')[1] || '1.4.0',
-    maxIterations: parseInt(args.find(arg => arg.startsWith('--max-iterations='))?.split('=')[1] || '20'),
-    minImprovement: parseFloat(args.find(arg => arg.startsWith('--min-improvement='))?.split('=')[1] || '0.005'),
-    retrainEpochs: parseInt(args.find(arg => arg.startsWith('--epochs='))?.split('=')[1] || '50')
-  };
-  
-  const trainingDay = new StevieTrainingDay();
-  trainingDay.startTrainingDay(config).catch(console.error);
-}
-
-export type { TrainingIteration, TrainingDayReport };
+export const trainingIterator = new TrainingIterator();

@@ -13,7 +13,7 @@ import {
   type TimeframeSignal
 } from '../../shared/schema';
 import { eq, desc, and, gte } from 'drizzle-orm';
-import FeatureService from './featureService';
+import { featureService } from './featureService';
 
 interface StrategySignal {
   timeframe: '1m' | '5m' | '15m' | '1h' | '4h' | '1d';
@@ -39,7 +39,7 @@ interface TimeframeAnalysis {
 }
 
 export class MultiTimeframeService {
-  private featureService: FeatureService;
+  private featureService = featureService;
   
   private strategyConfigs = {
     scalping: {
@@ -69,7 +69,7 @@ export class MultiTimeframeService {
   };
 
   constructor() {
-    this.featureService = new FeatureService();
+    // featureService already assigned as class property
   }
 
   async orchestrateStrategies(

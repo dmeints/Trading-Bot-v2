@@ -4,13 +4,13 @@
  */
 
 import { Router } from 'express';
-import FeatureService from '../services/featureService';
+import { featureService } from '../services/featureService';
 import VectorService from '../services/vectorService';
 
 const router = Router();
 
 // Initialize services
-const featureService = new FeatureService();
+// Import featureService instance from service module
 const vectorService = new VectorService({
   provider: 'memory', // Use in-memory for development
   openaiApiKey: process.env.OPENAI_API_KEY

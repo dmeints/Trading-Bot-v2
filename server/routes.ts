@@ -40,6 +40,8 @@ import { AlertingIntegration } from "./services/alertingIntegration";
 import stevieSupertainRoutes from './routes/stevie-supertrain';
 import featureRoutes from './routes/featureRoutes';
 import stevieRoutes from './routes/stevieRoutes';
+import taRoutes from './routes/taRoutes';
+import exchangeRoutes from './routes/exchangeRoutes';
 import { registerEnhancementRoutes } from './routes/enhancementRoutes';
 import { temporalRoutes } from './routes/temporalRoutes';
 import universalRoutes from './routes/universalRoutes';
@@ -120,6 +122,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Stevie explanation routes (v1.4 LLM integration)
   app.use('/api/stevie', stevieRoutes);
+  
+  // PHASE 6 & 7: Paper Run Implementation - TA and Exchange Routes
+  app.use('/api/ta', taRoutes);
+  app.use('/api/exchange', exchangeRoutes);
   
   // Register all 6 exceptional enhancement services
   registerEnhancementRoutes(app);

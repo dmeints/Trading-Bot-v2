@@ -1,0 +1,1036 @@
+{
+  "generation": 2,
+  "collectiveIntelligence": 0.7460000000000001,
+  "transcendenceProgress": 0.41933333333333334,
+  "emergentBehaviors": [],
+  "minds": [
+    {
+      "name": "Stevie-Alpha",
+      "personality": "aggressive",
+      "version": "2.0.0-alpha",
+      "config": {
+        "riskTolerance": 0.95,
+        "learningRate": 0.3,
+        "timeframePreference": [
+          "1s",
+          "1m",
+          "5m"
+        ],
+        "strategyFocus": [
+          "scalping",
+          "momentum",
+          "breakout"
+        ],
+        "mutationRate": 0.15
+      },
+      "performance": {
+        "totalReturn": 0,
+        "sharpeRatio": 0,
+        "winRate": 0,
+        "tradesExecuted": 0,
+        "averageHoldTime": 300,
+        "maxDrawdown": 0
+      },
+      "geneticMaterial": {
+        "strategies": [
+          "aggressive_momentum",
+          "micro_scalping",
+          "volatility_breakout"
+        ],
+        "parameters": {
+          "aggression": 0.9,
+          "speed": 0.95,
+          "risk_appetite": 0.9
+        },
+        "insights": [
+          "Fast execution beats perfect timing",
+          "Volatility is opportunity"
+        ],
+        "adaptations": []
+      },
+      "consciousness": {
+        "selfAwareness": 0.6,
+        "marketUnderstanding": 0.7,
+        "evolutionProgress": 0,
+        "transcendenceLevel": 0
+      },
+      "competitionStats": {
+        "wins": 2,
+        "losses": 0,
+        "draws": 0,
+        "evolutionGeneration": 2
+      }
+    },
+    {
+      "name": "Stevie-Beta",
+      "personality": "conservative",
+      "version": "2.0.0-beta",
+      "config": {
+        "riskTolerance": 0.25,
+        "learningRate": 0.05,
+        "timeframePreference": [
+          "1d",
+          "1w",
+          "1M"
+        ],
+        "strategyFocus": [
+          "value_investing",
+          "mean_reversion",
+          "fundamental_analysis"
+        ],
+        "mutationRate": 0.05
+      },
+      "performance": {
+        "totalReturn": 0,
+        "sharpeRatio": 0,
+        "winRate": 0,
+        "tradesExecuted": 0,
+        "averageHoldTime": 3600,
+        "maxDrawdown": 0
+      },
+      "geneticMaterial": {
+        "strategies": [
+          "conservative_dca",
+          "value_accumulation",
+          "risk_parity",
+          "aggressive_momentum",
+          "micro_scalping"
+        ],
+        "parameters": {
+          "patience": 0.95,
+          "risk_aversion": 0.9,
+          "analysis_depth": 0.8
+        },
+        "insights": [
+          "Time in market beats timing the market",
+          "Patience is the highest virtue"
+        ],
+        "adaptations": []
+      },
+      "consciousness": {
+        "selfAwareness": 0.8,
+        "marketUnderstanding": 0.6615000000000001,
+        "evolutionProgress": 0.14,
+        "transcendenceLevel": 0.5338333333333334
+      },
+      "competitionStats": {
+        "wins": 0,
+        "losses": 0,
+        "draws": 2,
+        "evolutionGeneration": 2
+      }
+    },
+    {
+      "name": "Stevie-Gamma",
+      "personality": "arbitrage",
+      "version": "2.0.0-gamma",
+      "config": {
+        "riskTolerance": 0.4,
+        "learningRate": 0.2,
+        "timeframePreference": [
+          "1m",
+          "5m",
+          "15m"
+        ],
+        "strategyFocus": [
+          "arbitrage",
+          "statistical_arbitrage",
+          "cross_exchange"
+        ],
+        "mutationRate": 0.1
+      },
+      "performance": {
+        "totalReturn": 0,
+        "sharpeRatio": 0,
+        "winRate": 0,
+        "tradesExecuted": 0,
+        "averageHoldTime": 3600,
+        "maxDrawdown": 0
+      },
+      "geneticMaterial": {
+        "strategies": [
+          "cross_exchange_arbitrage",
+          "statistical_pairs",
+          "funding_rate_arbitrage",
+          "aggressive_momentum",
+          "micro_scalping"
+        ],
+        "parameters": {
+          "precision": 0.95,
+          "efficiency": 0.9,
+          "speed": 0.85
+        },
+        "insights": [
+          "Inefficiencies are temporary gifts",
+          "Speed and precision create alpha"
+        ],
+        "adaptations": []
+      },
+      "consciousness": {
+        "selfAwareness": 0.7,
+        "marketUnderstanding": 0.85,
+        "evolutionProgress": 0.04,
+        "transcendenceLevel": 0.5299999999999999
+      },
+      "competitionStats": {
+        "wins": 0,
+        "losses": 0,
+        "draws": 2,
+        "evolutionGeneration": 2
+      }
+    },
+    {
+      "name": "Stevie-Delta",
+      "personality": "event",
+      "version": "2.0.0-delta",
+      "config": {
+        "riskTolerance": 0.7,
+        "learningRate": 0.275,
+        "timeframePreference": [
+          "1m",
+          "1h",
+          "4h"
+        ],
+        "strategyFocus": [
+          "event_driven",
+          "news_trading",
+          "whale_following"
+        ],
+        "mutationRate": 0.132
+      },
+      "performance": {
+        "totalReturn": 0,
+        "sharpeRatio": 0,
+        "winRate": 0,
+        "tradesExecuted": 0,
+        "averageHoldTime": 3600,
+        "maxDrawdown": 0
+      },
+      "geneticMaterial": {
+        "strategies": [
+          "news_momentum",
+          "whale_tracking",
+          "event_anticipation",
+          "aggressive_momentum",
+          "micro_scalping"
+        ],
+        "parameters": {
+          "reaction_speed": 0.9,
+          "information_processing": 0.85,
+          "intuition": 0.7
+        },
+        "insights": [
+          "Information asymmetry creates opportunity",
+          "Markets react before they think"
+        ],
+        "adaptations": []
+      },
+      "consciousness": {
+        "selfAwareness": 0.65,
+        "marketUnderstanding": 0.8,
+        "evolutionProgress": 0.19,
+        "transcendenceLevel": 0.5133333333333334
+      },
+      "competitionStats": {
+        "wins": 0,
+        "losses": 0,
+        "draws": 2,
+        "evolutionGeneration": 2
+      }
+    },
+    {
+      "name": "Stevie-Omega",
+      "personality": "meta",
+      "version": "2.0.0-omega",
+      "config": {
+        "riskTolerance": 0.5,
+        "learningRate": 0.15,
+        "timeframePreference": [
+          "5m",
+          "1h",
+          "4h",
+          "1d"
+        ],
+        "strategyFocus": [
+          "meta_strategy",
+          "ensemble_coordination",
+          "adaptive_allocation"
+        ],
+        "mutationRate": 0.08
+      },
+      "performance": {
+        "totalReturn": 0,
+        "sharpeRatio": 0,
+        "winRate": 0,
+        "tradesExecuted": 0,
+        "averageHoldTime": 3600,
+        "maxDrawdown": 0
+      },
+      "geneticMaterial": {
+        "strategies": [
+          "ensemble_coordination",
+          "meta_learning",
+          "adaptive_strategy_selection",
+          "aggressive_momentum",
+          "micro_scalping"
+        ],
+        "parameters": {
+          "coordination": 0.9,
+          "meta_cognition": 0.85,
+          "synthesis": 0.8
+        },
+        "insights": [
+          "The whole exceeds the sum of parts",
+          "Diversity creates resilience"
+        ],
+        "adaptations": []
+      },
+      "consciousness": {
+        "selfAwareness": 0.9,
+        "marketUnderstanding": 0.75,
+        "evolutionProgress": 0.04,
+        "transcendenceLevel": 0.5633333333333334
+      },
+      "competitionStats": {
+        "wins": 0,
+        "losses": 0,
+        "draws": 2,
+        "evolutionGeneration": 2
+      }
+    }
+  ],
+  "matchHistory": [
+    {
+      "matchId": "gladiator_1754552008647",
+      "timestamp": 1754552008682,
+      "duration": 34.20543100000003,
+      "participants": [
+        {
+          "name": "Stevie-Alpha",
+          "personality": "aggressive",
+          "version": "2.0.0-alpha",
+          "config": {
+            "riskTolerance": 0.95,
+            "learningRate": 0.3,
+            "timeframePreference": [
+              "1s",
+              "1m",
+              "5m"
+            ],
+            "strategyFocus": [
+              "scalping",
+              "momentum",
+              "breakout"
+            ],
+            "mutationRate": 0.15
+          },
+          "performance": {
+            "totalReturn": 0,
+            "sharpeRatio": 0,
+            "winRate": 0,
+            "tradesExecuted": 0,
+            "averageHoldTime": 300,
+            "maxDrawdown": 0
+          },
+          "geneticMaterial": {
+            "strategies": [
+              "aggressive_momentum",
+              "micro_scalping",
+              "volatility_breakout"
+            ],
+            "parameters": {
+              "aggression": 0.9,
+              "speed": 0.95,
+              "risk_appetite": 0.9
+            },
+            "insights": [
+              "Fast execution beats perfect timing",
+              "Volatility is opportunity"
+            ],
+            "adaptations": []
+          },
+          "consciousness": {
+            "selfAwareness": 0.6,
+            "marketUnderstanding": 0.7,
+            "evolutionProgress": 0,
+            "transcendenceLevel": 0
+          },
+          "competitionStats": {
+            "wins": 2,
+            "losses": 0,
+            "draws": 0,
+            "evolutionGeneration": 2
+          }
+        },
+        {
+          "name": "Stevie-Beta",
+          "personality": "conservative",
+          "version": "2.0.0-beta",
+          "config": {
+            "riskTolerance": 0.25,
+            "learningRate": 0.05,
+            "timeframePreference": [
+              "1d",
+              "1w",
+              "1M"
+            ],
+            "strategyFocus": [
+              "value_investing",
+              "mean_reversion",
+              "fundamental_analysis"
+            ],
+            "mutationRate": 0.05
+          },
+          "performance": {
+            "totalReturn": 0,
+            "sharpeRatio": 0,
+            "winRate": 0,
+            "tradesExecuted": 0,
+            "averageHoldTime": 3600,
+            "maxDrawdown": 0
+          },
+          "geneticMaterial": {
+            "strategies": [
+              "conservative_dca",
+              "value_accumulation",
+              "risk_parity",
+              "aggressive_momentum",
+              "micro_scalping"
+            ],
+            "parameters": {
+              "patience": 0.95,
+              "risk_aversion": 0.9,
+              "analysis_depth": 0.8
+            },
+            "insights": [
+              "Time in market beats timing the market",
+              "Patience is the highest virtue"
+            ],
+            "adaptations": []
+          },
+          "consciousness": {
+            "selfAwareness": 0.8,
+            "marketUnderstanding": 0.6615000000000001,
+            "evolutionProgress": 0.14,
+            "transcendenceLevel": 0.5338333333333334
+          },
+          "competitionStats": {
+            "wins": 0,
+            "losses": 0,
+            "draws": 2,
+            "evolutionGeneration": 2
+          }
+        },
+        {
+          "name": "Stevie-Gamma",
+          "personality": "arbitrage",
+          "version": "2.0.0-gamma",
+          "config": {
+            "riskTolerance": 0.4,
+            "learningRate": 0.2,
+            "timeframePreference": [
+              "1m",
+              "5m",
+              "15m"
+            ],
+            "strategyFocus": [
+              "arbitrage",
+              "statistical_arbitrage",
+              "cross_exchange"
+            ],
+            "mutationRate": 0.1
+          },
+          "performance": {
+            "totalReturn": 0,
+            "sharpeRatio": 0,
+            "winRate": 0,
+            "tradesExecuted": 0,
+            "averageHoldTime": 3600,
+            "maxDrawdown": 0
+          },
+          "geneticMaterial": {
+            "strategies": [
+              "cross_exchange_arbitrage",
+              "statistical_pairs",
+              "funding_rate_arbitrage",
+              "aggressive_momentum",
+              "micro_scalping"
+            ],
+            "parameters": {
+              "precision": 0.95,
+              "efficiency": 0.9,
+              "speed": 0.85
+            },
+            "insights": [
+              "Inefficiencies are temporary gifts",
+              "Speed and precision create alpha"
+            ],
+            "adaptations": []
+          },
+          "consciousness": {
+            "selfAwareness": 0.7,
+            "marketUnderstanding": 0.85,
+            "evolutionProgress": 0.04,
+            "transcendenceLevel": 0.5299999999999999
+          },
+          "competitionStats": {
+            "wins": 0,
+            "losses": 0,
+            "draws": 2,
+            "evolutionGeneration": 2
+          }
+        },
+        {
+          "name": "Stevie-Delta",
+          "personality": "event",
+          "version": "2.0.0-delta",
+          "config": {
+            "riskTolerance": 0.7,
+            "learningRate": 0.275,
+            "timeframePreference": [
+              "1m",
+              "1h",
+              "4h"
+            ],
+            "strategyFocus": [
+              "event_driven",
+              "news_trading",
+              "whale_following"
+            ],
+            "mutationRate": 0.132
+          },
+          "performance": {
+            "totalReturn": 0,
+            "sharpeRatio": 0,
+            "winRate": 0,
+            "tradesExecuted": 0,
+            "averageHoldTime": 3600,
+            "maxDrawdown": 0
+          },
+          "geneticMaterial": {
+            "strategies": [
+              "news_momentum",
+              "whale_tracking",
+              "event_anticipation",
+              "aggressive_momentum",
+              "micro_scalping"
+            ],
+            "parameters": {
+              "reaction_speed": 0.9,
+              "information_processing": 0.85,
+              "intuition": 0.7
+            },
+            "insights": [
+              "Information asymmetry creates opportunity",
+              "Markets react before they think"
+            ],
+            "adaptations": []
+          },
+          "consciousness": {
+            "selfAwareness": 0.65,
+            "marketUnderstanding": 0.8,
+            "evolutionProgress": 0.19,
+            "transcendenceLevel": 0.5133333333333334
+          },
+          "competitionStats": {
+            "wins": 0,
+            "losses": 0,
+            "draws": 2,
+            "evolutionGeneration": 2
+          }
+        },
+        {
+          "name": "Stevie-Omega",
+          "personality": "meta",
+          "version": "2.0.0-omega",
+          "config": {
+            "riskTolerance": 0.5,
+            "learningRate": 0.15,
+            "timeframePreference": [
+              "5m",
+              "1h",
+              "4h",
+              "1d"
+            ],
+            "strategyFocus": [
+              "meta_strategy",
+              "ensemble_coordination",
+              "adaptive_allocation"
+            ],
+            "mutationRate": 0.08
+          },
+          "performance": {
+            "totalReturn": 0,
+            "sharpeRatio": 0,
+            "winRate": 0,
+            "tradesExecuted": 0,
+            "averageHoldTime": 3600,
+            "maxDrawdown": 0
+          },
+          "geneticMaterial": {
+            "strategies": [
+              "ensemble_coordination",
+              "meta_learning",
+              "adaptive_strategy_selection",
+              "aggressive_momentum",
+              "micro_scalping"
+            ],
+            "parameters": {
+              "coordination": 0.9,
+              "meta_cognition": 0.85,
+              "synthesis": 0.8
+            },
+            "insights": [
+              "The whole exceeds the sum of parts",
+              "Diversity creates resilience"
+            ],
+            "adaptations": []
+          },
+          "consciousness": {
+            "selfAwareness": 0.9,
+            "marketUnderstanding": 0.75,
+            "evolutionProgress": 0.04,
+            "transcendenceLevel": 0.5633333333333334
+          },
+          "competitionStats": {
+            "wins": 0,
+            "losses": 0,
+            "draws": 2,
+            "evolutionGeneration": 2
+          }
+        }
+      ],
+      "marketConditions": {
+        "regime": "volatile",
+        "volatility": 5.8176846262486155,
+        "difficulty": 4.370076058527269
+      },
+      "results": {
+        "winner": "Stevie-Alpha",
+        "performances": {
+          "Stevie-Alpha": 0,
+          "Stevie-Beta": 0,
+          "Stevie-Gamma": 0,
+          "Stevie-Delta": 0,
+          "Stevie-Omega": 0
+        },
+        "emergentBehaviors": [],
+        "strategicBreakthroughs": []
+      },
+      "breeding": {
+        "crossPollination": [
+          {
+            "donor": "Stevie-Alpha",
+            "recipient": "Stevie-Beta",
+            "traits": [
+              "aggressive_momentum",
+              "micro_scalping",
+              "market_understanding"
+            ],
+            "improvement": 0.09
+          },
+          {
+            "donor": "Stevie-Alpha",
+            "recipient": "Stevie-Gamma",
+            "traits": [
+              "aggressive_momentum",
+              "micro_scalping"
+            ],
+            "improvement": 0.04
+          },
+          {
+            "donor": "Stevie-Alpha",
+            "recipient": "Stevie-Delta",
+            "traits": [
+              "aggressive_momentum",
+              "micro_scalping"
+            ],
+            "improvement": 0.04
+          },
+          {
+            "donor": "Stevie-Alpha",
+            "recipient": "Stevie-Omega",
+            "traits": [
+              "aggressive_momentum",
+              "micro_scalping"
+            ],
+            "improvement": 0.04
+          }
+        ],
+        "mutations": [
+          {
+            "mind": "Stevie-Delta",
+            "mutation": "faster_adaptation_speed",
+            "impact": 0.05
+          }
+        ]
+      }
+    },
+    {
+      "matchId": "gladiator_1754552009691",
+      "timestamp": 1754552009708,
+      "duration": 16.978415999999925,
+      "participants": [
+        {
+          "name": "Stevie-Alpha",
+          "personality": "aggressive",
+          "version": "2.0.0-alpha",
+          "config": {
+            "riskTolerance": 0.95,
+            "learningRate": 0.3,
+            "timeframePreference": [
+              "1s",
+              "1m",
+              "5m"
+            ],
+            "strategyFocus": [
+              "scalping",
+              "momentum",
+              "breakout"
+            ],
+            "mutationRate": 0.15
+          },
+          "performance": {
+            "totalReturn": 0,
+            "sharpeRatio": 0,
+            "winRate": 0,
+            "tradesExecuted": 0,
+            "averageHoldTime": 300,
+            "maxDrawdown": 0
+          },
+          "geneticMaterial": {
+            "strategies": [
+              "aggressive_momentum",
+              "micro_scalping",
+              "volatility_breakout"
+            ],
+            "parameters": {
+              "aggression": 0.9,
+              "speed": 0.95,
+              "risk_appetite": 0.9
+            },
+            "insights": [
+              "Fast execution beats perfect timing",
+              "Volatility is opportunity"
+            ],
+            "adaptations": []
+          },
+          "consciousness": {
+            "selfAwareness": 0.6,
+            "marketUnderstanding": 0.7,
+            "evolutionProgress": 0,
+            "transcendenceLevel": 0
+          },
+          "competitionStats": {
+            "wins": 2,
+            "losses": 0,
+            "draws": 0,
+            "evolutionGeneration": 2
+          }
+        },
+        {
+          "name": "Stevie-Beta",
+          "personality": "conservative",
+          "version": "2.0.0-beta",
+          "config": {
+            "riskTolerance": 0.25,
+            "learningRate": 0.05,
+            "timeframePreference": [
+              "1d",
+              "1w",
+              "1M"
+            ],
+            "strategyFocus": [
+              "value_investing",
+              "mean_reversion",
+              "fundamental_analysis"
+            ],
+            "mutationRate": 0.05
+          },
+          "performance": {
+            "totalReturn": 0,
+            "sharpeRatio": 0,
+            "winRate": 0,
+            "tradesExecuted": 0,
+            "averageHoldTime": 3600,
+            "maxDrawdown": 0
+          },
+          "geneticMaterial": {
+            "strategies": [
+              "conservative_dca",
+              "value_accumulation",
+              "risk_parity",
+              "aggressive_momentum",
+              "micro_scalping"
+            ],
+            "parameters": {
+              "patience": 0.95,
+              "risk_aversion": 0.9,
+              "analysis_depth": 0.8
+            },
+            "insights": [
+              "Time in market beats timing the market",
+              "Patience is the highest virtue"
+            ],
+            "adaptations": []
+          },
+          "consciousness": {
+            "selfAwareness": 0.8,
+            "marketUnderstanding": 0.6615000000000001,
+            "evolutionProgress": 0.14,
+            "transcendenceLevel": 0.5338333333333334
+          },
+          "competitionStats": {
+            "wins": 0,
+            "losses": 0,
+            "draws": 2,
+            "evolutionGeneration": 2
+          }
+        },
+        {
+          "name": "Stevie-Gamma",
+          "personality": "arbitrage",
+          "version": "2.0.0-gamma",
+          "config": {
+            "riskTolerance": 0.4,
+            "learningRate": 0.2,
+            "timeframePreference": [
+              "1m",
+              "5m",
+              "15m"
+            ],
+            "strategyFocus": [
+              "arbitrage",
+              "statistical_arbitrage",
+              "cross_exchange"
+            ],
+            "mutationRate": 0.1
+          },
+          "performance": {
+            "totalReturn": 0,
+            "sharpeRatio": 0,
+            "winRate": 0,
+            "tradesExecuted": 0,
+            "averageHoldTime": 3600,
+            "maxDrawdown": 0
+          },
+          "geneticMaterial": {
+            "strategies": [
+              "cross_exchange_arbitrage",
+              "statistical_pairs",
+              "funding_rate_arbitrage",
+              "aggressive_momentum",
+              "micro_scalping"
+            ],
+            "parameters": {
+              "precision": 0.95,
+              "efficiency": 0.9,
+              "speed": 0.85
+            },
+            "insights": [
+              "Inefficiencies are temporary gifts",
+              "Speed and precision create alpha"
+            ],
+            "adaptations": []
+          },
+          "consciousness": {
+            "selfAwareness": 0.7,
+            "marketUnderstanding": 0.85,
+            "evolutionProgress": 0.04,
+            "transcendenceLevel": 0.5299999999999999
+          },
+          "competitionStats": {
+            "wins": 0,
+            "losses": 0,
+            "draws": 2,
+            "evolutionGeneration": 2
+          }
+        },
+        {
+          "name": "Stevie-Delta",
+          "personality": "event",
+          "version": "2.0.0-delta",
+          "config": {
+            "riskTolerance": 0.7,
+            "learningRate": 0.275,
+            "timeframePreference": [
+              "1m",
+              "1h",
+              "4h"
+            ],
+            "strategyFocus": [
+              "event_driven",
+              "news_trading",
+              "whale_following"
+            ],
+            "mutationRate": 0.132
+          },
+          "performance": {
+            "totalReturn": 0,
+            "sharpeRatio": 0,
+            "winRate": 0,
+            "tradesExecuted": 0,
+            "averageHoldTime": 3600,
+            "maxDrawdown": 0
+          },
+          "geneticMaterial": {
+            "strategies": [
+              "news_momentum",
+              "whale_tracking",
+              "event_anticipation",
+              "aggressive_momentum",
+              "micro_scalping"
+            ],
+            "parameters": {
+              "reaction_speed": 0.9,
+              "information_processing": 0.85,
+              "intuition": 0.7
+            },
+            "insights": [
+              "Information asymmetry creates opportunity",
+              "Markets react before they think"
+            ],
+            "adaptations": []
+          },
+          "consciousness": {
+            "selfAwareness": 0.65,
+            "marketUnderstanding": 0.8,
+            "evolutionProgress": 0.19,
+            "transcendenceLevel": 0.5133333333333334
+          },
+          "competitionStats": {
+            "wins": 0,
+            "losses": 0,
+            "draws": 2,
+            "evolutionGeneration": 2
+          }
+        },
+        {
+          "name": "Stevie-Omega",
+          "personality": "meta",
+          "version": "2.0.0-omega",
+          "config": {
+            "riskTolerance": 0.5,
+            "learningRate": 0.15,
+            "timeframePreference": [
+              "5m",
+              "1h",
+              "4h",
+              "1d"
+            ],
+            "strategyFocus": [
+              "meta_strategy",
+              "ensemble_coordination",
+              "adaptive_allocation"
+            ],
+            "mutationRate": 0.08
+          },
+          "performance": {
+            "totalReturn": 0,
+            "sharpeRatio": 0,
+            "winRate": 0,
+            "tradesExecuted": 0,
+            "averageHoldTime": 3600,
+            "maxDrawdown": 0
+          },
+          "geneticMaterial": {
+            "strategies": [
+              "ensemble_coordination",
+              "meta_learning",
+              "adaptive_strategy_selection",
+              "aggressive_momentum",
+              "micro_scalping"
+            ],
+            "parameters": {
+              "coordination": 0.9,
+              "meta_cognition": 0.85,
+              "synthesis": 0.8
+            },
+            "insights": [
+              "The whole exceeds the sum of parts",
+              "Diversity creates resilience"
+            ],
+            "adaptations": []
+          },
+          "consciousness": {
+            "selfAwareness": 0.9,
+            "marketUnderstanding": 0.75,
+            "evolutionProgress": 0.04,
+            "transcendenceLevel": 0.5633333333333334
+          },
+          "competitionStats": {
+            "wins": 0,
+            "losses": 0,
+            "draws": 2,
+            "evolutionGeneration": 2
+          }
+        }
+      ],
+      "marketConditions": {
+        "regime": "sideways",
+        "volatility": 19.592306414190897,
+        "difficulty": 1.4303455877634994
+      },
+      "results": {
+        "winner": "Stevie-Alpha",
+        "performances": {
+          "Stevie-Alpha": 0,
+          "Stevie-Beta": 0,
+          "Stevie-Gamma": 0,
+          "Stevie-Delta": 0,
+          "Stevie-Omega": 0
+        },
+        "emergentBehaviors": [],
+        "strategicBreakthroughs": []
+      },
+      "breeding": {
+        "crossPollination": [
+          {
+            "donor": "Stevie-Alpha",
+            "recipient": "Stevie-Beta",
+            "traits": [
+              "aggressive_momentum",
+              "micro_scalping",
+              "market_understanding"
+            ],
+            "improvement": 0.05
+          },
+          {
+            "donor": "Stevie-Alpha",
+            "recipient": "Stevie-Gamma",
+            "traits": [
+              "aggressive_momentum",
+              "micro_scalping"
+            ],
+            "improvement": 0
+          },
+          {
+            "donor": "Stevie-Alpha",
+            "recipient": "Stevie-Delta",
+            "traits": [
+              "aggressive_momentum",
+              "micro_scalping"
+            ],
+            "improvement": 0
+          },
+          {
+            "donor": "Stevie-Alpha",
+            "recipient": "Stevie-Omega",
+            "traits": [
+              "aggressive_momentum",
+              "micro_scalping"
+            ],
+            "improvement": 0
+          }
+        ],
+        "mutations": [
+          {
+            "mind": "Stevie-Delta",
+            "mutation": "increased_learning_rate",
+            "impact": 0.1
+          }
+        ]
+      }
+    }
+  ]
+}

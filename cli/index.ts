@@ -9,6 +9,7 @@ import { Command } from 'commander';
 import { tradeCommand } from './commands/trade';
 import { deployCommand } from './commands/deploy';
 import { trainingCommand } from './commands/training';
+import { transcendenceCommand } from './commands/transcendence';
 
 const program = new Command();
 
@@ -21,6 +22,7 @@ program
 program.addCommand(tradeCommand);
 program.addCommand(deployCommand);
 program.addCommand(trainingCommand);
+program.addCommand(transcendenceCommand);
 
 // Parse command line arguments
 program.parse();

@@ -30,7 +30,7 @@ import { logger } from "./utils/logger";
 import type { RequestWithId } from "./middleware/requestId";
 import { healthRoutes } from "./routes/healthRoutes";
 import { mlopsRoutes } from "./routes/mlopsRoutes";
-import vectorRoutes from './routes/vectorRoutes';
+// import vectorRoutes from './routes/vectorRoutes';
 import dataFusionRoutes from './routes/dataFusionRoutes';
 import pluginRoutes from "./routes/pluginRoutes";
 import docsRoutes from "./routes/docsRoutes";
@@ -38,6 +38,7 @@ import { startRetrainingJobs } from "./jobs/retrainingCron";
 import { AlertingIntegration } from "./services/alertingIntegration";
 import stevieRoutes from './routes/stevieRoutes';
 import stevieSupertainRoutes from './routes/stevie-supertrain';
+import featureRoutes from './routes/featureRoutes';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Development bypass middleware - fix authentication
@@ -101,8 +102,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Pillar 5: Scale, Monitoring & Resilience routes
   app.use('/api/monitoring', monitoringRoutes);
   
-  // Vector routes
-  app.use('/api/vector', vectorRoutes);
+  // Vector routes (temporarily disabled)
+  // app.use('/api/vector', vectorRoutes);
+  
+  // Feature routes (Stevie v1.3 data ingestion)
+  app.use(featureRoutes);
   
   // Data fusion routes (on-chain + sentiment)
   app.use('/api/fusion', dataFusionRoutes);

@@ -1,0 +1,109 @@
+### 🤖 Prompt for Replit AI Agent — Stevie’s Comprehensive Data Ingestion & Feature Augmentation
+
+I want Stevie to ingest every relevant data stream—market, order-book, on-chain, social sentiment, derivatives, and macro events—to build a rich feature vector for his RL decisions and LLM explanations. Implement **all** phases end-to-end, then return a summary of modules created, example commands, and any manual steps.
+
+---
+
+## 1. Data Ingestion Layer  
+- **Exchange & Order-Book Streams**  
+  - Subscribe to real-time WebSocket feeds (Binance, Coinbase Pro) for trades, order-book depth, funding rates, and open interest.  
+  - Buffer snapshots into minute-level CSVs under `/data/historical/{symbol}_depth.csv`.  
+- **On-Chain Metrics**  
+  - Poll free APIs (Etherscan, Covalent) for whale transfers, DeFi TVL, exchange net flows. Save to `/data/historical/{symbol}_whales.csv`.  
+- **Social Sentiment**  
+  - Connect to Twitter filtered stream and Reddit via Pushshift. Run VADER or OpenAI embedding sentiment, aggregate per minute, save to `/data/historical/{symbol}_sentiment.csv`.  
+- **Economic & Event Calendar**  
+  - Fetch macro announcements (Fed, CPI) from a public JSON feed. Save to `/data/historical/events.csv`.  
+- **Derivatives Metrics**  
+  - Subscribe to perpetual-swap funding-rate and open-interest feeds. Save to `/data/historical/{symbol}_funding.csv`.
+
+Create `scripts/loadAllData.ts` to perform one-shot or scheduled fetches and save CSVs.
+
+## 2. Unified Feature Service  
+- **`featureService.ts`** exposing:  
+  ```ts
+  getFeatures(symbol: string, timestamp: number): Promise<FeatureVector>
+
+where FeatureVector includes:
+
+Last N OHLCV bars
+
+Top 5 bid/ask depth features
+
+On-chain flow deltas
+
+Social sentiment score
+
+Funding rate & open interest change
+
+Macro-event proximity flags
+
+Cache in Redis or in-memory for sub-ms lookups.
+
+
+3. Simulation & RL Environment Update
+
+simulationEngine.ts reads all CSV streams and at each step calls getFeatures(...).
+
+Wrap your existing RLTradingEnv to accept the composite FeatureVector state.
+
+
+4. VectorDB Memory Integration
+
+Provision a free Pinecone or Weaviate instance.
+
+vectorService.ts to upsert and query vectors:
+
+upsertVector(id: string, vector: number[])
+querySimilar(vector: number[], topK: number): Promise<SimilarRecord[]>
+
+On each decision, fetch top-5 similar scenarios and append to state.
+
+
+5. LLM Function–Calling Endpoints
+
+Expose /api/features, /api/sentiment, /api/onchain, /api/funding, /api/events.
+
+Update “Ask Stevie” chat to call these functions for real-time context.
+
+
+6. Cheap Parallel Processing on Replit
+
+Worker Pools: Launch 4–8 Replit instances, each ingesting a subset of streams.
+
+Shared Volume: Store /data/historical/*.csv in a common volume to avoid re-downloads.
+
+Batch Precompute: Run nightly job to precompute and store feature vectors for all historical timestamps.
+
+
+
+---
+
+📦 Deliverables
+
+1. scripts/loadAllData.ts for data fetch & CSV save
+
+
+2. featureService.ts with CSV & Redis readers
+
+
+3. simulationEngine.ts & updated RLTradingEnv
+
+
+4. vectorService.ts + VectorDB config
+
+
+5. New API routes for feature function-calling
+
+
+6. Replit orchestration config for worker pools & shared volume
+
+
+7. Documentation (DATA_INGESTION.md, FEATURE_STORE.md, VECTOR_DB.md)
+
+
+
+Run this in one pass: scaffold code, configure ingestion, update env, provision VectorDB, orchestrate workers, and update docs. Return a summary of what was created, how to run each component, and any manual steps.
+
+
+

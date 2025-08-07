@@ -1,378 +1,649 @@
-import OpenAI from "openai";
-import { db } from "../db";
-import { sql } from "drizzle-orm";
-import { logger } from "../utils/logger";
-import { nanoid } from "nanoid";
+/**
+ * Stevie v1.3 - Vector Database Service
+ * Enables similarity search for trading scenarios and pattern recognition
+ */
 
-// the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+import axios from 'axios';
+import OpenAI from 'openai';
+import { FeatureVector } from './featureService';
 
 export interface VectorRecord {
   id: string;
-  type: 'trade' | 'signal' | 'backtest' | 'market_event';
-  content: string;
-  metadata: Record<string, any>;
-  timestamp: Date;
-  embedding?: number[];
+  vector: number[];
+  metadata: {
+    symbol: string;
+    timestamp: number;
+    scenario: string;
+    outcome: 'profit' | 'loss' | 'neutral';
+    confidence: number;
+    features: Partial<FeatureVector>;
+  };
 }
 
-export interface SimilarityResult {
+export interface SimilarRecord {
   id: string;
-  type: string;
-  content: string;
-  metadata: Record<string, any>;
-  timestamp: Date;
-  similarity: number;
+  score: number;
+  metadata: VectorRecord['metadata'];
+}
+
+export interface VectorSearchQuery {
+  vector: number[];
+  topK: number;
+  filter?: Record<string, any>;
+  includeMetadata?: boolean;
+}
+
+// Vector database interface for different providers
+interface VectorDB {
+  upsert(records: VectorRecord[]): Promise<void>;
+  query(params: VectorSearchQuery): Promise<SimilarRecord[]>;
+  delete(ids: string[]): Promise<void>;
+  describe(): Promise<any>;
+}
+
+// Pinecone implementation
+class PineconeDB implements VectorDB {
+  private apiKey: string;
+  private environment: string;
+  private indexName: string;
+  private baseUrl: string;
+
+  constructor(apiKey: string, environment: string, indexName = 'stevie-trading') {
+    this.apiKey = apiKey;
+    this.environment = environment;
+    this.indexName = indexName;
+    this.baseUrl = `https://${indexName}-${environment}.svc.${environment}.pinecone.io`;
+  }
+
+  async upsert(records: VectorRecord[]): Promise<void> {
+    const url = `${this.baseUrl}/vectors/upsert`;
+    
+    const vectors = records.map(record => ({
+      id: record.id,
+      values: record.vector,
+      metadata: record.metadata
+    }));
+
+    await axios.post(url, { vectors }, {
+      headers: {
+        'Api-Key': this.apiKey,
+        'Content-Type': 'application/json'
+      }
+    });
+  }
+
+  async query(params: VectorSearchQuery): Promise<SimilarRecord[]> {
+    const url = `${this.baseUrl}/query`;
+    
+    const response = await axios.post(url, {
+      vector: params.vector,
+      topK: params.topK,
+      filter: params.filter,
+      includeMetadata: params.includeMetadata ?? true
+    }, {
+      headers: {
+        'Api-Key': this.apiKey,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    return response.data.matches.map((match: any) => ({
+      id: match.id,
+      score: match.score,
+      metadata: match.metadata
+    }));
+  }
+
+  async delete(ids: string[]): Promise<void> {
+    const url = `${this.baseUrl}/vectors/delete`;
+    
+    await axios.post(url, { ids }, {
+      headers: {
+        'Api-Key': this.apiKey,
+        'Content-Type': 'application/json'
+      }
+    });
+  }
+
+  async describe(): Promise<any> {
+    const url = `${this.baseUrl}/describe_index_stats`;
+    
+    const response = await axios.post(url, {}, {
+      headers: {
+        'Api-Key': this.apiKey,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    return response.data;
+  }
+}
+
+// Weaviate implementation (alternative free option)
+class WeaviateDB implements VectorDB {
+  private baseUrl: string;
+  private className: string;
+  private apiKey?: string;
+
+  constructor(baseUrl: string, className = 'TradingScenario', apiKey?: string) {
+    this.baseUrl = baseUrl.replace(/\/$/, '');
+    this.className = className;
+    this.apiKey = apiKey;
+  }
+
+  async upsert(records: VectorRecord[]): Promise<void> {
+    const url = `${this.baseUrl}/v1/objects`;
+    
+    for (const record of records) {
+      const object = {
+        class: this.className,
+        id: record.id,
+        vector: record.vector,
+        properties: {
+          ...record.metadata,
+          vectorData: JSON.stringify(record.vector)
+        }
+      };
+
+      await axios.post(url, object, {
+        headers: this.getHeaders()
+      });
+    }
+  }
+
+  async query(params: VectorSearchQuery): Promise<SimilarRecord[]> {
+    const url = `${this.baseUrl}/v1/graphql`;
+    
+    const query = `
+      {
+        Get {
+          ${this.className}(
+            nearVector: {
+              vector: [${params.vector.join(', ')}]
+            }
+            limit: ${params.topK}
+          ) {
+            _additional {
+              id
+              certainty
+            }
+            symbol
+            timestamp
+            scenario
+            outcome
+            confidence
+          }
+        }
+      }
+    `;
+
+    const response = await axios.post(url, { query }, {
+      headers: this.getHeaders()
+    });
+
+    const results = response.data.data.Get[this.className] || [];
+    
+    return results.map((result: any) => ({
+      id: result._additional.id,
+      score: result._additional.certainty,
+      metadata: {
+        symbol: result.symbol,
+        timestamp: result.timestamp,
+        scenario: result.scenario,
+        outcome: result.outcome,
+        confidence: result.confidence,
+        features: {}
+      }
+    }));
+  }
+
+  async delete(ids: string[]): Promise<void> {
+    const url = `${this.baseUrl}/v1/objects`;
+    
+    for (const id of ids) {
+      await axios.delete(`${url}/${id}`, {
+        headers: this.getHeaders()
+      });
+    }
+  }
+
+  async describe(): Promise<any> {
+    const url = `${this.baseUrl}/v1/meta`;
+    
+    const response = await axios.get(url, {
+      headers: this.getHeaders()
+    });
+
+    return response.data;
+  }
+
+  private getHeaders() {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+    
+    if (this.apiKey) {
+      headers['Authorization'] = `Bearer ${this.apiKey}`;
+    }
+    
+    return headers;
+  }
+}
+
+// In-memory implementation for development
+class InMemoryVectorDB implements VectorDB {
+  private vectors: Map<string, VectorRecord> = new Map();
+
+  async upsert(records: VectorRecord[]): Promise<void> {
+    for (const record of records) {
+      this.vectors.set(record.id, record);
+    }
+  }
+
+  async query(params: VectorSearchQuery): Promise<SimilarRecord[]> {
+    const results: SimilarRecord[] = [];
+    
+    for (const [id, record] of Array.from(this.vectors.entries())) {
+      const similarity = this.cosineSimilarity(params.vector, record.vector);
+      
+      // Apply filters if specified
+      if (params.filter) {
+        const passesFilter = Object.entries(params.filter).every(([key, value]) => 
+          record.metadata[key as keyof typeof record.metadata] === value
+        );
+        
+        if (!passesFilter) continue;
+      }
+      
+      results.push({
+        id,
+        score: similarity,
+        metadata: record.metadata
+      });
+    }
+    
+    // Sort by similarity and take top K
+    return results
+      .sort((a, b) => b.score - a.score)
+      .slice(0, params.topK);
+  }
+
+  async delete(ids: string[]): Promise<void> {
+    for (const id of ids) {
+      this.vectors.delete(id);
+    }
+  }
+
+  async describe(): Promise<any> {
+    return {
+      vectorCount: this.vectors.size,
+      dimension: this.vectors.size > 0 ? 
+        Array.from(this.vectors.values())[0].vector.length : 0
+    };
+  }
+
+  private cosineSimilarity(a: number[], b: number[]): number {
+    if (a.length !== b.length) return 0;
+    
+    let dotProduct = 0;
+    let normA = 0;
+    let normB = 0;
+    
+    for (let i = 0; i < a.length; i++) {
+      dotProduct += a[i] * b[i];
+      normA += a[i] * a[i];
+      normB += b[i] * b[i];
+    }
+    
+    if (normA === 0 || normB === 0) return 0;
+    
+    return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+  }
 }
 
 export class VectorService {
-  private static instance: VectorService;
-  private isInitialized = false;
+  private db: VectorDB;
+  private openai?: OpenAI;
+  private embeddingModel = 'text-embedding-3-small';
 
-  static getInstance(): VectorService {
-    if (!VectorService.instance) {
-      VectorService.instance = new VectorService();
-    }
-    return VectorService.instance;
-  }
-
-  async initialize(): Promise<void> {
-    if (this.isInitialized) return;
-
-    try {
-      logger.info('Initializing Vector Service');
+  constructor(config: {
+    provider: 'pinecone' | 'weaviate' | 'memory';
+    pineconeApiKey?: string;
+    pineconeEnvironment?: string;
+    pineconeIndex?: string;
+    weaviateUrl?: string;
+    weaviateApiKey?: string;
+    openaiApiKey?: string;
+  }) {
+    // Initialize vector database
+    switch (config.provider) {
+      case 'pinecone':
+        if (!config.pineconeApiKey || !config.pineconeEnvironment) {
+          throw new Error('Pinecone API key and environment required');
+        }
+        this.db = new PineconeDB(
+          config.pineconeApiKey,
+          config.pineconeEnvironment,
+          config.pineconeIndex
+        );
+        break;
       
-      // Ensure vector index metadata table exists
-      await this.ensureVectorTables();
+      case 'weaviate':
+        if (!config.weaviateUrl) {
+          throw new Error('Weaviate URL required');
+        }
+        this.db = new WeaviateDB(
+          config.weaviateUrl,
+          'TradingScenario',
+          config.weaviateApiKey
+        );
+        break;
       
-      this.isInitialized = true;
-      logger.info('Vector Service initialized successfully');
-    } catch (error) {
-      logger.error('Failed to initialize Vector Service', { error });
-      throw error;
+      default:
+        this.db = new InMemoryVectorDB();
+        break;
     }
+
+    // Initialize OpenAI for embeddings
+    if (config.openaiApiKey) {
+      this.openai = new OpenAI({ apiKey: config.openaiApiKey });
+    }
+
+    console.log(`[VectorService] Initialized with ${config.provider} provider`);
   }
 
-  private async ensureVectorTables(): Promise<void> {
-    try {
-      // Create vector index metadata table if not exists
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS vector_index_metadata (
-          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-          index_type VARCHAR NOT NULL,
-          last_indexed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-          total_records INTEGER DEFAULT 0,
-          version VARCHAR DEFAULT '1.0.0',
-          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-          updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        )
-      `);
+  async upsertVector(id: string, vector: number[], metadata: VectorRecord['metadata']): Promise<void> {
+    const record: VectorRecord = {
+      id,
+      vector,
+      metadata
+    };
 
-      // Create vector records table for in-database storage
-      await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS vector_records (
-          id VARCHAR PRIMARY KEY,
-          type VARCHAR NOT NULL,
-          content TEXT NOT NULL,
-          metadata JSONB DEFAULT '{}',
-          embedding vector(1536),
-          timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        )
-      `);
-
-      logger.info('Vector tables ensured');
-    } catch (error) {
-      logger.error('Failed to ensure vector tables', { error });
-      throw error;
-    }
+    await this.db.upsert([record]);
   }
 
-  async generateEmbedding(text: string): Promise<number[]> {
+  async upsertTradingScenario(
+    id: string,
+    features: FeatureVector,
+    outcome: 'profit' | 'loss' | 'neutral',
+    confidence: number,
+    scenario?: string
+  ): Promise<void> {
+    const vector = this.featuresToVector(features);
+    
+    const metadata: VectorRecord['metadata'] = {
+      symbol: features.meta.symbol,
+      timestamp: features.meta.timestamp,
+      scenario: scenario || this.generateScenarioDescription(features),
+      outcome,
+      confidence,
+      features: {
+        sentiment: features.sentiment,
+        derivatives: features.derivatives,
+        technical: features.technical
+      }
+    };
+
+    await this.upsertVector(id, vector, metadata);
+  }
+
+  async querySimilar(vector: number[], topK = 5, filter?: Record<string, any>): Promise<SimilarRecord[]> {
+    return await this.db.query({
+      vector,
+      topK,
+      filter,
+      includeMetadata: true
+    });
+  }
+
+  async findSimilarScenarios(features: FeatureVector, topK = 5): Promise<SimilarRecord[]> {
+    const vector = this.featuresToVector(features);
+    
+    const filter = {
+      symbol: features.meta.symbol
+    };
+
+    return await this.querySimilar(vector, topK, filter);
+  }
+
+  async getScenarioInsights(features: FeatureVector): Promise<{
+    similarScenarios: SimilarRecord[];
+    outcomesPrediction: Record<string, number>;
+    confidenceScore: number;
+    recommendations: string[];
+  }> {
+    const similar = await this.findSimilarScenarios(features, 10);
+    
+    if (similar.length === 0) {
+      return {
+        similarScenarios: [],
+        outcomesPrediction: { profit: 0.33, loss: 0.33, neutral: 0.34 },
+        confidenceScore: 0.1,
+        recommendations: ['No historical data available for similar scenarios']
+      };
+    }
+
+    // Analyze outcomes
+    const outcomeCount = { profit: 0, loss: 0, neutral: 0 };
+    let totalConfidence = 0;
+
+    for (const scenario of similar) {
+      outcomeCount[scenario.metadata.outcome]++;
+      totalConfidence += scenario.metadata.confidence * scenario.score;
+    }
+
+    const total = similar.length;
+    const outcomesPrediction = {
+      profit: outcomeCount.profit / total,
+      loss: outcomeCount.loss / total,
+      neutral: outcomeCount.neutral / total
+    };
+
+    const confidenceScore = totalConfidence / total;
+
+    // Generate recommendations
+    const recommendations = this.generateRecommendations(similar, outcomesPrediction);
+
+    return {
+      similarScenarios: similar.slice(0, 5), // Return top 5
+      outcomesPrediction,
+      confidenceScore,
+      recommendations
+    };
+  }
+
+  async createEmbedding(text: string): Promise<number[]> {
+    if (!this.openai) {
+      // Fallback to simple text-to-vector conversion
+      return this.textToSimpleVector(text);
+    }
+
     try {
-      const response = await openai.embeddings.create({
-        model: "text-embedding-3-small",
-        input: text,
+      const response = await this.openai.embeddings.create({
+        model: this.embeddingModel,
+        input: text
       });
 
       return response.data[0].embedding;
     } catch (error) {
-      logger.error('Failed to generate embedding', { error, text: text.substring(0, 100) });
-      throw error;
+      console.error('[VectorService] Error creating embedding:', error);
+      return this.textToSimpleVector(text);
     }
   }
 
-  async upsertVectors(records: VectorRecord[]): Promise<void> {
-    try {
-      for (const record of records) {
-        // Generate embedding if not provided
-        if (!record.embedding) {
-          record.embedding = await this.generateEmbedding(record.content);
-        }
+  async deleteVectors(ids: string[]): Promise<void> {
+    await this.db.delete(ids);
+  }
 
-        // Upsert into database
-        await db.execute(sql`
-          INSERT INTO vector_records (id, type, content, metadata, embedding, timestamp)
-          VALUES (${record.id}, ${record.type}, ${record.content}, ${JSON.stringify(record.metadata)}, ${JSON.stringify(record.embedding)}, ${record.timestamp.toISOString()})
-          ON CONFLICT (id) DO UPDATE SET
-            content = EXCLUDED.content,
-            metadata = EXCLUDED.metadata,
-            embedding = EXCLUDED.embedding,
-            timestamp = EXCLUDED.timestamp
-        `);
+  async getStats(): Promise<any> {
+    return await this.db.describe();
+  }
+
+  // Private helper methods
+  private featuresToVector(features: FeatureVector): number[] {
+    const vector: number[] = [];
+    
+    // Price features (last 10 closes normalized)
+    const closes = features.ohlcv.close.slice(-10);
+    if (closes.length > 0) {
+      const lastClose = closes[closes.length - 1];
+      vector.push(...closes.map(c => (c - lastClose) / lastClose));
+    } else {
+      vector.push(...new Array(10).fill(0));
+    }
+    
+    // Technical indicators
+    vector.push(
+      (features.technical.rsi - 50) / 50, // Normalized RSI
+      Math.tanh(features.technical.macd / 100), // Normalized MACD
+      features.technical.bollingerBands.position, // BB position
+      Math.tanh(features.technical.volatility), // Normalized volatility
+      ...features.technical.momentum.map(m => Math.tanh(m * 10)) // Normalized momentum
+    );
+    
+    // Sentiment features
+    vector.push(
+      (features.sentiment.fearGreedIndex - 50) / 50, // Normalized fear/greed
+      features.sentiment.sentimentScore,
+      Math.tanh(features.sentiment.socialMentions / 100), // Normalized mentions
+      features.sentiment.trendingRank
+    );
+    
+    // Derivatives features
+    vector.push(
+      Math.tanh(features.derivatives.fundingRate * 1000), // Normalized funding rate
+      Math.tanh(features.derivatives.openInterest / 1e9), // Normalized OI
+      Math.tanh(features.derivatives.fundingTrend * 1000), // Normalized trend
+      Math.tanh((features.derivatives.leverageRatio - 1) / 10) // Normalized leverage
+    );
+    
+    // Order book features
+    const bidDepthSum = features.orderBook.bidDepth.reduce((sum, depth) => sum + depth, 0);
+    const askDepthSum = features.orderBook.askDepth.reduce((sum, depth) => sum + depth, 0);
+    
+    vector.push(
+      features.orderBook.imbalance, // Already normalized -0.5 to 0.5
+      Math.tanh(features.orderBook.spread / 100), // Normalized spread
+      Math.tanh(bidDepthSum / 1000), // Normalized bid depth
+      Math.tanh(askDepthSum / 1000) // Normalized ask depth
+    );
+    
+    // Macro features
+    vector.push(
+      features.macroEvents.eventProximity, // Already 0-1
+      Math.tanh(features.macroEvents.impactScore), // Normalized impact
+      features.macroEvents.marketRegime === 'high-impact-event' ? 1 : 
+      features.macroEvents.marketRegime === 'event-driven' ? 0.5 : 0
+    );
+    
+    // On-chain features
+    vector.push(
+      features.onChain.networkActivity || 0, // Already normalized
+      Math.tanh((features.onChain.gasPrice || 0) / 100), // Normalized gas price
+      Math.tanh((features.onChain.hashrate || 0) / 1e18) // Normalized hashrate
+    );
+    
+    // Meta features
+    vector.push(
+      features.meta.marketHours ? 1 : 0,
+      Math.tanh(features.meta.volumeProfile), // Normalized volume profile
+      Math.tanh(features.meta.priceChange24h * 10) // Normalized price change
+    );
+    
+    return vector;
+  }
+
+  private generateScenarioDescription(features: FeatureVector): string {
+    const conditions: string[] = [];
+    
+    // RSI conditions
+    if (features.technical.rsi > 70) conditions.push('overbought');
+    else if (features.technical.rsi < 30) conditions.push('oversold');
+    
+    // Sentiment conditions
+    if (features.sentiment.fearGreedIndex > 75) conditions.push('extreme-greed');
+    else if (features.sentiment.fearGreedIndex < 25) conditions.push('extreme-fear');
+    
+    // Volatility conditions
+    if (features.technical.volatility > 0.5) conditions.push('high-volatility');
+    else if (features.technical.volatility < 0.2) conditions.push('low-volatility');
+    
+    // Funding conditions
+    if (features.derivatives.fundingRate > 0.001) conditions.push('high-funding');
+    else if (features.derivatives.fundingRate < -0.001) conditions.push('negative-funding');
+    
+    return conditions.join(' ') || 'normal-market';
+  }
+
+  private generateRecommendations(
+    scenarios: SimilarRecord[],
+    outcomes: Record<string, number>
+  ): string[] {
+    const recommendations: string[] = [];
+    
+    // Outcome-based recommendations
+    if (outcomes.profit > 0.6) {
+      recommendations.push('Strong historical performance in similar scenarios suggests favorable conditions');
+    } else if (outcomes.loss > 0.6) {
+      recommendations.push('Caution advised: similar scenarios historically resulted in losses');
+    } else {
+      recommendations.push('Mixed historical outcomes suggest careful position sizing');
+    }
+    
+    // Pattern-based recommendations
+    const highConfidenceScenarios = scenarios.filter(s => s.metadata.confidence > 0.7);
+    if (highConfidenceScenarios.length > 2) {
+      const profitRate = highConfidenceScenarios.filter(s => s.metadata.outcome === 'profit').length / highConfidenceScenarios.length;
+      if (profitRate > 0.7) {
+        recommendations.push('High-confidence historical scenarios show strong profit potential');
       }
-
-      logger.info('Upserted vectors', { count: records.length });
-    } catch (error) {
-      logger.error('Failed to upsert vectors', { error });
-      throw error;
     }
-  }
-
-  async querySimilar(query: string | number[], type?: string, topK: number = 5): Promise<SimilarityResult[]> {
-    try {
-      let queryEmbedding: number[];
-      
-      if (typeof query === 'string') {
-        queryEmbedding = await this.generateEmbedding(query);
-      } else {
-        queryEmbedding = query;
+    
+    // Recent pattern analysis
+    const recentScenarios = scenarios.filter(s => 
+      Date.now() - s.metadata.timestamp < 30 * 24 * 60 * 60 * 1000 // Last 30 days
+    );
+    
+    if (recentScenarios.length > 0) {
+      const recentProfitRate = recentScenarios.filter(s => s.metadata.outcome === 'profit').length / recentScenarios.length;
+      if (recentProfitRate > 0.8) {
+        recommendations.push('Recent similar patterns have performed exceptionally well');
+      } else if (recentProfitRate < 0.3) {
+        recommendations.push('Recent similar patterns have underperformed - consider waiting for better conditions');
       }
+    }
+    
+    return recommendations;
+  }
 
-      // Use cosine similarity for vector search
-      let sqlQuery = sql`
-        SELECT 
-          id, type, content, metadata, timestamp,
-          1 - (embedding <=> ${JSON.stringify(queryEmbedding)}::vector) as similarity
-        FROM vector_records
-      `;
-
-      if (type) {
-        sqlQuery = sql`${sqlQuery} WHERE type = ${type}`;
+  private textToSimpleVector(text: string): number[] {
+    // Simple hash-based vector for fallback
+    const words = text.toLowerCase().split(/\s+/);
+    const vector = new Array(384).fill(0); // Standard embedding dimension
+    
+    for (let i = 0; i < words.length; i++) {
+      const word = words[i];
+      const hash = this.simpleHash(word);
+      
+      for (let j = 0; j < 384; j++) {
+        vector[j] += Math.sin((hash + j) * 0.1) / words.length;
       }
-
-      sqlQuery = sql`${sqlQuery}
-        ORDER BY similarity DESC
-        LIMIT ${topK}
-      `;
-
-      const result = await db.execute(sqlQuery);
-
-      return result.rows.map(row => ({
-        id: row.id as string,
-        type: row.type as string,
-        content: row.content as string,
-        metadata: row.metadata as Record<string, any>,
-        timestamp: new Date(row.timestamp as string),
-        similarity: Number(row.similarity)
-      }));
-    } catch (error) {
-      logger.error('Failed to query similar vectors', { error });
-      throw error;
     }
+    
+    // Normalize vector
+    const magnitude = Math.sqrt(vector.reduce((sum, val) => sum + val * val, 0));
+    return magnitude > 0 ? vector.map(val => val / magnitude) : vector;
   }
 
-  async findSimilarById(recordId: string, topK: number = 5): Promise<SimilarityResult[]> {
-    try {
-      // Get the embedding for the specified record
-      const result = await db.execute(sql`
-        SELECT embedding FROM vector_records WHERE id = ${recordId}
-      `);
-
-      if (result.rows.length === 0) {
-        throw new Error(`Record with id ${recordId} not found`);
-      }
-
-      const embedding = JSON.parse(result.rows[0].embedding as string);
-      return this.querySimilar(embedding, undefined, topK + 1); // +1 to exclude self
-    } catch (error) {
-      logger.error('Failed to find similar by ID', { error, recordId });
-      throw error;
+  private simpleHash(str: string): number {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
     }
-  }
-
-  async indexTradeEvents(): Promise<number> {
-    try {
-      logger.info('Starting trade events indexing');
-      
-      // Get last indexed timestamp
-      const lastIndexed = await this.getLastIndexedTimestamp('trades');
-      
-      // Fetch new trades since last index
-      const tradesResult = await db.execute(sql`
-        SELECT * FROM trades 
-        WHERE created_at > ${lastIndexed.toISOString()}
-        ORDER BY created_at ASC
-      `);
-
-      const records: VectorRecord[] = tradesResult.rows.map(trade => ({
-        id: `trade_${trade.id}`,
-        type: 'trade' as const,
-        content: `Trade: ${trade.symbol} ${trade.side} ${trade.quantity} at $${trade.price}. PnL: $${trade.realized_pnl || 0}. Strategy: ${trade.strategy || 'manual'}`,
-        metadata: {
-          symbol: trade.symbol,
-          side: trade.side,
-          quantity: trade.quantity,
-          price: trade.price,
-          realized_pnl: trade.realized_pnl,
-          strategy: trade.strategy
-        },
-        timestamp: new Date(trade.created_at as string)
-      }));
-
-      if (records.length > 0) {
-        await this.upsertVectors(records);
-        await this.updateLastIndexedTimestamp('trades', records.length);
-      }
-
-      logger.info('Trade events indexing completed', { indexed: records.length });
-      return records.length;
-    } catch (error) {
-      logger.error('Failed to index trade events', { error });
-      throw error;
-    }
-  }
-
-  async indexAISignals(): Promise<number> {
-    try {
-      logger.info('Starting AI signals indexing');
-      
-      const lastIndexed = await this.getLastIndexedTimestamp('ai_signals');
-      
-      // Fetch AI activities (signals, insights, etc.)
-      const signalsResult = await db.execute(sql`
-        SELECT * FROM ai_activities 
-        WHERE created_at > ${lastIndexed.toISOString()}
-        ORDER BY created_at ASC
-      `);
-
-      const records: VectorRecord[] = signalsResult.rows.map(signal => ({
-        id: `signal_${signal.id}`,
-        type: 'signal' as const,
-        content: `AI Signal: ${signal.activity_type} for ${signal.symbol}. Confidence: ${signal.confidence}. ${signal.reasoning || ''}`,
-        metadata: {
-          activity_type: signal.activity_type,
-          symbol: signal.symbol,
-          confidence: signal.confidence,
-          reasoning: signal.reasoning,
-          agent_type: signal.agent_type
-        },
-        timestamp: new Date(signal.created_at as string)
-      }));
-
-      if (records.length > 0) {
-        await this.upsertVectors(records);
-        await this.updateLastIndexedTimestamp('ai_signals', records.length);
-      }
-
-      logger.info('AI signals indexing completed', { indexed: records.length });
-      return records.length;
-    } catch (error) {
-      logger.error('Failed to index AI signals', { error });
-      throw error;
-    }
-  }
-
-  async indexBacktestResults(): Promise<number> {
-    try {
-      logger.info('Starting backtest results indexing');
-      
-      const lastIndexed = await this.getLastIndexedTimestamp('backtests');
-      
-      // Fetch backtest results
-      const backtestsResult = await db.execute(sql`
-        SELECT * FROM backtests 
-        WHERE created_at > ${lastIndexed.toISOString()}
-        ORDER BY created_at ASC
-      `);
-
-      const records: VectorRecord[] = backtestsResult.rows.map(backtest => ({
-        id: `backtest_${backtest.id}`,
-        type: 'backtest' as const,
-        content: `Backtest: ${backtest.strategy_name} strategy. Total Return: ${backtest.total_return}%. Sharpe Ratio: ${backtest.sharpe_ratio}. Max Drawdown: ${backtest.max_drawdown}%. Trades: ${backtest.total_trades}`,
-        metadata: {
-          strategy_name: backtest.strategy_name,
-          total_return: backtest.total_return,
-          sharpe_ratio: backtest.sharpe_ratio,
-          max_drawdown: backtest.max_drawdown,
-          total_trades: backtest.total_trades,
-          parameters: backtest.parameters
-        },
-        timestamp: new Date(backtest.created_at as string)
-      }));
-
-      if (records.length > 0) {
-        await this.upsertVectors(records);
-        await this.updateLastIndexedTimestamp('backtests', records.length);
-      }
-
-      logger.info('Backtest results indexing completed', { indexed: records.length });
-      return records.length;
-    } catch (error) {
-      logger.error('Failed to index backtest results', { error });
-      throw error;
-    }
-  }
-
-  async runFullReindex(): Promise<{ trades: number; signals: number; backtests: number }> {
-    try {
-      logger.info('Starting full reindex');
-      
-      // Reset all last indexed timestamps
-      await db.execute(sql`
-        UPDATE vector_index_metadata 
-        SET last_indexed_at = '1970-01-01T00:00:00Z'::timestamp
-      `);
-
-      const trades = await this.indexTradeEvents();
-      const signals = await this.indexAISignals();
-      const backtests = await this.indexBacktestResults();
-
-      logger.info('Full reindex completed', { trades, signals, backtests });
-      return { trades, signals, backtests };
-    } catch (error) {
-      logger.error('Failed to run full reindex', { error });
-      throw error;
-    }
-  }
-
-  private async getLastIndexedTimestamp(indexType: string): Promise<Date> {
-    try {
-      const result = await db.execute(sql`
-        SELECT last_indexed_at FROM vector_index_metadata 
-        WHERE index_type = ${indexType}
-      `);
-
-      if (result.rows.length === 0) {
-        // Create initial record
-        await db.execute(sql`
-          INSERT INTO vector_index_metadata (index_type, last_indexed_at)
-          VALUES (${indexType}, '1970-01-01T00:00:00Z'::timestamp)
-        `);
-        return new Date('1970-01-01T00:00:00Z');
-      }
-
-      return new Date(result.rows[0].last_indexed_at as string);
-    } catch (error) {
-      logger.error('Failed to get last indexed timestamp', { error, indexType });
-      return new Date('1970-01-01T00:00:00Z');
-    }
-  }
-
-  private async updateLastIndexedTimestamp(indexType: string, recordCount: number): Promise<void> {
-    try {
-      await db.execute(sql`
-        UPDATE vector_index_metadata 
-        SET 
-          last_indexed_at = NOW(),
-          total_records = total_records + ${recordCount},
-          updated_at = NOW()
-        WHERE index_type = ${indexType}
-      `);
-    } catch (error) {
-      logger.error('Failed to update last indexed timestamp', { error, indexType });
-    }
+    return Math.abs(hash);
   }
 }
 
-export const vectorService = VectorService.getInstance();
+export default VectorService;

@@ -1,0 +1,699 @@
+{
+  "sessionId": "training_1754551384107",
+  "startTime": 360.899073,
+  "endTime": 3455.965173,
+  "initialVersion": "1.4.0",
+  "finalVersion": "1.4.1",
+  "totalIterations": 20,
+  "successfulIterations": 20,
+  "iterations": [
+    {
+      "iterationNumber": 1,
+      "stevieVersion": "1.4.0",
+      "benchmarkVersion": "1.1",
+      "difficulty": {
+        "version": "1.1",
+        "days": 8,
+        "marketShocks": 1,
+        "noiseLevel": 2.3,
+        "slippageRate": 0.11499999999999999,
+        "complexityFactors": []
+      },
+      "performance": {
+        "totalReturn": 0,
+        "sharpeRatio": 0,
+        "maxDrawdown": 0,
+        "winRate": 0,
+        "improvement": 0
+      },
+      "trainingTime": 9.415358000000026,
+      "status": "success",
+      "metadata": {
+        "totalTrades": 0,
+        "difficultyLevel": 4,
+        "marketRegimes": [
+          "sideways_market"
+        ]
+      }
+    },
+    {
+      "iterationNumber": 2,
+      "stevieVersion": "1.4.1",
+      "benchmarkVersion": "1.2",
+      "difficulty": {
+        "version": "1.2",
+        "days": 9,
+        "marketShocks": 1,
+        "noiseLevel": 2.6,
+        "slippageRate": 0.13,
+        "complexityFactors": [
+          "extended_timeframe"
+        ]
+      },
+      "performance": {
+        "totalReturn": 0,
+        "sharpeRatio": 0,
+        "maxDrawdown": 0,
+        "winRate": 0,
+        "improvement": null
+      },
+      "trainingTime": 5.931078999999954,
+      "status": "success",
+      "metadata": {
+        "totalTrades": 0,
+        "difficultyLevel": 4,
+        "marketRegimes": [
+          "bull_market"
+        ]
+      }
+    },
+    {
+      "iterationNumber": 3,
+      "stevieVersion": "1.4.1",
+      "benchmarkVersion": "1.2",
+      "difficulty": {
+        "version": "1.2",
+        "days": 9,
+        "marketShocks": 1,
+        "noiseLevel": 2.6,
+        "slippageRate": 0.13,
+        "complexityFactors": [
+          "extended_timeframe"
+        ]
+      },
+      "performance": {
+        "totalReturn": 0,
+        "sharpeRatio": 0,
+        "maxDrawdown": 0,
+        "winRate": 0,
+        "improvement": null
+      },
+      "trainingTime": 4.306078999999954,
+      "status": "success",
+      "metadata": {
+        "totalTrades": 0,
+        "difficultyLevel": 4,
+        "marketRegimes": [
+          "bull_market"
+        ]
+      }
+    },
+    {
+      "iterationNumber": 4,
+      "stevieVersion": "1.4.1",
+      "benchmarkVersion": "1.2",
+      "difficulty": {
+        "version": "1.2",
+        "days": 9,
+        "marketShocks": 1,
+        "noiseLevel": 2.6,
+        "slippageRate": 0.13,
+        "complexityFactors": [
+          "extended_timeframe"
+        ]
+      },
+      "performance": {
+        "totalReturn": 0,
+        "sharpeRatio": 0,
+        "maxDrawdown": 0,
+        "winRate": 0,
+        "improvement": null
+      },
+      "trainingTime": 4.721529999999802,
+      "status": "success",
+      "metadata": {
+        "totalTrades": 0,
+        "difficultyLevel": 4,
+        "marketRegimes": [
+          "bull_market"
+        ]
+      }
+    },
+    {
+      "iterationNumber": 5,
+      "stevieVersion": "1.4.1",
+      "benchmarkVersion": "1.2",
+      "difficulty": {
+        "version": "1.2",
+        "days": 9,
+        "marketShocks": 1,
+        "noiseLevel": 2.6,
+        "slippageRate": 0.13,
+        "complexityFactors": [
+          "extended_timeframe"
+        ]
+      },
+      "performance": {
+        "totalReturn": 0,
+        "sharpeRatio": 0,
+        "maxDrawdown": 0,
+        "winRate": 0,
+        "improvement": null
+      },
+      "trainingTime": 4.9547489999999925,
+      "status": "success",
+      "metadata": {
+        "totalTrades": 0,
+        "difficultyLevel": 4,
+        "marketRegimes": [
+          "bear_market"
+        ]
+      }
+    },
+    {
+      "iterationNumber": 6,
+      "stevieVersion": "1.4.1",
+      "benchmarkVersion": "1.2",
+      "difficulty": {
+        "version": "1.2",
+        "days": 9,
+        "marketShocks": 1,
+        "noiseLevel": 2.6,
+        "slippageRate": 0.13,
+        "complexityFactors": [
+          "extended_timeframe"
+        ]
+      },
+      "performance": {
+        "totalReturn": 0,
+        "sharpeRatio": 0,
+        "maxDrawdown": 0,
+        "winRate": 0,
+        "improvement": null
+      },
+      "trainingTime": 2.9843190000001414,
+      "status": "success",
+      "metadata": {
+        "totalTrades": 0,
+        "difficultyLevel": 4,
+        "marketRegimes": [
+          "bear_market"
+        ]
+      }
+    },
+    {
+      "iterationNumber": 7,
+      "stevieVersion": "1.4.1",
+      "benchmarkVersion": "1.2",
+      "difficulty": {
+        "version": "1.2",
+        "days": 9,
+        "marketShocks": 1,
+        "noiseLevel": 2.6,
+        "slippageRate": 0.13,
+        "complexityFactors": [
+          "extended_timeframe"
+        ]
+      },
+      "performance": {
+        "totalReturn": 0,
+        "sharpeRatio": 0,
+        "maxDrawdown": 0,
+        "winRate": 0,
+        "improvement": null
+      },
+      "trainingTime": 7.214328000000023,
+      "status": "success",
+      "metadata": {
+        "totalTrades": 0,
+        "difficultyLevel": 4,
+        "marketRegimes": [
+          "bull_market"
+        ]
+      }
+    },
+    {
+      "iterationNumber": 8,
+      "stevieVersion": "1.4.1",
+      "benchmarkVersion": "1.2",
+      "difficulty": {
+        "version": "1.2",
+        "days": 9,
+        "marketShocks": 1,
+        "noiseLevel": 2.6,
+        "slippageRate": 0.13,
+        "complexityFactors": [
+          "extended_timeframe"
+        ]
+      },
+      "performance": {
+        "totalReturn": 0,
+        "sharpeRatio": 0,
+        "maxDrawdown": 0,
+        "winRate": 0,
+        "improvement": null
+      },
+      "trainingTime": 2.976329000000078,
+      "status": "success",
+      "metadata": {
+        "totalTrades": 0,
+        "difficultyLevel": 4,
+        "marketRegimes": [
+          "bull_market"
+        ]
+      }
+    },
+    {
+      "iterationNumber": 9,
+      "stevieVersion": "1.4.1",
+      "benchmarkVersion": "1.2",
+      "difficulty": {
+        "version": "1.2",
+        "days": 9,
+        "marketShocks": 1,
+        "noiseLevel": 2.6,
+        "slippageRate": 0.13,
+        "complexityFactors": [
+          "extended_timeframe"
+        ]
+      },
+      "performance": {
+        "totalReturn": 0,
+        "sharpeRatio": 0,
+        "maxDrawdown": 0,
+        "winRate": 0,
+        "improvement": null
+      },
+      "trainingTime": 3.1835689999998067,
+      "status": "success",
+      "metadata": {
+        "totalTrades": 0,
+        "difficultyLevel": 4,
+        "marketRegimes": [
+          "bear_market"
+        ]
+      }
+    },
+    {
+      "iterationNumber": 10,
+      "stevieVersion": "1.4.1",
+      "benchmarkVersion": "1.2",
+      "difficulty": {
+        "version": "1.2",
+        "days": 9,
+        "marketShocks": 1,
+        "noiseLevel": 2.6,
+        "slippageRate": 0.13,
+        "complexityFactors": [
+          "extended_timeframe"
+        ]
+      },
+      "performance": {
+        "totalReturn": 0,
+        "sharpeRatio": 0,
+        "maxDrawdown": 0,
+        "winRate": 0,
+        "improvement": null
+      },
+      "trainingTime": 3.3264690000000883,
+      "status": "success",
+      "metadata": {
+        "totalTrades": 0,
+        "difficultyLevel": 4,
+        "marketRegimes": [
+          "bull_market"
+        ]
+      }
+    },
+    {
+      "iterationNumber": 11,
+      "stevieVersion": "1.4.1",
+      "benchmarkVersion": "1.2",
+      "difficulty": {
+        "version": "1.2",
+        "days": 9,
+        "marketShocks": 1,
+        "noiseLevel": 2.6,
+        "slippageRate": 0.13,
+        "complexityFactors": [
+          "extended_timeframe"
+        ]
+      },
+      "performance": {
+        "totalReturn": 0,
+        "sharpeRatio": 0,
+        "maxDrawdown": 0,
+        "winRate": 0,
+        "improvement": null
+      },
+      "trainingTime": 3.6272390000003725,
+      "status": "success",
+      "metadata": {
+        "totalTrades": 0,
+        "difficultyLevel": 4,
+        "marketRegimes": [
+          "sideways_market"
+        ]
+      }
+    },
+    {
+      "iterationNumber": 12,
+      "stevieVersion": "1.4.1",
+      "benchmarkVersion": "1.2",
+      "difficulty": {
+        "version": "1.2",
+        "days": 9,
+        "marketShocks": 1,
+        "noiseLevel": 2.6,
+        "slippageRate": 0.13,
+        "complexityFactors": [
+          "extended_timeframe"
+        ]
+      },
+      "performance": {
+        "totalReturn": 0,
+        "sharpeRatio": 0,
+        "maxDrawdown": 0,
+        "winRate": 0,
+        "improvement": null
+      },
+      "trainingTime": 3.8015989999998965,
+      "status": "success",
+      "metadata": {
+        "totalTrades": 0,
+        "difficultyLevel": 4,
+        "marketRegimes": [
+          "bull_market"
+        ]
+      }
+    },
+    {
+      "iterationNumber": 13,
+      "stevieVersion": "1.4.1",
+      "benchmarkVersion": "1.2",
+      "difficulty": {
+        "version": "1.2",
+        "days": 9,
+        "marketShocks": 1,
+        "noiseLevel": 2.6,
+        "slippageRate": 0.13,
+        "complexityFactors": [
+          "extended_timeframe"
+        ]
+      },
+      "performance": {
+        "totalReturn": 0,
+        "sharpeRatio": 0,
+        "maxDrawdown": 0,
+        "winRate": 0,
+        "improvement": null
+      },
+      "trainingTime": 3.773819000000003,
+      "status": "success",
+      "metadata": {
+        "totalTrades": 0,
+        "difficultyLevel": 4,
+        "marketRegimes": [
+          "sideways_market"
+        ]
+      }
+    },
+    {
+      "iterationNumber": 14,
+      "stevieVersion": "1.4.1",
+      "benchmarkVersion": "1.2",
+      "difficulty": {
+        "version": "1.2",
+        "days": 9,
+        "marketShocks": 1,
+        "noiseLevel": 2.6,
+        "slippageRate": 0.13,
+        "complexityFactors": [
+          "extended_timeframe"
+        ]
+      },
+      "performance": {
+        "totalReturn": 0,
+        "sharpeRatio": 0,
+        "maxDrawdown": 0,
+        "winRate": 0,
+        "improvement": null
+      },
+      "trainingTime": 3.962768999999753,
+      "status": "success",
+      "metadata": {
+        "totalTrades": 0,
+        "difficultyLevel": 4,
+        "marketRegimes": [
+          "bear_market"
+        ]
+      }
+    },
+    {
+      "iterationNumber": 15,
+      "stevieVersion": "1.4.1",
+      "benchmarkVersion": "1.2",
+      "difficulty": {
+        "version": "1.2",
+        "days": 9,
+        "marketShocks": 1,
+        "noiseLevel": 2.6,
+        "slippageRate": 0.13,
+        "complexityFactors": [
+          "extended_timeframe"
+        ]
+      },
+      "performance": {
+        "totalReturn": 0,
+        "sharpeRatio": 0,
+        "maxDrawdown": 0,
+        "winRate": 0,
+        "improvement": null
+      },
+      "trainingTime": 3.6389090000002398,
+      "status": "success",
+      "metadata": {
+        "totalTrades": 0,
+        "difficultyLevel": 4,
+        "marketRegimes": [
+          "bear_market"
+        ]
+      }
+    },
+    {
+      "iterationNumber": 16,
+      "stevieVersion": "1.4.1",
+      "benchmarkVersion": "1.2",
+      "difficulty": {
+        "version": "1.2",
+        "days": 9,
+        "marketShocks": 1,
+        "noiseLevel": 2.6,
+        "slippageRate": 0.13,
+        "complexityFactors": [
+          "extended_timeframe"
+        ]
+      },
+      "performance": {
+        "totalReturn": 0,
+        "sharpeRatio": 0,
+        "maxDrawdown": 0,
+        "winRate": 0,
+        "improvement": null
+      },
+      "trainingTime": 4.699458999999933,
+      "status": "success",
+      "metadata": {
+        "totalTrades": 0,
+        "difficultyLevel": 4,
+        "marketRegimes": [
+          "sideways_market"
+        ]
+      }
+    },
+    {
+      "iterationNumber": 17,
+      "stevieVersion": "1.4.1",
+      "benchmarkVersion": "1.2",
+      "difficulty": {
+        "version": "1.2",
+        "days": 9,
+        "marketShocks": 1,
+        "noiseLevel": 2.6,
+        "slippageRate": 0.13,
+        "complexityFactors": [
+          "extended_timeframe"
+        ]
+      },
+      "performance": {
+        "totalReturn": 0,
+        "sharpeRatio": 0,
+        "maxDrawdown": 0,
+        "winRate": 0,
+        "improvement": null
+      },
+      "trainingTime": 3.2675389999999425,
+      "status": "success",
+      "metadata": {
+        "totalTrades": 0,
+        "difficultyLevel": 4,
+        "marketRegimes": [
+          "sideways_market"
+        ]
+      }
+    },
+    {
+      "iterationNumber": 18,
+      "stevieVersion": "1.4.1",
+      "benchmarkVersion": "1.2",
+      "difficulty": {
+        "version": "1.2",
+        "days": 9,
+        "marketShocks": 1,
+        "noiseLevel": 2.6,
+        "slippageRate": 0.13,
+        "complexityFactors": [
+          "extended_timeframe"
+        ]
+      },
+      "performance": {
+        "totalReturn": 0,
+        "sharpeRatio": 0,
+        "maxDrawdown": 0,
+        "winRate": 0,
+        "improvement": null
+      },
+      "trainingTime": 3.2030589999999393,
+      "status": "success",
+      "metadata": {
+        "totalTrades": 0,
+        "difficultyLevel": 4,
+        "marketRegimes": [
+          "bear_market"
+        ]
+      }
+    },
+    {
+      "iterationNumber": 19,
+      "stevieVersion": "1.4.1",
+      "benchmarkVersion": "1.2",
+      "difficulty": {
+        "version": "1.2",
+        "days": 9,
+        "marketShocks": 1,
+        "noiseLevel": 2.6,
+        "slippageRate": 0.13,
+        "complexityFactors": [
+          "extended_timeframe"
+        ]
+      },
+      "performance": {
+        "totalReturn": 0,
+        "sharpeRatio": 0,
+        "maxDrawdown": 0,
+        "winRate": 0,
+        "improvement": null
+      },
+      "trainingTime": 2.774308999999903,
+      "status": "success",
+      "metadata": {
+        "totalTrades": 0,
+        "difficultyLevel": 4,
+        "marketRegimes": [
+          "bull_market"
+        ]
+      }
+    },
+    {
+      "iterationNumber": 20,
+      "stevieVersion": "1.4.1",
+      "benchmarkVersion": "1.2",
+      "difficulty": {
+        "version": "1.2",
+        "days": 9,
+        "marketShocks": 1,
+        "noiseLevel": 2.6,
+        "slippageRate": 0.13,
+        "complexityFactors": [
+          "extended_timeframe"
+        ]
+      },
+      "performance": {
+        "totalReturn": 0,
+        "sharpeRatio": 0,
+        "maxDrawdown": 0,
+        "winRate": 0,
+        "improvement": null
+      },
+      "trainingTime": 4.8142290000000685,
+      "status": "success",
+      "metadata": {
+        "totalTrades": 0,
+        "difficultyLevel": 4,
+        "marketRegimes": [
+          "bull_market"
+        ]
+      }
+    }
+  ],
+  "stoppingCriteria": {
+    "reason": "Maximum iterations reached",
+    "finalImprovement": 0,
+    "threshold": 0.005
+  },
+  "performanceTrend": {
+    "bestIteration": {
+      "iterationNumber": 1,
+      "stevieVersion": "1.4.0",
+      "benchmarkVersion": "1.1",
+      "difficulty": {
+        "version": "1.1",
+        "days": 8,
+        "marketShocks": 1,
+        "noiseLevel": 2.3,
+        "slippageRate": 0.11499999999999999,
+        "complexityFactors": []
+      },
+      "performance": {
+        "totalReturn": 0,
+        "sharpeRatio": 0,
+        "maxDrawdown": 0,
+        "winRate": 0,
+        "improvement": 0
+      },
+      "trainingTime": 9.415358000000026,
+      "status": "success",
+      "metadata": {
+        "totalTrades": 0,
+        "difficultyLevel": 4,
+        "marketRegimes": [
+          "sideways_market"
+        ]
+      }
+    },
+    "worstIteration": {
+      "iterationNumber": 1,
+      "stevieVersion": "1.4.0",
+      "benchmarkVersion": "1.1",
+      "difficulty": {
+        "version": "1.1",
+        "days": 8,
+        "marketShocks": 1,
+        "noiseLevel": 2.3,
+        "slippageRate": 0.11499999999999999,
+        "complexityFactors": []
+      },
+      "performance": {
+        "totalReturn": 0,
+        "sharpeRatio": 0,
+        "maxDrawdown": 0,
+        "winRate": 0,
+        "improvement": 0
+      },
+      "trainingTime": 9.415358000000026,
+      "status": "success",
+      "metadata": {
+        "totalTrades": 0,
+        "difficultyLevel": 4,
+        "marketRegimes": [
+          "sideways_market"
+        ]
+      }
+    },
+    "overallImprovement": null,
+    "averageImprovement": null
+  },
+  "recommendations": [
+    "Training performance is balanced - continue with current parameters"
+  ]
+}

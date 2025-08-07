@@ -8,6 +8,7 @@
 import { Command } from 'commander';
 import { tradeCommand } from './commands/trade';
 import { deployCommand } from './commands/deploy';
+import { trainingCommand } from './commands/training';
 
 const program = new Command();
 
@@ -19,6 +20,7 @@ program
 // Add all command groups
 program.addCommand(tradeCommand);
 program.addCommand(deployCommand);
+program.addCommand(trainingCommand);
 
 // Parse command line arguments
 program.parse();

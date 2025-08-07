@@ -1,0 +1,42 @@
+{
+  "version": "1.2",
+  "timestamp": 1754551387164,
+  "duration": 0.7510000000002037,
+  "config": {
+    "version": "1.2",
+    "days": 9,
+    "marketShocks": 1,
+    "noiseLevel": 2.6,
+    "slippageRate": 0.13,
+    "minTradesRequired": 5
+  },
+  "performance": {
+    "totalReturn": 0,
+    "sharpeRatio": 0,
+    "maxDrawdown": 0,
+    "winRate": 0,
+    "totalTrades": 0,
+    "avgTradeReturn": 0,
+    "volatility": 0,
+    "calmarRatio": 0
+  },
+  "difficulty": {
+    "level": 4,
+    "modifiers": [
+      "Extended period: 9 days",
+      "Market shocks: 1",
+      "Price noise: 2.6%",
+      "Slippage: 0.13%"
+    ]
+  },
+  "metadata": {
+    "dataPoints": 864,
+    "marketRegimes": [
+      "bull_market"
+    ],
+    "testPeriod": {
+      "start": "2025-07-29T07:23:07.164Z",
+      "end": "2025-08-07T07:23:07.164Z"
+    }
+  }
+}

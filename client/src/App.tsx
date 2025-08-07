@@ -5,6 +5,9 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
 import { Suspense, lazy } from "react";
+import { IntlProvider } from "@/providers/IntlProvider";
+import { SkipLink } from "@/components/accessibility/SkipLink";
+import { LiveRegion } from "@/components/accessibility/LiveRegion";
 
 // Lazy load pages for better performance
 const Landing = lazy(() => import("@/pages/landing"));
@@ -17,6 +20,7 @@ const AIInsights = lazy(() => import("@/pages/AIInsights"));
 const MLOpsDashboard = lazy(() => import("@/pages/MLOpsDashboard"));
 const PluginMarketplace = lazy(() => import("@/pages/PluginMarketplace"));
 const StrategyBuilder = lazy(() => import("@/pages/StrategyBuilderPage"));
+const LayoutCustomization = lazy(() => import("@/pages/LayoutCustomizationPage"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 
 function Router() {
@@ -49,6 +53,7 @@ function Router() {
             <Route path="/mlops" component={MLOpsDashboard} />
             <Route path="/plugins" component={PluginMarketplace} />
             <Route path="/strategy-builder" component={StrategyBuilder} />
+            <Route path="/customization" component={LayoutCustomization} />
             <Route path="/settings" component={Settings} />
           </>
         )}
@@ -62,8 +67,12 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <Toaster />
-        <Router />
+        <IntlProvider>
+          <SkipLink />
+          <LiveRegion message="" />
+          <Toaster />
+          <Router />
+        </IntlProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );

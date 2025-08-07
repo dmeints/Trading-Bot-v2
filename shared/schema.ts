@@ -250,6 +250,9 @@ export const backtestResults = pgTable("backtest_results", {
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
 
+// Import layout schemas
+export * from "./layout-schema";
+
 // Duplicate removed
 export type Position = typeof positions.$inferSelect;
 export type InsertPosition = typeof positions.$inferInsert;

@@ -50,6 +50,21 @@ import {
   type InsertBacktestResults,
   type FeedbackSubmission,
   type InsertFeedbackSubmission,
+  userLayouts,
+  experiments,
+  userExperimentAssignments,
+  experimentMetrics,
+  userPreferences,
+  type UserLayout,
+  type InsertUserLayout,
+  type Experiment,
+  type InsertExperiment,
+  type UserExperimentAssignment,
+  type InsertUserExperimentAssignment,
+  type ExperimentMetric,
+  type InsertExperimentMetric,
+  type UserPreference,
+  type InsertUserPreference,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sql } from "drizzle-orm";
@@ -91,6 +106,24 @@ export interface IStorage {
   // Feedback operations
   createFeedbackSubmission(feedbackData: InsertFeedbackSubmission): Promise<FeedbackSubmission>;
   getFeedbackSubmissions(limit?: number): Promise<FeedbackSubmission[]>;
+
+  // Layout management
+  getUserLayouts(userId: string): Promise<UserLayout[]>;
+  saveUserLayout(userId: string, layoutData: InsertUserLayout): Promise<UserLayout>;
+  deleteUserLayout(userId: string, layoutId: string): Promise<void>;
+
+  // Experiment management
+  getExperimentByName(name: string): Promise<Experiment | undefined>;
+  getUserExperimentAssignment(userId: string, experimentName: string): Promise<UserExperimentAssignment | undefined>;
+  assignUserToExperiment(userId: string, experimentId: string, variant: string): Promise<UserExperimentAssignment>;
+  trackExperimentEvent(data: InsertExperimentMetric): Promise<void>;
+  getAllExperiments(): Promise<Experiment[]>;
+  getExperimentMetrics(experimentId: string): Promise<any[]>;
+  createExperiment(data: InsertExperiment): Promise<Experiment>;
+
+  // User preferences
+  getUserPreferences(userId: string): Promise<UserPreference | undefined>;
+  updateUserPreferences(userId: string, updates: Partial<InsertUserPreference>): Promise<UserPreference>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -239,6 +272,105 @@ export class DatabaseStorage implements IStorage {
       .from(feedbackSubmissions)
       .orderBy(desc(feedbackSubmissions.submittedAt))
       .limit(limit);
+  }
+
+  // Layout management
+  async getUserLayouts(userId: string): Promise<UserLayout[]> {
+    return await db.select().from(userLayouts).where(eq(userLayouts.userId, userId));
+  }
+
+  async saveUserLayout(userId: string, layoutData: InsertUserLayout): Promise<UserLayout> {
+    const [layout] = await db
+      .insert(userLayouts)
+      .values({ ...layoutData, userId })
+      .returning();
+    return layout;
+  }
+
+  async deleteUserLayout(userId: string, layoutId: string): Promise<void> {
+    await db.delete(userLayouts).where(
+      and(eq(userLayouts.userId, userId), eq(userLayouts.id, layoutId))
+    );
+  }
+
+  // Experiment management
+  async getExperimentByName(name: string): Promise<Experiment | undefined> {
+    const [experiment] = await db.select().from(experiments).where(eq(experiments.name, name));
+    return experiment;
+  }
+
+  async getUserExperimentAssignment(userId: string, experimentName: string): Promise<UserExperimentAssignment | undefined> {
+    const result = await db
+      .select({
+        id: userExperimentAssignments.id,
+        userId: userExperimentAssignments.userId,
+        experimentId: userExperimentAssignments.experimentId,
+        variant: userExperimentAssignments.variant,
+        assignedAt: userExperimentAssignments.assignedAt,
+      })
+      .from(userExperimentAssignments)
+      .innerJoin(experiments, eq(experiments.id, userExperimentAssignments.experimentId))
+      .where(
+        and(
+          eq(userExperimentAssignments.userId, userId),
+          eq(experiments.name, experimentName)
+        )
+      );
+    
+    return result[0];
+  }
+
+  async assignUserToExperiment(userId: string, experimentId: string, variant: string): Promise<UserExperimentAssignment> {
+    const [assignment] = await db
+      .insert(userExperimentAssignments)
+      .values({ userId, experimentId, variant })
+      .returning();
+    return assignment;
+  }
+
+  async trackExperimentEvent(data: InsertExperimentMetric): Promise<void> {
+    await db.insert(experimentMetrics).values(data);
+  }
+
+  async getAllExperiments(): Promise<Experiment[]> {
+    return await db.select().from(experiments);
+  }
+
+  async getExperimentMetrics(experimentId: string): Promise<any[]> {
+    const metrics = await db
+      .select({
+        variant: experimentMetrics.variant,
+        eventType: experimentMetrics.eventType,
+        count: sql`count(*)`.as('count'),
+      })
+      .from(experimentMetrics)
+      .where(eq(experimentMetrics.experimentId, experimentId))
+      .groupBy(experimentMetrics.variant, experimentMetrics.eventType);
+    
+    return metrics;
+  }
+
+  async createExperiment(data: InsertExperiment): Promise<Experiment> {
+    const [experiment] = await db.insert(experiments).values(data).returning();
+    return experiment;
+  }
+
+  // User preferences
+  async getUserPreferences(userId: string): Promise<UserPreference | undefined> {
+    const [preferences] = await db.select().from(userPreferences).where(eq(userPreferences.userId, userId));
+    return preferences;
+  }
+
+  async updateUserPreferences(userId: string, updates: Partial<InsertUserPreference>): Promise<UserPreference> {
+    const [preferences] = await db
+      .insert(userPreferences)
+      .values({ userId, ...updates })
+      .onConflictDoUpdate({
+        target: userPreferences.userId,
+        set: { ...updates, updatedAt: new Date() },
+      })
+      .returning();
+    return preferences;
   }
 }
 

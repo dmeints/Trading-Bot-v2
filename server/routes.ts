@@ -2,6 +2,9 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
+import layoutRoutes from "./routes/layoutRoutes";
+import experimentRoutes from "./routes/experimentRoutes";
+import preferencesRoutes from "./routes/preferencesRoutes";
 import { unifiedApi } from "./api/unified";
 // Feedback routes will be added inline
 import { tradingEngine } from "./services/tradingEngine";
@@ -70,6 +73,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // MLOps routes
   app.use('/api/mlops', mlopsRoutes);
+
+  // Pillar 4: UX & Personalization routes
+  app.use('/api/layouts', layoutRoutes);
+  app.use('/api/experiments', experimentRoutes);
+  app.use('/api/preferences', preferencesRoutes);
   
   // Vector routes
   app.use('/api/vector', vectorRoutes);

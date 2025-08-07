@@ -1,0 +1,133 @@
+### 🚀 Prompt for Replit AI Agent — Master Phased Implementation for Stevie’s Real-Time Paper-Run Readiness
+
+I need a complete, phased rollout plan to evolve Stevie into a robust, production-ready crypto trading bot capable of handling live paper-trading with real-time data. Use all the resources we’ve developed—data ingestion, feature store, simulation loops, RL pipelines, advanced strategies, drift-safety, ChatGPT TA, Grock sentiment—to build, test, and iterate Stevie end-to-end. Execute each phase in order, scaffold code, schedule jobs, deploy containers, and update docs. At the end of each phase, return a clear status report and next-phase readiness check.
+
+---
+
+## 🛠 Phase 1: Unified Data Ingestion & Feature Store  
+1. **One-Time Fetch Scripts**  
+   - `scripts/loadAllData.ts`: fetch free OHLCV (CoinGecko), order-book depth, on-chain events, social sentiment (Grock API), funding rates, macro events → save CSVs under `/data/historical/*.csv`.  
+2. **Lazy CSV Reader**  
+   - `dataService.ts`: implement `getHistoricalBars`, `getOrderBookSnapshots`, `getOnChainEvents`, `getSentimentSeries`, `getFundingRates`, `getEconomicEvents` by streaming CSVs.  
+3. **FeatureService**  
+   - Expose `getFeatures(symbol, timestamp)` combining all streams into a `FeatureVector`. Cache in Redis for sub-ms lookup.
+
+**Deliverables**: `loadAllData.ts`, `dataService.ts`, `featureService.ts`, `/data/historical` CSVs, updated docs.
+
+---
+
+## 🏁 Phase 2: Read-Only Simulation Engine & Bootstrapped RL  
+1. **SimulationEngine**  
+   - `simulationEngine.ts`: sequentially feeds `FeatureVector` to `RLTradingEnv`.  
+2. **RL Bootstrapping**  
+   - `bootstrap_rl.py`: wrap `RLTradingEnv` in Gym, train a PPO baseline for 1e6 timesteps, save `ppo_stevie`.  
+3. **Behavior Cloning Pretrain**  
+   - `behaviorClone.py`: generate expert trades via RSI/MA heuristics, pretrain policy network.
+
+**CLI**:
+```bash
+skippy simulate:bootstrap
+skippy simulate:behavior-clone
+Deliverables: simulationEngine.ts, bootstrap_rl.py, behaviorClone.py, updated trainLoop.ts, docs.
+
+🔄 Phase 3: Versioned Benchmark & Auto-Tuning Loop
+BenchmarkTest
+
+benchmarkTest.ts + skippy benchmark:run --days X --version V → logs return, Sharpe, drawdown.
+
+DifficultyScheduler
+
+difficultyScheduler.ts: bump version (1.1→1.2…), extend days, inject shocks/slippage/noise.
+
+Iterative Loop
+
+trainIterate.ts + skippy train:iterate --initial-days 7 --initial-version 1.1 --max-iterations 20 --min-improvement 0.005
+
+Bench → train (simulate:train --epochs 50) → recommend (skippy recommend --top 3) → apply tweaks → bump version → repeat until plateau.
+
+Deliverables: benchmarkTest.ts, difficultyScheduler.ts, trainIterate.ts, CLI commands, reporting plots, docs.
+
+🎯 Phase 4: Advanced RL & Hyperparameter Optimization
+Population-Based Training
+
+pbt_manager.ts: spawn 3 workers with varied HPO; sync best weights every 5 epochs.
+
+Optuna Search
+
+optuna_hpo.py + skippy hpo:run --trials 20 --prune 5.
+
+Curriculum & Augmentation
+
+augmentation.ts: Gaussian noise; trainLoop.ts handles curriculum (low→high volatility).
+
+Adversarial Scenarios
+
+adversarialTrainer.ts: inject flash-crash events into simulation.
+
+Deliverables: PBT, Optuna, augmentation, adversarial modules, updated docs.
+
+⚡ Phase 5: Continuous Online Learning & Drift Safety
+Online Trainer
+
+onlineTrainer.ts: hourly micro-batch retrains on last 10 trades.
+
+Drift Monitor & Auto-Rollback
+
+driftMonitor.ts: measure feature-distribution drift, revert to last stable model if threshold exceeded.
+
+Streaming Retrain Cron
+
+Schedule hourly via Replit Task or Cron.
+
+Deliverables: onlineTrainer.ts, driftMonitor.ts, cron config, docs.
+
+🌐 Phase 6: ChatGPT TA & Grock Sentiment Integration
+Technical Analysis Service
+
+taService.ts, /api/ta, skippy ta:run, GPT prompts for chart patterns & indicator analysis.
+
+Grock Sentiment
+
+sentimentService.ts, /api/sentiment, batch fetch script, UI “Sentiment Snapshot” panel.
+
+UI & Toasts
+
+Chat widget “Ask Stevie TA”, toast notifications with persona tone.
+
+Deliverables: TA & sentiment modules, API routes, UI components, docs.
+
+🚀 Phase 7: Real-Time Paper-Run & Canary Deployment Prep
+Live-Mode Connector
+
+exchangeService.ts: Testnet/live toggle behind LIVE_TRADING_ENABLED.
+
+Paper Simulation Warm-Up
+
+bash
+Copy
+Edit
+skippy trade:simulate --days 7
+Full 30-Day Paper Run
+
+bash
+Copy
+Edit
+skippy simulate:auto --days 30 --max-iterations 10 --stop-threshold 0.005
+Canary Guide
+
+Docs for flipping to true live trading, kill-switch usage, alert routing.
+
+Deliverables: exchangeService.ts, CLI commands, deployment config, final docs.
+
+📋 Final Report
+After each phase, provide:
+
+Status ✅/❌
+
+Key metrics & logs
+
+Next-phase readiness
+
+Any manual steps or blockers
+
+Run this entire phased workflow in one pass if possible, or phase by phase on demand. Return a consolidated execution plan and readiness summary.

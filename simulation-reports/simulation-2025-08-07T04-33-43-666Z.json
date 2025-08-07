@@ -1,0 +1,46 @@
+{
+  "config": {
+    "days": 7,
+    "startingBalance": 1000,
+    "symbols": [
+      "BTC-USD",
+      "ETH-USD",
+      "SOL-USD",
+      "ADA-USD",
+      "DOT-USD"
+    ],
+    "maxPositionSize": 1000,
+    "riskPerTrade": 0.005,
+    "strategy": "momentum"
+  },
+  "metrics": {
+    "totalReturn": 0,
+    "sharpeRatio": 0,
+    "maxDrawdown": 0,
+    "winRate": 0,
+    "avgWin": 0,
+    "avgLoss": 0,
+    "totalTrades": 0,
+    "profitableTrades": 0,
+    "finalBalance": 1000,
+    "dailyReturns": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "trades": [],
+  "dailyBalances": [
+    1000,
+    1000,
+    1000,
+    1000,
+    1000,
+    1000,
+    1000
+  ],
+  "generatedAt": "2025-08-07T04:33:43.666Z"
+}

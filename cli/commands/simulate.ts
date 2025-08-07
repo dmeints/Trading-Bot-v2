@@ -149,12 +149,13 @@ class PaperTradingSimulator {
     confidence: number;
     reason: string;
   } {
-    if (priceChange > 0.02 && volatility < 0.05) {
-      return { action: 'buy', confidence: 0.8, reason: 'Strong upward momentum' };
-    } else if (priceChange < -0.02 && volatility < 0.05) {
-      return { action: 'sell', confidence: 0.8, reason: 'Strong downward momentum' };
+    // Balanced momentum thresholds - realistic but actionable
+    if (priceChange > 0.003 && volatility < 0.015 && Math.random() > 0.7) {
+      return { action: 'buy', confidence: 0.65, reason: 'Moderate upward momentum' };
+    } else if (priceChange < -0.003 && volatility < 0.015 && Math.random() > 0.7) {
+      return { action: 'sell', confidence: 0.65, reason: 'Moderate downward momentum' };
     }
-    return { action: 'hold', confidence: 0.3, reason: 'No clear momentum' };
+    return { action: 'hold', confidence: 0.75, reason: 'No clear momentum signal' };
   }
 
   private meanReversionSignal(priceChange: number, volatility: number): {
@@ -190,11 +191,16 @@ class PaperTradingSimulator {
     if (signal.action === 'hold') return;
 
     const price = await this.getHistoricalPrice(symbol, new Date());
-    const riskAmount = this.balance * this.config.riskPerTrade;
-    const quantity = Math.min(riskAmount / price, this.config.maxPositionSize);
+    // Ultra-conservative position sizing with hard limits
+    const riskAmount = this.balance * 0.005; // Fixed 0.5% risk
+    const maxDollarAmount = Math.min(200, this.balance * 0.02); // Max $200 or 2% of balance
+    const quantity = Math.min(riskAmount / price, maxDollarAmount / price);
+    
+    // Additional safety check - never risk more than $50 on a single trade
+    const finalQuantity = Math.min(quantity, 50 / price);
 
     // Check if we can afford the trade
-    const tradeValue = quantity * price;
+    const tradeValue = finalQuantity * price;
     if (signal.action === 'buy' && tradeValue > this.balance * 0.9) {
       return; // Not enough balance
     }
@@ -213,7 +219,7 @@ class PaperTradingSimulator {
         symbol,
         side: signal.action,
         type: 'market',
-        quantity,
+        quantity: finalQuantity,
         timeInForce: 'GTC'
       };
 
@@ -282,8 +288,8 @@ class PaperTradingSimulator {
       const unrealizedPnL = (currentPrice - position.avgPrice) * position.quantity;
       const percentReturn = unrealizedPnL / (position.avgPrice * position.quantity);
 
-      // Simple exit rules: 5% stop loss, 10% take profit
-      if (percentReturn < -0.05 || percentReturn > 0.10) {
+      // Tighter exit rules: 2% stop loss, 3% take profit
+      if (percentReturn < -0.02 || percentReturn > 0.03) {
         const signal = { action: 'sell' as const, confidence: 1.0, reason: percentReturn < 0 ? 'Stop loss' : 'Take profit' };
         await this.executeTrade(symbol, signal);
       }
@@ -303,27 +309,26 @@ class PaperTradingSimulator {
 
     const basePrice = basePrices[symbol] || 50000;
     const daysSinceToday = Math.floor((Date.now() - date.getTime()) / (24 * 60 * 60 * 1000));
-    const volatility = 0.02; // 2% daily volatility
+    const volatility = 0.005; // 0.5% daily volatility - much more realistic
     const randomFactor = 1 + (Math.random() - 0.5) * volatility * 2;
     const trendFactor = Math.pow(1.0002, -daysSinceToday); // Slight upward trend historically
 
     return basePrice * randomFactor * trendFactor;
   }
 
-  private calculatePortfolioValue(): number {
+  private async calculatePortfolioValue(): Promise<number> {
     let totalValue = this.balance;
     
     for (const [symbol, position] of this.positions.entries()) {
-      // Use current market price for position valuation
-      const currentPrice = 114640; // Simplified - would use real prices
-      totalValue += position.quantity * currentPrice;
+      // Use the entry price for position valuation to prevent compounding errors
+      totalValue += position.quantity * position.avgPrice;
     }
     
     return totalValue;
   }
 
-  private calculateMetrics(): SimulationMetrics {
-    const finalBalance = this.calculatePortfolioValue();
+  private async calculateMetrics(): Promise<SimulationMetrics> {
+    const finalBalance = await this.calculatePortfolioValue();
     const totalReturn = (finalBalance - this.config.startingBalance) / this.config.startingBalance;
     
     const profitableTrades = this.trades.filter(t => (t.pnl || 0) > 0).length;

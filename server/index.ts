@@ -8,6 +8,11 @@ import { rateLimiters } from "./middleware/rateLimiter";
 import { errorHandler, notFoundHandler } from "./utils/errorHandler";
 import helmet from "helmet";
 
+// Initialize telemetry
+import { initializeTelemetry } from "./monitoring/telemetry";
+import { metricsMiddleware } from "./monitoring/metrics";
+initializeTelemetry();
+
 // Validate environment variables on startup
 logger.info('Starting Skippy Trading Platform', {
   nodeEnv: env.NODE_ENV,
@@ -31,6 +36,9 @@ app.use(requestIdMiddleware);
 
 // General rate limiting for all API routes
 app.use('/api', rateLimiters.general);
+
+// Metrics middleware for monitoring
+app.use(metricsMiddleware);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));

@@ -105,6 +105,18 @@ export default function SidebarNavigation() {
             <span className="text-sm font-medium">MLOps</span>
           </button>
           <button 
+            onClick={() => setLocation('/service-level')}
+            className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors ${
+              location === '/service-level' 
+                ? 'bg-blue-600/20 text-blue-400' 
+              : 'text-gray-400 hover:bg-gray-700 hover:text-white'
+            }`}
+            data-testid="link-service-level"
+          >
+            <Activity className="w-4 h-4" />
+            <span className="text-sm font-medium">Service Level</span>
+          </button>
+          <button 
             onClick={() => setLocation('/settings')}
             className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors ${
               location === '/settings' 

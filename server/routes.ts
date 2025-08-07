@@ -5,6 +5,7 @@ import { setupAuth, isAuthenticated } from "./replitAuth";
 import layoutRoutes from "./routes/layoutRoutes";
 import experimentRoutes from "./routes/experimentRoutes";
 import preferencesRoutes from "./routes/preferencesRoutes";
+import monitoringRoutes from "./routes/monitoringRoutes";
 import { unifiedApi } from "./api/unified";
 // Feedback routes will be added inline
 import { tradingEngine } from "./services/tradingEngine";
@@ -78,6 +79,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/layouts', layoutRoutes);
   app.use('/api/experiments', experimentRoutes);
   app.use('/api/preferences', preferencesRoutes);
+
+  // Pillar 5: Scale, Monitoring & Resilience routes
+  app.use('/api/monitoring', monitoringRoutes);
   
   // Vector routes
   app.use('/api/vector', vectorRoutes);

@@ -1,0 +1,9 @@
+{
+  "name": "skippy-load-tests",
+  "version": "1.0.0",
+  "scripts": {
+    "loadtest:websocket": "k6 run load-tests/k6-websocket-test.js",
+    "loadtest:chaos": "k6 run load-tests/chaos-test.js",
+    "loadtest:all": "npm run loadtest:websocket && npm run loadtest:chaos"
+  }
+}

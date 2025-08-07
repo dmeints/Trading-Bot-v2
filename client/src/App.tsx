@@ -21,6 +21,7 @@ const MLOpsDashboard = lazy(() => import("@/pages/MLOpsDashboard"));
 const PluginMarketplace = lazy(() => import("@/pages/PluginMarketplace"));
 const StrategyBuilder = lazy(() => import("@/pages/StrategyBuilderPage"));
 const LayoutCustomization = lazy(() => import("@/pages/LayoutCustomizationPage"));
+const ServiceLevelPage = lazy(() => import("@/pages/ServiceLevelPage"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 
 function Router() {
@@ -54,6 +55,7 @@ function Router() {
             <Route path="/plugins" component={PluginMarketplace} />
             <Route path="/strategy-builder" component={StrategyBuilder} />
             <Route path="/customization" component={LayoutCustomization} />
+            <Route path="/service-level" component={ServiceLevelPage} />
             <Route path="/settings" component={Settings} />
           </>
         )}

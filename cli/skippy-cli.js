@@ -1,476 +1,383 @@
 #!/usr/bin/env node
 
-import { Command } from 'commander';
-import axios from 'axios';
-import fs from 'fs';
-import path from 'path';
+/**
+ * Skippy Trading Platform CLI
+ * Production-grade command-line interface for system management
+ */
+
+const { Command } = require('commander');
+const fs = require('fs');
+const path = require('path');
+const { spawn, exec } = require('child_process');
+const archiver = require('archiver');
 
 const program = new Command();
 
-// Configuration
-const DEFAULT_API_BASE = 'http://localhost:5000/api';
-const API_BASE = process.env.SKIPPY_API_BASE || DEFAULT_API_BASE;
-
-// Helper function to make API requests
-async function apiRequest(endpoint, options = {}) {
-  try {
-    const headers = {
-      'Content-Type': 'application/json',
-      ...options.headers
-    };
-    
-    // Add admin secret for admin endpoints
-    if (endpoint.includes('/admin') || endpoint.includes('/metrics') || endpoint.includes('/flags') || endpoint.includes('/feature-flags') || endpoint.includes('/copilot')) {
-      const adminSecret = process.env.ADMIN_SECRET || 'admin_secret_123';
-      headers['x-admin-secret'] = adminSecret;
-    }
-    
-    const response = await axios({
-      url: `${API_BASE}${endpoint}`,
-      method: options.method || 'GET',
-      data: options.data,
-      params: options.params,
-      headers
-    });
-    return response.data;
-  } catch (error) {
-    console.error(`API Error: ${error.message}`);
-    if (error.response?.data?.error) {
-      console.error(`Details: ${error.response.data.error}`);
-    }
-    process.exit(1);
-  }
-}
-
-// Format and display results
-function displayResults(data, format = 'json') {
-  if (format === 'json') {
-    console.log(JSON.stringify(data, null, 2));
-  } else if (format === 'table') {
-    console.table(data);
-  } else {
-    console.log(data);
-  }
-}
-
-// Backtest command
-program
-  .command('backtest')
-  .description('Run backtest for specified symbols and strategies')
-  .option('-s, --symbols <symbols>', 'Comma-separated list of symbols', 'BTC,ETH')
-  .option('--since <since>', 'Time period (e.g., 30d, 7d, 1h)', '30d')
-  .option('--strategy <strategy>', 'Trading strategy', 'momentum')
-  .option('--capital <capital>', 'Initial capital', '10000')
-  .option('-f, --format <format>', 'Output format (json|table)', 'json')
-  .action(async (options) => {
-    console.log('Running backtest...');
-    
-    const symbols = options.symbols.split(',');
-    const results = [];
-    
-    for (const symbol of symbols) {
-      const config = {
-        symbol: symbol.trim() + '/USD',
-        strategy: options.strategy,
-        initialCapital: parseInt(options.capital),
-        startDate: getDateFromPeriod(options.since),
-        endDate: new Date().toISOString()
-      };
-      
-      console.log(`Testing ${symbol} with ${options.strategy} strategy...`);
-      
-      try {
-        const result = await apiRequest('/backtest/run', {
-          method: 'POST',
-          data: config
-        });
-        
-        results.push({
-          symbol,
-          strategy: options.strategy,
-          totalReturn: result.totalReturn,
-          winRate: result.winRate,
-          sharpeRatio: result.sharpeRatio,
-          maxDrawdown: result.maxDrawdown
-        });
-      } catch (error) {
-        console.error(`Failed to test ${symbol}: ${error.message}`);
-      }
-    }
-    
-    displayResults(results, options.format);
-  });
-
-// Summarize command
-program
-  .command('summarize')
-  .description('Generate trading summary')
-  .option('--format <format>', 'Output format (csv|json)', 'json')
-  .option('--since <since>', 'Time period', 'yesterday')
-  .action(async (options) => {
-    console.log('Generating summary...');
-    
-    try {
-      const summary = await apiRequest('/admin/analytics');
-      
-      if (options.format === 'csv') {
-        const csvPath = path.join(process.cwd(), `summary_${Date.now()}.csv`);
-        const csvContent = convertToCSV(summary);
-        fs.writeFileSync(csvPath, csvContent);
-        console.log(`Summary saved to: ${csvPath}`);
-      } else {
-        displayResults(summary, options.format);
-      }
-    } catch (error) {
-      console.error('Failed to generate summary:', error.message);
-    }
-  });
-
-// Audit command
-program
-  .command('audit')
-  .description('Run system health checks')
-  .action(async () => {
-    console.log('Running system audit...');
-    
-    const checks = [
-      { name: 'API Health', endpoint: '/health' },
-      { name: 'Database', endpoint: '/health/db' },
-      { name: 'AI Services', endpoint: '/health/ai' },
-      { name: 'Trading Engine', endpoint: '/health/trading' }
-    ];
-    
-    for (const check of checks) {
-      try {
-        await apiRequest(check.endpoint);
-        console.log(`✅ ${check.name}: OK`);
-      } catch (error) {
-        console.log(`❌ ${check.name}: FAIL`);
-      }
-    }
-  });
-
-// AI command group
-const aiCommand = program.command('ai').description('AI-related commands');
-
-aiCommand
-  .command('ask <question>')
-  .description('Ask the AI copilot a question')
-  .action(async (question) => {
-    console.log('Asking AI copilot...');
-    
-    try {
-      const response = await apiRequest('/copilot/ask', {
-        method: 'POST',
-        data: { question }
-      });
-      
-      console.log('\nAI Response:');
-      console.log(response.answer);
-      
-      if (response.followUpQuestions?.length > 0) {
-        console.log('\nSuggested follow-up questions:');
-        response.followUpQuestions.forEach((q, i) => {
-          console.log(`${i + 1}. ${q}`);
-        });
-      }
-    } catch (error) {
-      console.error('Failed to get AI response:', error.message);
-    }
-  });
-
-aiCommand
-  .command('performance')
-  .description('Get AI performance metrics')
-  .action(async () => {
-    try {
-      const performance = await apiRequest('/ai/performance');
-      displayResults(performance, 'table');
-    } catch (error) {
-      console.error('Failed to get AI performance:', error.message);
-    }
-  });
-
-// Trading command group
-const tradingCommand = program.command('trading').description('Trading-related commands');
-
-tradingCommand
-  .command('status')
-  .description('Get trading system status')
-  .action(async () => {
-    try {
-      const status = await apiRequest('/trading/status');
-      console.log('Trading Status:', status.enabled ? '🟢 Active' : '🔴 Inactive');
-      console.log('Open Positions:', status.openPositions || 0);
-      console.log('Total PnL:', `$${status.totalPnL || 0}`);
-    } catch (error) {
-      console.error('Failed to get trading status:', error.message);
-    }
-  });
-
-tradingCommand
-  .command('recommendations')
-  .description('Get current AI trading recommendations')
-  .action(async () => {
-    try {
-      const recommendations = await apiRequest('/ai/recommendations');
-      console.log('\nCurrent Recommendations:');
-      recommendations.forEach(rec => {
-        console.log(`📊 ${rec.symbol}: ${rec.recommendation} (${Math.round(rec.confidence * 100)}% confidence)`);
-        console.log(`   Reasoning: ${rec.reasoning}`);
-      });
-    } catch (error) {
-      console.error('Failed to get recommendations:', error.message);
-    }
-  });
-
-// Metrics command
-program
-  .command('metrics')
-  .description('Get system metrics')
-  .option('--range <range>', 'Time range (1h|24h|7d|30d)', '24h')
-  .option('-f, --format <format>', 'Output format', 'json')
-  .action(async (options) => {
-    try {
-      const metrics = await apiRequest('/metrics/system', {
-        params: { range: options.range }
-      });
-      displayResults(metrics, options.format);
-    } catch (error) {
-      console.error('Failed to get metrics:', error.message);
-    }
-  });
-
-// Feature flags command group
-const flagsCommand = program.command('flags').description('Feature flag management');
-
-flagsCommand
-  .command('list')
-  .description('List all feature flags')
-  .action(async () => {
-    try {
-      const flags = await apiRequest('/feature-flags/all');
-      console.log('\n🏳️  Feature Flags:');
-      flags.forEach(flag => {
-        const status = flag.enabled ? '🟢' : '🔴';
-        console.log(`${status} ${flag.name} (${flag.rolloutPercentage}%)`);
-        console.log(`   ${flag.description}`);
-      });
-    } catch (error) {
-      console.error('Failed to get feature flags:', error.message);
-    }
-  });
-
-flagsCommand
-  .command('toggle <flagId>')
-  .description('Toggle a feature flag')
-  .action(async (flagId) => {
-    try {
-      const result = await apiRequest(`/feature-flags/${flagId}/toggle`, {
-        method: 'POST'
-      });
-      console.log(`✅ ${result.message}`);
-    } catch (error) {
-      console.error('Failed to toggle feature flag:', error.message);
-    }
-  });
-
-// Revolutionary AI commands
-program
-  .command('consciousness')
-  .description('Get quantum consciousness metrics')
-  .action(async () => {
-    try {
-      const metrics = await apiRequest('/revolutionary/quantum-consciousness/status');
-      console.log('\n🧠 Quantum Consciousness Status:');
-      console.log(`Market Awareness: ${Math.round(metrics.marketAwareness?.consciousnessLevel * 100)}%`);
-      console.log(`Active Quantum States: ${metrics.activeQuantumStates}`);
-      console.log(`Conscious Trading: ${metrics.consciousTrading ? '🟢 Active' : '🔴 Inactive'}`);
-    } catch (error) {
-      console.error('Failed to get consciousness metrics:', error.message);
-    }
-  });
-
-program
-  .command('superintelligence')
-  .description('Get collective superintelligence metrics')
-  .action(async () => {
-    try {
-      const metrics = await apiRequest('/revolutionary/collective-intelligence/status');
-      console.log('\n🤝 Collective Superintelligence Status:');
-      console.log(`Network Nodes: ${metrics.network?.totalNodes || 0}`);
-      console.log(`Emergent Intelligence: ${Math.round((metrics.network?.emergentIntelligence || 0) * 100)}%`);
-      console.log(`Collective Wisdom: ${Math.round((metrics.network?.collectiveWisdom || 0) * 100)}%`);
-    } catch (error) {
-      console.error('Failed to get superintelligence metrics:', error.message);
-    }
-  });
-
-// Ultra-Adaptive Intelligence commands
-program
-  .command('retrain')
-  .description('Trigger adaptive RL retraining on high-impact events')
-  .option('--force', 'Force retraining even without high-impact events')
-  .action(async (options) => {
-    console.log('Analyzing high-impact events and triggering adaptive retraining...');
-    
-    try {
-      const result = await apiRequest('/ultra-adaptive/retrain', {
-        method: 'POST',
-        data: { forceRetrain: options.force || false }
-      });
-      
-      console.log(`\n⚡️ Adaptive Retraining Result:`);
-      console.log(`Status: ${result.status}`);
-      console.log(`Events Processed: ${result.eventsProcessed || 0}`);
-      
-      if (result.improvementMetrics) {
-        console.log(`\nPerformance Improvements:`);
-        console.log(`Accuracy: +${(result.improvementMetrics.accuracyImprovement * 100).toFixed(1)}%`);
-        console.log(`Loss Reduction: ${(result.improvementMetrics.lossReduction * 100).toFixed(1)}%`);
-      }
-    } catch (error) {
-      console.error('Failed to trigger retraining:', error.message);
-    }
-  });
-
-program
-  .command('what-if <tradeId>')
-  .description('Generate what-if scenarios for a specific trade')
-  .action(async (tradeId) => {
-    console.log(`Generating what-if scenarios for trade ${tradeId}...`);
-    
-    try {
-      const response = await apiRequest(`/ultra-adaptive/what-if/${tradeId}`);
-      
-      console.log(`\n🔮 What-If Scenarios for Trade ${tradeId}:`);
-      response.scenarios.forEach((scenario, i) => {
-        console.log(`\n${i + 1}. ${scenario.explanation}`);
-        console.log(`   PnL Difference: $${scenario.pnlDifference.toFixed(2)}`);
-        console.log(`   Confidence Change: ${scenario.confidenceDelta > 0 ? '+' : ''}${(scenario.confidenceDelta * 100).toFixed(1)}%`);
-      });
-    } catch (error) {
-      console.error('Failed to generate what-if scenarios:', error.message);
-    }
-  });
-
-program
-  .command('vector-search')
-  .description('Search for similar historical trades')
-  .option('-s, --symbol <symbol>', 'Symbol to search for', 'BTC')
-  .option('-t, --type <type>', 'Trade type (buy/sell)', 'buy')
-  .action(async (options) => {
-    console.log(`Searching for trades similar to ${options.type} ${options.symbol}...`);
-    
-    try {
-      const query = {
-        symbol: options.symbol,
-        type: options.type,
-        executedAt: new Date()
-      };
-      
-      const response = await apiRequest('/ultra-adaptive/vector-search', {
-        method: 'POST',
-        data: { query, limit: 5 }
-      });
-      
-      console.log(`\n🔍 Similar Historical Trades:`);
-      response.results.forEach((result, i) => {
-        console.log(`\n${i + 1}. ${result.trade.type.toUpperCase()} ${result.trade.symbol}`);
-        console.log(`   Similarity: ${(result.similarity * 100).toFixed(1)}%`);
-        console.log(`   PnL: $${result.outcome.pnl?.toFixed(2) || 'N/A'}`);
-        console.log(`   Date: ${new Date(result.trade.executedAt).toLocaleDateString()}`);
-      });
-    } catch (error) {
-      console.error('Failed to perform vector search:', error.message);
-    }
-  });
-
-program
-  .command('cross-domain <symbol>')
-  .description('Get cross-domain analysis (on-chain + sentiment)')
-  .action(async (symbol) => {
-    console.log(`Analyzing cross-domain data for ${symbol}...`);
-    
-    try {
-      const enrichedContext = await apiRequest(`/ultra-adaptive/enriched-context/${symbol}`);
-      
-      console.log(`\n🌐 Cross-Domain Analysis for ${symbol}:`);
-      
-      // On-chain data
-      console.log(`\nOn-Chain Metrics:`);
-      console.log(`Whale Activity: ${enrichedContext.onChain.whaleActivity}`);
-      console.log(`Liquidity Health: ${enrichedContext.onChain.liquidityHealth}`);
-      console.log(`Network Strength: ${enrichedContext.onChain.networkStrength}`);
-      
-      // Sentiment data
-      console.log(`\nSentiment Analysis:`);
-      console.log(`Overall: ${enrichedContext.sentiment.overall}`);
-      console.log(`Trend: ${enrichedContext.sentiment.trend}`);
-      
-      // Insights
-      if (enrichedContext.enrichedInsights?.length > 0) {
-        console.log(`\nKey Insights:`);
-        enrichedContext.enrichedInsights.forEach((insight, i) => {
-          console.log(`${i + 1}. ${insight}`);
-        });
-      }
-    } catch (error) {
-      console.error('Failed to get cross-domain analysis:', error.message);
-    }
-  });
-
-// Utility functions
-function getDateFromPeriod(period) {
-  const now = new Date();
-  const match = period.match(/(\d+)([dhm])/);
-  
-  if (!match) {
-    return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000); // Default 30 days
-  }
-  
-  const value = parseInt(match[1]);
-  const unit = match[2];
-  
-  let milliseconds = 0;
-  switch (unit) {
-    case 'm':
-      milliseconds = value * 60 * 1000;
-      break;
-    case 'h':
-      milliseconds = value * 60 * 60 * 1000;
-      break;
-    case 'd':
-      milliseconds = value * 24 * 60 * 60 * 1000;
-      break;
-  }
-  
-  return new Date(now.getTime() - milliseconds).toISOString();
-}
-
-function convertToCSV(data) {
-  if (!Array.isArray(data) || data.length === 0) {
-    return '';
-  }
-  
-  const headers = Object.keys(data[0]);
-  const csvRows = [headers.join(',')];
-  
-  data.forEach(row => {
-    const values = headers.map(header => {
-      const value = row[header];
-      return typeof value === 'string' && value.includes(',') ? `"${value}"` : value;
-    });
-    csvRows.push(values.join(','));
-  });
-  
-  return csvRows.join('\n');
-}
-
-// Set up program
 program
   .name('skippy')
-  .description('Skippy Trading Platform CLI')
-  .version('2.0.0');
+  .description('Skippy Trading Platform CLI - Production management toolkit')
+  .version('1.0.0');
 
+// Disaster Recovery Commands
+const recover = program
+  .command('recover')
+  .description('Disaster recovery operations')
+  .option('-f, --file <backup>', 'Backup file to restore from')
+  .option('-d, --dir <directory>', 'Backup directory', './backups')
+  .option('--test-only', 'Run smoke tests only')
+  .option('--skip-deps', 'Skip dependency installation')
+  .option('--skip-db', 'Skip database operations')
+  .option('--skip-tests', 'Skip smoke tests')
+  .action(async (options) => {
+    console.log('🚨 Starting disaster recovery process...');
+    
+    const scriptPath = path.join(__dirname, '..', 'scripts', 'disaster-recovery.sh');
+    const args = [];
+    
+    if (options.file) args.push(options.file);
+    if (options.dir) args.push('--backup-dir', options.dir);
+    if (options.testOnly) args.push('--test-only');
+    if (options.skipDeps) args.push('--skip-deps');
+    if (options.skipDb) args.push('--skip-db');
+    if (options.skipTests) args.push('--skip-tests');
+    
+    try {
+      await runScript(scriptPath, args);
+      console.log('✅ Disaster recovery completed successfully');
+    } catch (error) {
+      console.error('❌ Disaster recovery failed:', error.message);
+      process.exit(1);
+    }
+  });
+
+// Backup Commands
+const backup = program
+  .command('backup')
+  .description('Create system backup')
+  .option('-o, --output <file>', 'Output backup file')
+  .option('--include-db', 'Include database dump')
+  .option('--compress', 'Compress backup archive')
+  .action(async (options) => {
+    console.log('📦 Creating system backup...');
+    
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const backupFile = options.output || `skippy-backup-${timestamp}.tar.gz`;
+    
+    try {
+      await createBackup(backupFile, options);
+      console.log(`✅ Backup created: ${backupFile}`);
+    } catch (error) {
+      console.error('❌ Backup failed:', error.message);
+      process.exit(1);
+    }
+  });
+
+// Load Testing Commands
+const loadtest = program
+  .command('loadtest')
+  .description('Run load and performance tests')
+  .option('-t, --type <type>', 'Test type: websocket, chaos, all', 'all')
+  .option('-u, --users <number>', 'Number of concurrent users', '500')
+  .option('--duration <minutes>', 'Test duration in minutes', '5')
+  .option('--base-url <url>', 'Base URL for testing', 'http://localhost:5000')
+  .action(async (options) => {
+    console.log('🔥 Starting load tests...');
+    
+    try {
+      await runLoadTests(options);
+      console.log('✅ Load tests completed');
+    } catch (error) {
+      console.error('❌ Load tests failed:', error.message);
+      process.exit(1);
+    }
+  });
+
+// Monitoring Commands
+const monitor = program
+  .command('monitor')
+  .description('Monitoring and observability operations')
+  .option('--metrics', 'Show current metrics')
+  .option('--alerts', 'Check active alerts')
+  .option('--health', 'Perform health check')
+  .option('--slo', 'Show SLO status')
+  .action(async (options) => {
+    console.log('📊 Checking system status...');
+    
+    try {
+      await runMonitoring(options);
+    } catch (error) {
+      console.error('❌ Monitoring check failed:', error.message);
+      process.exit(1);
+    }
+  });
+
+// Database Commands
+const db = program
+  .command('db')
+  .description('Database management operations')
+  .option('--migrate', 'Run database migrations')
+  .option('--seed', 'Seed database with sample data')
+  .option('--reset', 'Reset database (WARNING: destroys data)')
+  .option('--backup', 'Create database backup')
+  .option('--restore <file>', 'Restore database from backup')
+  .action(async (options) => {
+    console.log('🗄️ Database operation...');
+    
+    try {
+      await runDatabaseOperations(options);
+    } catch (error) {
+      console.error('❌ Database operation failed:', error.message);
+      process.exit(1);
+    }
+  });
+
+// Service Management Commands
+const service = program
+  .command('service')
+  .description('Service management operations')
+  .option('--start', 'Start services')
+  .option('--stop', 'Stop services')
+  .option('--restart', 'Restart services')
+  .option('--status', 'Check service status')
+  .option('--logs', 'Show service logs')
+  .action(async (options) => {
+    console.log('⚙️ Service management...');
+    
+    try {
+      await runServiceOperations(options);
+    } catch (error) {
+      console.error('❌ Service operation failed:', error.message);
+      process.exit(1);
+    }
+  });
+
+// Helper Functions
+async function runScript(scriptPath, args = []) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('bash', [scriptPath, ...args], {
+      stdio: 'inherit',
+      cwd: process.cwd()
+    });
+    
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`Script exited with code ${code}`));
+      }
+    });
+    
+    child.on('error', reject);
+  });
+}
+
+async function createBackup(outputFile, options) {
+  return new Promise((resolve, reject) => {
+    const output = fs.createWriteStream(outputFile);
+    const archive = archiver('tar', {
+      gzip: true,
+      gzipOptions: { level: 9 }
+    });
+    
+    output.on('close', () => {
+      console.log(`Archive created: ${archive.pointer()} total bytes`);
+      resolve();
+    });
+    
+    archive.on('error', reject);
+    archive.pipe(output);
+    
+    // Add project files
+    archive.glob('**/*', {
+      cwd: process.cwd(),
+      ignore: [
+        'node_modules/**',
+        '.git/**',
+        'tmp/**',
+        'logs/**',
+        '*.log',
+        '.env',
+        'backups/**',
+        outputFile
+      ]
+    });
+    
+    // Add database dump if requested
+    if (options.includeDb) {
+      // In production, you would dump the actual database
+      archive.append('-- Database dump placeholder\n', { name: 'database-dump.sql' });
+    }
+    
+    archive.finalize();
+  });
+}
+
+async function runLoadTests(options) {
+  const testScripts = [];
+  
+  if (options.type === 'websocket' || options.type === 'all') {
+    testScripts.push('load-tests/k6-websocket-test.js');
+  }
+  
+  if (options.type === 'chaos' || options.type === 'all') {
+    testScripts.push('load-tests/chaos-test.js');
+  }
+  
+  for (const script of testScripts) {
+    console.log(`Running ${script}...`);
+    
+    await new Promise((resolve, reject) => {
+      const child = spawn('k6', ['run', script], {
+        stdio: 'inherit',
+        env: {
+          ...process.env,
+          BASE_URL: options.baseUrl,
+          VUS: options.users,
+          DURATION: `${options.duration}m`
+        }
+      });
+      
+      child.on('close', (code) => {
+        if (code === 0) {
+          resolve();
+        } else {
+          reject(new Error(`Load test failed with code ${code}`));
+        }
+      });
+      
+      child.on('error', reject);
+    });
+  }
+}
+
+async function runMonitoring(options) {
+  const baseUrl = process.env.BASE_URL || 'http://localhost:5000';
+  
+  if (options.health) {
+    console.log('Checking system health...');
+    await makeRequest(`${baseUrl}/api/health`);
+  }
+  
+  if (options.metrics) {
+    console.log('Fetching metrics...');
+    await makeRequest(`${baseUrl}/api/monitoring/metrics`);
+  }
+  
+  if (options.alerts) {
+    console.log('Checking alerts...');
+    await makeRequest(`${baseUrl}/api/monitoring/alerts`);
+  }
+  
+  if (options.slo) {
+    console.log('Checking SLO status...');
+    await makeRequest(`${baseUrl}/api/monitoring/slo`);
+  }
+}
+
+async function runDatabaseOperations(options) {
+  if (options.migrate) {
+    console.log('Running database migrations...');
+    await runCommand('npm run db:push');
+  }
+  
+  if (options.seed) {
+    console.log('Seeding database...');
+    await runCommand('npm run db:seed');
+  }
+  
+  if (options.reset) {
+    console.log('⚠️  Resetting database (this will destroy all data)...');
+    await new Promise(resolve => setTimeout(resolve, 3000)); // 3 second delay
+    await runCommand('npm run db:reset');
+  }
+  
+  if (options.backup) {
+    console.log('Creating database backup...');
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    await runCommand(`pg_dump $DATABASE_URL > backups/db-backup-${timestamp}.sql`);
+  }
+  
+  if (options.restore) {
+    console.log(`Restoring database from ${options.restore}...`);
+    await runCommand(`psql $DATABASE_URL < ${options.restore}`);
+  }
+}
+
+async function runServiceOperations(options) {
+  if (options.start) {
+    console.log('Starting services...');
+    await runCommand('npm run dev &');
+  }
+  
+  if (options.stop) {
+    console.log('Stopping services...');
+    await runCommand('pkill -f "npm run dev"');
+  }
+  
+  if (options.restart) {
+    console.log('Restarting services...');
+    await runCommand('pkill -f "npm run dev" && npm run dev &');
+  }
+  
+  if (options.status) {
+    console.log('Checking service status...');
+    await runCommand('ps aux | grep "npm run dev"');
+  }
+  
+  if (options.logs) {
+    console.log('Showing service logs...');
+    await runCommand('tail -f logs/application.log');
+  }
+}
+
+async function runCommand(command) {
+  return new Promise((resolve, reject) => {
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        console.error(stderr);
+        reject(error);
+      } else {
+        console.log(stdout);
+        resolve(stdout);
+      }
+    });
+  });
+}
+
+async function makeRequest(url) {
+  const https = require('https');
+  const http = require('http');
+  
+  return new Promise((resolve, reject) => {
+    const client = url.startsWith('https:') ? https : http;
+    
+    const req = client.get(url, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          console.log(JSON.stringify(parsed, null, 2));
+          resolve(parsed);
+        } catch (e) {
+          console.log(data);
+          resolve(data);
+        }
+      });
+    });
+    
+    req.on('error', reject);
+    req.setTimeout(10000, () => {
+      req.destroy();
+      reject(new Error('Request timeout'));
+    });
+  });
+}
+
+// Parse and execute
 program.parse();
+
+// Show help if no command provided
+if (!process.argv.slice(2).length) {
+  program.outputHelp();
+}

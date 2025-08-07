@@ -25,6 +25,8 @@ import { env } from "./config/env";
 import { logger } from "./utils/logger";
 import type { RequestWithId } from "./middleware/requestId";
 import { healthRoutes } from "./routes/healthRoutes";
+import { mlopsRoutes } from "./routes/mlopsRoutes";
+import { startRetrainingJobs } from "./jobs/retrainingCron";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Development bypass middleware
@@ -61,6 +63,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Health & monitoring routes
   app.use('/api', healthRoutes);
+  
+  // MLOps routes
+  app.use('/api/mlops', mlopsRoutes);
 
   // Auth status endpoint
   app.get('/api/me', async (req: any, res) => {
@@ -1065,5 +1070,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+  // Start MLOps cron jobs
+  if (process.env.NODE_ENV === 'production' || process.env.ENABLE_MLOPS_JOBS === 'true') {
+    startRetrainingJobs();
+    logger.info('MLOps cron jobs started');
+  } else {
+    logger.info('MLOps cron jobs disabled in development mode');
+  }
+  
   return httpServer;
 }

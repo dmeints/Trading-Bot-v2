@@ -1,0 +1,41 @@
+### 🤖 Prompt for Replit AI Agent — Pillar 1: Closed-Loop Intelligence & MLOps
+
+I want you to implement a robust MLOps pipeline for the **Market Insight** and **Risk Assessor** agents so they continuously learn from real trading data and surface explainable insights.
+
+---
+
+#### 1. Automated Retraining Pipeline  
+- Create a scheduled job (Cron or Replit Task) that:  
+  1. **Fetches** all new analytics events (trades, PnL records, regime shifts) from the database since the last run.  
+  2. **Preprocesses** them into the agent’s training format (features + labels).  
+  3. **Triggers** a fine-tuning or retraining job using OpenAI Functions or your existing RL training scripts.  
+  4. **Validates** the new model on held-out data and **publishes** it if performance (e.g. accuracy, Sharpe ratio) improves by at least 2%.  
+- Store retraining metadata (timestamp, metrics, model version) in a new `model_runs` table.
+
+#### 2. Hyperparameter Sweep Service  
+- Build a CLI command `skippy sweep` that:  
+  1. Accepts a JSON config of parameters to sweep (e.g. learning rate, batch size, risk thresholds).  
+  2. **Spawns** parallel training jobs (locally or via Replit functions) across the parameter grid.  
+  3. **Aggregates** results in a new `sweep_results` table with results and metrics for each permutation.  
+- Add a “Sweep Dashboard” page in the admin panel showing sortable/filterable sweep outcomes and best-performing configs.
+
+#### 3. Drift Detection & Explainability  
+- Instrument a drift-detection service that:  
+  1. Monitors the distribution of key input features and model outputs over time (e.g. confidence scores, feature importances).  
+  2. Calculates statistical drift metrics (e.g. KL divergence) daily.  
+  3. **Alerts** via your `/metrics` endpoint and Replit alerts when drift exceeds a threshold.  
+- Extend the **AI Insights** UI to show:  
+  - A timeline of model performance (accuracy, Sharpe) and drift metrics.  
+  - Top-5 feature-importance changes between the last two retraining runs.  
+  - “Retrain Now” button to trigger an ad-hoc retraining job.
+
+---
+
+#### Deliverables  
+1. **Retraining Cron job** code, database migrations for `model_runs` table, and scheduling config.  
+2. **`skippy sweep` CLI** implementation with parallel job orchestration and `sweep_results` schema.  
+3. **Drift-Detection Service** code, metric exporters, and alert rules.  
+4. **Dashboard UI Pages** for Retraining History and Hyperparameter Sweeps, with charts for performance & drift.  
+5. **Documentation updates** (`MLOPS.md`) explaining how to run, monitor, and extend the pipeline.
+
+Run this end-to-end: scaffold code, apply migrations, schedule tasks, and update the UI. Return a summary of what was created, how to invoke each piece, and any manual steps required. ```

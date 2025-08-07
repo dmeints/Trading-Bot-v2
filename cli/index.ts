@@ -221,46 +221,212 @@ aiCommand
     try {
       console.log(`🤖 Triggering retraining for ${options.agent} agent...`);
       
-      // Get recent trade data for retraining
-      const recentTrades = await db.execute(sql`
-        SELECT * FROM trades 
-        WHERE executed_at >= NOW() - INTERVAL '7 days'
-          AND pnl IS NOT NULL
-        ORDER BY executed_at DESC
-        LIMIT 100
-      `);
+      const { MLOpsService } = await import('../server/services/mlopsService');
+      const mlopsService = MLOpsService.getInstance();
       
-      console.log(`📊 Training data: ${recentTrades.rows.length} recent trades`);
-      
-      // Simulate retraining process
-      console.log('🔄 Analyzing trade patterns...');
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      console.log('🔄 Updating model parameters...');
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      console.log('🔄 Validating model performance...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Log retraining activity
-      await db.execute(sql`
-        INSERT INTO "agentActivities" (agent_type, activity, confidence, data)
-        VALUES (
-          ${options.agent},
-          'Model retrained via CLI',
-          0.85,
-          ${JSON.stringify({
-            training_samples: recentTrades.rows.length,
-            trigger: 'manual_cli',
-            timestamp: new Date().toISOString()
-          })}
-        )
-      `);
+      const result = await mlopsService.runRetrainingPipeline(options.agent as 'market_insight' | 'risk_assessor');
       
       console.log('✅ Retraining completed successfully');
+      console.log(`   Run ID: ${result.id}`);
+      console.log(`   Model Version: ${result.model_version}`);
+      console.log(`   Training Samples: ${result.training_samples}`);
+      console.log(`   Validation Samples: ${result.validation_samples}`);
+      console.log(`   Status: ${result.status}`);
+      console.log(`   Deployment: ${result.deployment_status}`);
+      
+      if (result.metrics.accuracy) {
+        console.log(`   Accuracy: ${(result.metrics.accuracy * 100).toFixed(1)}%`);
+      }
+      if (result.metrics.sharpe_ratio) {
+        console.log(`   Sharpe Ratio: ${result.metrics.sharpe_ratio.toFixed(3)}`);
+      }
       
     } catch (error) {
       console.error('❌ Retraining failed:', error);
+      process.exit(1);
+    }
+  });
+
+aiCommand
+  .command('sweep')
+  .description('Run hyperparameter sweep')
+  .option('--agent <type>', 'Agent type', 'market_insight')
+  .option('--config <path>', 'Config file path (JSON)', './sweep-config.json')
+  .action(async (options) => {
+    try {
+      console.log(`🔍 Starting hyperparameter sweep for ${options.agent}`);
+      
+      // Load sweep configuration
+      let parameterGrid;
+      try {
+        const fs = await import('fs/promises');
+        const configData = await fs.readFile(options.config, 'utf-8');
+        parameterGrid = JSON.parse(configData);
+      } catch (error) {
+        console.log('📋 Using default parameter grid');
+        parameterGrid = {
+          learning_rate: [0.001, 0.01, 0.1],
+          batch_size: [16, 32, 64],
+          risk_threshold: [0.05, 0.1, 0.15]
+        };
+      }
+      
+      console.log('📊 Parameter grid:', JSON.stringify(parameterGrid, null, 2));
+      
+      const { MLOpsService } = await import('../server/services/mlopsService');
+      const mlopsService = MLOpsService.getInstance();
+      
+      const sweepId = await mlopsService.runHyperparameterSweep(options.agent, parameterGrid);
+      
+      console.log('✅ Hyperparameter sweep completed');
+      console.log(`   Sweep ID: ${sweepId}`);
+      console.log(`   View results: npm run skippy ai sweep-results --sweep-id ${sweepId}`);
+      
+    } catch (error) {
+      console.error('❌ Hyperparameter sweep failed:', error);
+      process.exit(1);
+    }
+  });
+
+aiCommand
+  .command('sweep-results')
+  .description('View hyperparameter sweep results')
+  .option('--sweep-id <id>', 'Sweep ID')
+  .option('--agent <type>', 'Agent type filter')
+  .option('--limit <number>', 'Number of results to show', '10')
+  .action(async (options) => {
+    try {
+      console.log('📊 Hyperparameter Sweep Results\n');
+      
+      let query = sql`
+        SELECT sr.*, hs.name as sweep_name
+        FROM sweep_results sr
+        LEFT JOIN hyperparameter_sweeps hs ON sr.sweep_id = hs.id
+        WHERE sr.status = 'completed'
+      `;
+      
+      const conditions = [];
+      if (options.sweepId) {
+        conditions.push(sql`sr.sweep_id = ${options.sweepId}`);
+      }
+      if (options.agent) {
+        conditions.push(sql`sr.agent_type = ${options.agent}`);
+      }
+      
+      if (conditions.length > 0) {
+        query = sql`${query} AND ${sql.join(conditions, sql` AND `)}`;
+      }
+      
+      query = sql`${query} ORDER BY (sr.metrics->>'sharpe_ratio')::float DESC NULLS LAST LIMIT ${parseInt(options.limit)}`;
+      
+      const results = await db.execute(query);
+      
+      if (results.rows.length === 0) {
+        console.log('No sweep results found');
+        return;
+      }
+      
+      results.rows.forEach((row: any, index: number) => {
+        const metrics = JSON.parse(row.metrics || '{}');
+        const config = JSON.parse(row.config || '{}');
+        
+        console.log(`${index + 1}. Sweep: ${row.sweep_name || row.sweep_id}`);
+        console.log(`   Agent: ${row.agent_type}`);
+        console.log(`   Config: ${JSON.stringify(config)}`);
+        console.log(`   Sharpe Ratio: ${metrics.sharpe_ratio?.toFixed(3) || 'N/A'}`);
+        console.log(`   Accuracy: ${metrics.accuracy ? (metrics.accuracy * 100).toFixed(1) + '%' : 'N/A'}`);
+        console.log(`   Execution Time: ${row.execution_time}ms`);
+        console.log(`   Completed: ${new Date(row.created_at).toLocaleString()}`);
+        console.log('');
+      });
+      
+    } catch (error) {
+      console.error('❌ Failed to fetch sweep results:', error);
+      process.exit(1);
+    }
+  });
+
+aiCommand
+  .command('drift')
+  .description('Check model drift metrics')
+  .option('--agent <type>', 'Agent type to check')
+  .action(async (options) => {
+    try {
+      console.log('📈 Checking model drift metrics...\n');
+      
+      const { MLOpsService } = await import('../server/services/mlopsService');
+      const mlopsService = MLOpsService.getInstance();
+      
+      const agents = options.agent ? [options.agent] : ['market_insight', 'risk_assessor'];
+      
+      for (const agent of agents) {
+        console.log(`🤖 ${agent.toUpperCase()} Agent:`);
+        
+        const metrics = await mlopsService.calculateDriftMetrics(agent);
+        
+        metrics.forEach(metric => {
+          const statusIcon = metric.status === 'critical' ? '🔴' : 
+                           metric.status === 'warning' ? '🟡' : '🟢';
+          
+          console.log(`   ${statusIcon} ${metric.metric_type}: ${metric.value.toFixed(4)}`);
+          console.log(`      Threshold: ${metric.threshold.toFixed(4)}`);
+          console.log(`      Status: ${metric.status}`);
+        });
+        
+        console.log('');
+      }
+      
+    } catch (error) {
+      console.error('❌ Drift check failed:', error);
+      process.exit(1);
+    }
+  });
+
+aiCommand
+  .command('models')
+  .description('List deployed models and their performance')
+  .option('--agent <type>', 'Agent type filter')
+  .action(async (options) => {
+    try {
+      console.log('🚀 Deployed Models\n');
+      
+      let query = sql`
+        SELECT mr.*, md.deployed_at, md.is_active
+        FROM model_runs mr
+        LEFT JOIN model_deployments md ON mr.model_version = md.model_version AND mr.agent_type = md.agent_type
+        WHERE mr.deployment_status = 'deployed'
+      `;
+      
+      if (options.agent) {
+        query = sql`${query} AND mr.agent_type = ${options.agent}`;
+      }
+      
+      query = sql`${query} ORDER BY mr.training_start DESC`;
+      
+      const results = await db.execute(query);
+      
+      if (results.rows.length === 0) {
+        console.log('No deployed models found');
+        return;
+      }
+      
+      results.rows.forEach((row: any, index: number) => {
+        const metrics = JSON.parse(row.metrics || '{}');
+        
+        console.log(`${index + 1}. ${row.agent_type} - ${row.model_version}`);
+        console.log(`   Deployed: ${row.is_active ? '🟢 Active' : '🔴 Inactive'}`);
+        console.log(`   Training Date: ${new Date(row.training_start).toLocaleString()}`);
+        console.log(`   Samples: ${row.training_samples} training, ${row.validation_samples} validation`);
+        console.log(`   Metrics:`);
+        if (metrics.accuracy) console.log(`     Accuracy: ${(metrics.accuracy * 100).toFixed(1)}%`);
+        if (metrics.sharpe_ratio) console.log(`     Sharpe Ratio: ${metrics.sharpe_ratio.toFixed(3)}`);
+        if (metrics.precision) console.log(`     Precision: ${(metrics.precision * 100).toFixed(1)}%`);
+        if (metrics.recall) console.log(`     Recall: ${(metrics.recall * 100).toFixed(1)}%`);
+        console.log('');
+      });
+      
+    } catch (error) {
+      console.error('❌ Failed to list models:', error);
       process.exit(1);
     }
   });

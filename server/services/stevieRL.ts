@@ -7,10 +7,6 @@
 
 import { logger } from '../utils/logger';
 import { storage } from '../storage';
-import SmartOrderRouter from '../execution/sor';
-import UncertaintySizer from '../risk/uncertaintySizer';
-import RegimeClassifier from '../regimeClassifier';
-import EnsembleWeighter from '../ensemble/weighter';
 
 interface MarketState {
   prices: number[];
@@ -31,9 +27,9 @@ interface MarketState {
 }
 
 interface RLAction {
-  side: 'buy' | 'sell';
-  size: number; // 0 to 1 (percentage of portfolio)
+  type: 'buy' | 'sell' | 'hold';
   symbol: string;
+  amount: number; // 0 to 1 (percentage of portfolio)
   confidence: number;
 }
 
@@ -67,22 +63,9 @@ export class RLTradingEnvironment {
   private transactionCostRate: number = 0.001; // 0.1% per trade
   private maxDrawdownThreshold: number = 0.15; // 15% max drawdown
   private riskFreeRate: number = 0.02; // 2% annual risk-free rate
-  private sor: SmartOrderRouter;
-  private uncertaintySizer: UncertaintySizer;
-  private regimeClassifier: RegimeClassifier;
-  private ensembleWeighter: EnsembleWeighter;
   
   constructor(initialValue: number = 10000) {
     this.initialPortfolioValue = initialValue;
-    this.sor = new SmartOrderRouter();
-    this.uncertaintySizer = new UncertaintySizer({
-      maxPositionPct: 0.05,
-      basePositionPct: 0.02,
-      minConfidence: 0.3,
-      kellyFraction: 0.25
-    });
-    this.regimeClassifier = new RegimeClassifier();
-    this.ensembleWeighter = new EnsembleWeighter();
   }
 
   // Initialize environment with market data
@@ -173,113 +156,23 @@ export class RLTradingEnvironment {
 
   private async simulateTrade(action: RLAction, state: MarketState): Promise<any> {
     const portfolioValue = state.portfolioValue;
+    const tradeAmount = action.amount * portfolioValue;
+    const transactionCost = tradeAmount * this.transactionCostRate;
     
-    // Generate ensemble predictions for uncertainty estimation
-    const ensemblePredictions = this.generateEnsemblePredictions(state);
-    const uncertaintyMetrics = this.uncertaintySizer.estimateUncertainty(ensemblePredictions);
-    
-    // Calculate optimal position size based on uncertainty
-    const positionSizing = this.uncertaintySizer.calculatePositionSize(
-      ensemblePredictions[0], // Primary prediction
-      action.confidence,
-      portfolioValue,
-      uncertaintyMetrics
-    );
-    
-    // Use uncertainty-aware position size instead of raw action size
-    const uncertaintyAdjustedSize = Math.min(action.size, positionSizing.positionSize / portfolioValue);
-    const tradeAmount = uncertaintyAdjustedSize * portfolioValue;
-    
-    // Use SOR to select optimal venue
-    const lobState = SmartOrderRouter.generateMockLOBState(action.symbol);
-    const sorDecision = await this.sor.selectVenue(action.symbol, action.side, tradeAmount, lobState);
-    
-    // Calculate execution with SOR-selected venue
-    const executionPrice = sorDecision.expectedPrice;
-    const fees = sorDecision.expectedFees;
-    const latency = sorDecision.expectedLatency;
-    
-    // Log comprehensive execution details
-    logger.info('Enhanced Trade Execution', {
-      action,
-      originalSize: action.size,
-      uncertaintyAdjustedSize,
-      positionSizing: {
-        reasoning: positionSizing.reasoning,
-        confidence: action.confidence,
-        uncertainty: uncertaintyMetrics.uncertainty,
-        probabilityOfLoss: uncertaintyMetrics.probabilityOfLoss
-      },
-      venue: {
-        selected: sorDecision.selectedVenue,
-        price: executionPrice,
-        latency,
-        reasoning: sorDecision.reasoning
-      }
-    });
-    
-    // Simulate price movement and execution
+    // Mock trade execution
     const priceChange = (Math.random() - 0.5) * 0.02; // ±1% random price movement
-    const pnl = action.side === 'buy' ? tradeAmount * priceChange : -tradeAmount * priceChange;
+    const pnl = action.type === 'buy' ? tradeAmount * priceChange : 
+                action.type === 'sell' ? -tradeAmount * priceChange : 0;
     
-    const newPortfolioValue = portfolioValue + pnl - fees;
+    const newPortfolioValue = portfolioValue + pnl - transactionCost;
     const drawdown = Math.max(0, (portfolioValue - newPortfolioValue) / portfolioValue);
     
-    // Update uncertainty sizer with actual results
-    this.uncertaintySizer.addPredictionResult(
-      ensemblePredictions[0],
-      priceChange, // Actual outcome
-      action.confidence
-    );
-    
     return {
-      pnl: pnl - fees,
+      pnl: pnl - transactionCost,
       drawdown,
-      transactionCost: fees,
-      riskAdjustedReturn: pnl / Math.sqrt(Math.abs(priceChange) + 0.01),
-      uncertaintyInfo: {
-        originalSize: action.size,
-        adjustedSize: uncertaintyAdjustedSize,
-        uncertainty: uncertaintyMetrics.uncertainty,
-        confidence: action.confidence,
-        sizing: positionSizing.metrics
-      },
-      venueInfo: {
-        selectedVenue: sorDecision.selectedVenue,
-        executionLatency: latency,
-        counterfactuals: sorDecision.counterfactuals
-      }
+      transactionCost,
+      riskAdjustedReturn: pnl / Math.sqrt(Math.abs(priceChange) + 0.01)
     };
-  }
-
-  private generateEnsemblePredictions(state: MarketState): number[] {
-    // Generate predictions from multiple model approaches for uncertainty estimation
-    const predictions: number[] = [];
-    
-    // Simple momentum prediction
-    const prices = state.prices;
-    const recentPrices = prices.slice(-5);
-    const momentum = (recentPrices[recentPrices.length - 1] - recentPrices[0]) / recentPrices[0];
-    predictions.push(momentum);
-    
-    // RSI-based prediction
-    const rsi = state.technicalIndicators.rsi;
-    const rsiPrediction = rsi < 30 ? 0.02 : rsi > 70 ? -0.02 : 0;
-    predictions.push(rsiPrediction);
-    
-    // MACD-based prediction
-    const macd = state.technicalIndicators.macd;
-    const macdPrediction = macd > 0 ? 0.01 : -0.01;
-    predictions.push(macdPrediction);
-    
-    // Sentiment-based prediction
-    const sentimentPrediction = state.sentiment * 0.015;
-    predictions.push(sentimentPrediction);
-    
-    // Add noise for variance estimation
-    const noisyPredictions = predictions.map(p => p + (Math.random() - 0.5) * 0.005);
-    
-    return noisyPredictions;
   }
 
   private async getNextState(userId: string): Promise<MarketState> {
@@ -378,13 +271,13 @@ export class StevieRLAgent {
   }
 
   private getRandomAction(): RLAction {
-    const types: Array<'buy' | 'sell'> = ['buy', 'sell'];
+    const types: Array<'buy' | 'sell' | 'hold'> = ['buy', 'sell', 'hold'];
     const symbols = ['BTC/USD', 'ETH/USD', 'SOL/USD'];
     
     return {
-      side: types[Math.floor(Math.random() * types.length)],
+      type: types[Math.floor(Math.random() * types.length)],
       symbol: symbols[Math.floor(Math.random() * symbols.length)],
-      size: Math.random() * 0.1, // Max 10% of portfolio
+      amount: Math.random() * 0.1, // Max 10% of portfolio
       confidence: Math.random()
     };
   }
@@ -395,24 +288,24 @@ export class StevieRLAgent {
     
     if (rsi < 30 && macd > 0) {
       return {
-        side: 'buy',
+        type: 'buy',
         symbol: 'BTC/USD',
-        size: 0.05, // 5% of portfolio
+        amount: 0.05, // 5% of portfolio
         confidence: 0.7
       };
     } else if (rsi > 70 && macd < 0) {
       return {
-        side: 'sell',
+        type: 'sell',
         symbol: 'BTC/USD', 
-        size: 0.05,
+        amount: 0.05,
         confidence: 0.7
       };
     }
     
     return {
-      side: 'buy',
+      type: 'hold',
       symbol: 'BTC/USD',
-      size: 0,
+      amount: 0,
       confidence: 0.5
     };
   }
@@ -444,7 +337,7 @@ export class StevieRLAgent {
       pythonProcess.on('close', (code: number) => {
         if (code === 0) {
           logger.info('[StevieRL] Bootstrap RL training completed successfully');
-          // Training completed - metrics stored via storeTrainingMetrics method
+          this.trainingMetrics.totalTrainingTime = Date.now() - this.trainingStartTime;
         } else {
           logger.error(`[StevieRL] Bootstrap RL training failed with code ${code}`);
         }

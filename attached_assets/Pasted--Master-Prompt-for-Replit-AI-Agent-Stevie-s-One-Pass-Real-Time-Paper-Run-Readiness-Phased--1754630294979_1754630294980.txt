@@ -1,0 +1,262 @@
+### 🚀 Master Prompt for Replit AI Agent — Stevie’s One-Pass, Real-Time Paper-Run Readiness (Phased, Leakage-Proof, Reproducible)
+
+Implement an end-to-end, **production-grade** pipeline that takes Stevie from one-shot historical data → feature store → model zoo → RL with hardening → versioned benchmarks → **shadow mode** → real-time **paper trading** — with strict reproducibility, leakage guards, realistic execution, baselines, ablations, and statistical significance.  
+Execute **phase by phase in order**, scaffold code, wire UI/CLI, schedule jobs, and update docs. After each phase, output a short status (what changed, how to run, TODOs). If anything is ambiguous, ask; if a dep is missing, install it and note it.
+
+---
+
+## ✅ Pre-Selected Config (bake into code + docs)
+- **Symbols**: BTC, ETH, SOL, ADA, DOT (spot)  
+- **Timeframes**: 1m, 5m, 1h  
+- **History span**: up to 4 years (available)  
+- **Local storage cap**: ≤ **15 GB** under `/data/historical`  
+- **File format**: **Parquet** (chunked I/O)  
+- **Exchange connector**: **Binance Testnet** (paper first), Coinbase Advanced sandbox optional  
+- **Workers**: **3** lightweight workers (node cluster or multiple repls)  
+- **Starter model**: **TCN** (primary), plus LSTM + small Transformer (Model Zoo)  
+- **RL baseline**: **Stable-Baselines3 PPO** for 1e6 steps (Gym-wrapped env)  
+- **Risk guardrails (paper)**: max pos **5%** equity; daily loss stop **2%**; **halt after 3** losers; circuit breakers on API-error bursts  
+- **Alerts**: **Slack webhook** for fills/errors/risk trips  
+- **Plateau**: improvement **<0.5% over 5 iterations**  
+- **KPI priority**: **Sharpe** (primary) then **Max Drawdown** (secondary)
+
+**Secrets (.env.example & SECRETS_REQUIRED.md)**
+OPENAI_API_KEY=
+GROK_API_KEY= # or X_BEARER_TOKEN=
+ETHERSCAN_API_KEY=
+NEWSAPI_KEY=
+SLACK_WEBHOOK_URL=
+PINECONE_API_KEY= # optional
+PINECONE_ENV=
+WEAVIATE_URL=
+
+yaml
+Copy
+Edit
+
+---
+
+## Phase 0 — Secrets / Config (blocking)
+- Generate **SECRETS_REQUIRED.md** explaining each key and safe fallbacks (use free/public sources if absent).  
+- Validate env on startup; prompt me inline for any missing required secret.
+
+## **Phase 0.5 — Reproducibility & Preflight Guards (MANDATORY)**
+- Pin dependencies (Node & Python). Commit `package-lock.json` and `requirements.txt`. CI fails on drift.  
+- Set global seeds (PyTorch, NumPy, Python, Node RNG). Enable deterministic ops where possible.  
+- Emit a **run manifest** `runs/{ts}/manifest.json` with: git sha, config versions, dataset hashes, seed, benchmark version.
+
+---
+
+## Phase 1 — Free Data Adapters & One-Shot Local Cache
+Adapters w/ polite rate-limits & backoff. **Fetch once**, store locally, no continuous updates.
+- **OHLCV**: CoinGecko range API (primary, no key), fallbacks: Binance/Coinbase klines.  
+- **Order Book / Trades**: Binance depth snapshots + aggTrades, Coinbase L2 snapshots.  
+- **Funding & OI**: Bybit/Deribit/OKX public aggregates (min/hour).  
+- **On-Chain**: Etherscan large transfers; simple exchange netflow proxies if available.  
+- **Social Sentiment**: Grok via X (if creds) or Reddit + VADER/embeddings fallback.  
+- **News / Events**: CryptoPanic RSS; NewsAPI (if key); Alternative.me Fear & Greed (free); FRED/public macro CSV.
+
+Create:
+- `scripts/load_all_data.ts` → writes Parquet:
+/data/historical/{symbol}_ohlcv.parquet
+/data/historical/{symbol}_depth.parquet
+/data/historical/{symbol}_funding.parquet
+/data/historical/{symbol}_trades.parquet
+/data/historical/{symbol}_sentiment.parquet
+/data/historical/{symbol}_onchain.parquet
+/data/historical/events.parquet
+
+markdown
+Copy
+Edit
+- `dataService.ts` — lazy Parquet readers (streamed for large files)  
+- Docs: `DATA_SOURCES.md` (endpoints, TOS, how to re-run)
+
+## **Phase 1.5 — Data QC & Alignment**
+- `scripts/qc_data.ts` to:
+- Normalize all timestamps to **UTC**; dedupe; tag/fill short gaps with flags.  
+- Enforce **look-ahead shift** on labels; ensure rolling features use only past data.  
+- Unit test: **fail** if any feature at time *t* touches *t+Δ*.
+
+---
+
+## Phase 2 — Feature Store & Vector Memory
+- `featureService.ts`:
+```ts
+export async function getFeatures(symbol: string, ts: number): Promise<FeatureVector>
+// Includes past N OHLCV bars; top-of-book depth features; funding/OI deltas;
+// on-chain netflow flags; social sentiment & volume; news/event proximity;
+// fear/greed index; normalization fitted ONLY on train spans.
+Optional Redis cache for sub-ms lookups.
+
+Optional vectorService.ts: Pinecone/Weaviate or local FAISS for “Find Similar” scenarios.
+
+Phase 2.5 — Leakage-Proof Evaluation Protocol
+evaluation/protocol.ts: purged & embargoed walk-forward CV
+
+Split into K contiguous folds; for each fold: train [t0,t1), test [t1,t2); embargo buffer around split.
+
+Report mean/variance of Sharpe, Max DD, hit rate across folds.
+
+Phase 3 — Model Zoo (Neural Starters)
+Implement TCN (primary), LSTM, small Transformer (encoder w/ causal mask).
+
+Scripts: train_tcn.py, train_lstm.py, train_transformer.py.
+
+Shared: early stop, LR scheduler, checkpointing, mixed precision if available.
+
+Docs: MODEL_ZOO.md (pros/cons, when to use which).
+
+Phase 4 — RL Environment & Hardening
+Gym-wrap RLTradingEnv (actions: buy/sell/flat/size; reward = PnL − costs − risk penalty; objective aligns to Sharpe/DD).
+
+SB3 PPO baseline: bootstrap_rl.py (1e6 steps) using FeatureVector windows.
+
+Optional offline RL (CQL/AWAC via d3rlpy).
+
+Domain randomization switches:
+
+Random slippage/fees/latency; order rejects; API jitter
+
+Volatility warping; additive noise
+
+Flash-crash segments; walk-forward splits only
+
+Docs: ENV_HARDENING.md.
+
+Phase 4.5 — Execution Realism Simulator
+execution/lob_simulator.ts:
+
+Latency (ms), partial fills, queue position, size-dependent slippage curve, maker/taker fees, funding payments.
+
+Replace naïve fills in RLTradingEnv with LOB simulator; log fill probability & realized slippage per trade.
+
+Phase 5 — Versioned Benchmark & Iterative Auto-Tuning
+benchmarkTest.ts + CLI:
+
+bash
+Copy
+Edit
+skippy benchmark:run --days 7 --version 1.1
+Logs: return, Sharpe, Max DD, win rate, version.
+
+difficultyScheduler.ts: bumps version 1.1 → 1.2 → …; extends window; adds shocks/slippage/noise.
+
+trainIterate.ts + CLI:
+
+bash
+Copy
+Edit
+skippy train:iterate --initial-days 7 --initial-version 1.1 \
+  --max-iterations 20 --min-improvement 0.005
+Loop: Benchmark → if improved ≥0.5% (Sharpe/return) ⇒ increase difficulty + bump version ⇒ short retrain (--epochs 50) ⇒ repeat until plateau.
+
+Phase 5.5 — Baselines, Ablations & Statistical Significance
+Baselines: buy-and-hold; SMA(20/50) cross; EMA(12/26) with fixed stops.
+
+experiments/ablation.ts: toggle feature families {price}, {+depth}, {+sentiment}, {+on-chain}, {+funding}.
+
+stats/bootstrapping.py: 95% CIs for Sharpe/returns vs baselines; a run is green only if CI beats baseline.
+
+Phase 6 — Cheap Boosters: Imitation, PBT, Ensemble
+Behavior Cloning from RSI/MA experts to warm start.
+
+PBT: pbt_manager.ts — 3 workers, sync best every 5 epochs, mutate LR/entropy/clip.
+
+Ensemble inference: vote/average across {TCN, LSTM, Transformer} policies.
+
+Phase 7 — TA via ChatGPT & Sentiment via Grok/X (Optional but Ready)
+taService.ts + /api/ta + skippy ta:run (patterns, indicators, risks via OpenAI).
+
+sentimentService.ts + /api/sentiment + batch fetch (Grok/X or Reddit+VADER fallback).
+
+UI: “Ask Stevie TA” button; “Sentiment Snapshot” gauge; toast confirmations.
+
+Phase 7.5 — Shadow Mode & Latency SLOs
+Shadow mode: publish orders to paper only in real-time; record end-to-end decision latency (feature fetch → action).
+
+SLOs: p95 < 50 ms latency; error rate thresholds.
+
+Fail pipeline if SLOs breached; send Slack alerts with trace IDs.
+
+Phase 8 — Paper Trading Harness, Risk & Alerts
+exchangeService.ts: Binance Testnet mapping; gated by LIVE_TRADING_ENABLED=false.
+
+Centralize risk in risk/config.yml:
+
+makefile
+Copy
+Edit
+max_pos_pct: 0.05
+max_daily_dd_pct: 0.02
+halt_after_losses: 3
+portfolio_cap_pct: 0.50
+CI test: assert limits enforced in sim and paper connectors.
+
+Kill Switch in UI; Prometheus + Slack alerts on risk trips/errors.
+
+Warm-up:
+
+bash
+Copy
+Edit
+skippy trade:simulate --days 7
+30-day auto-tune:
+
+bash
+Copy
+Edit
+skippy simulate:auto --days 30 --max-iterations 10 --stop-threshold 0.005
+Phase 9 — Explainability & Audit
+auditLogService.ts: per-trade rationale (LLM short explanation referencing current FeatureVector + TA), features, action, reward.
+
+UI “Explain” panel: feature timelines, signals, rationale bubbles.
+
+simulate:report --plot with folds + benchmark version annotations; include latency SLOs & top slippage contributors.
+
+Orchestration & CI
+3-worker orchestration (node cluster or multiple repls) for training/HPO.
+
+CI: unit tests for featureService, PPO smoke test, lint/format; fail on dep drift or risk-rule violations.
+
+Docs to produce/update:
+DATA_SOURCES.md, MODEL_ZOO.md, ENV_HARDENING.md, ITERATIVE_TRAINING.md, SECRETS_REQUIRED.md, READINESS.md.
+
+Acceptance / “Done” Criteria
+One-shot datasets cached locally (≤15 GB). QC passes; no leakage tests pass.
+
+PPO baseline trains; walk-forward CV reports mean/variance.
+
+Benchmarks are versioned; auto-tune runs until plateau (<0.5% over 5 iters).
+
+LOB simulator used; slippage & latency tracked; SLO p95 < 50 ms met in shadow mode.
+
+Risk rules enforced; Slack alerts working.
+
+7-day warm-up + 30-day auto-tune complete, with plots, CIs vs baselines, ablation deltas.
+
+READINESS.md includes next-step checklist to flip to canary live (keep LIVE_TRADING_ENABLED=false until approved).
+
+Command Summary (generate these)
+bash
+Copy
+Edit
+# One-shot data load + QC
+node scripts/load_all_data.ts
+node scripts/qc_data.ts
+
+# Model zoo
+python train_tcn.py
+python train_lstm.py
+python train_transformer.py
+
+# RL bootstrap + evaluation protocol
+python bootstrap_rl.py
+skippy benchmark:run --days 7 --version 1.1
+skippy train:iterate --initial-days 7 --initial-version 1.1 --max-iterations 20 --min-improvement 0.005
+skippy simulate:report --plot
+
+# Paper trading warm-up & 30-day auto-tune
+skippy trade:simulate --days 7
+skippy simulate:auto --days 30 --max-iterations 10 --stop-threshold 0.005
+Proceed through phases 0 → 9. After each, output: ✅/❌ status, files changed, exact commands to run, and any manual steps (e.g., set API keys).

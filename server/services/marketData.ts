@@ -2,7 +2,7 @@ import { WebSocket } from "ws";
 import { storage } from "../storage";
 import type { InsertMarketData } from "@shared/schema";
 import axios from "axios";
-import * as cron from "node-cron";
+import cron from "node-cron";
 
 export interface MarketPrice {
   symbol: string;

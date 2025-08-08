@@ -459,7 +459,6 @@ export type StevieUserProfile = typeof stevieUserProfiles.$inferSelect;
 export type StevieTradeMemory = typeof stevieTradeMemories.$inferSelect;
 export type LearningParameter = typeof learningParameters.$inferSelect;
 export type PerformanceMetric = typeof performanceMetrics.$inferSelect;
-export type MarketRegime = typeof marketRegimes.$inferSelect;
 export type RiskMetric = typeof riskMetrics.$inferSelect;
 export type PortfolioCorrelation = typeof portfolioCorrelations.$inferSelect;
 export type RiskEvent = typeof riskEvents.$inferSelect;

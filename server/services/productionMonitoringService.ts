@@ -109,18 +109,34 @@ export class ProductionMonitoringService {
     const alerts = await this.getActiveAlerts();
     const recommendations = this.generateHealthRecommendations(components, alerts);
 
-    // Record health metrics
-    await db.insert(systemHealthMetrics).values({
-      overallScore,
-      tradingScore: tradingHealth.score,
-      aiScore: aiHealth.score,
-      dataScore: dataHealth.score,
-      riskScore: riskHealth.score,
-      infrastructureScore: infraHealth.score,
-      activeAlerts: alerts.length,
-      uptime: infraHealth.uptime,
-      timestamp: new Date()
-    });
+    // Record health metrics - insert individual metric records
+    const timestamp = new Date();
+    const metricsToInsert = [
+      { metric_name: 'overall_score', value: overallScore, status: overall, metadata: {} },
+      { metric_name: 'trading_score', value: tradingHealth.score, status: overall, metadata: {} },
+      { metric_name: 'ai_score', value: aiHealth.score, status: overall, metadata: {} },
+      { metric_name: 'data_score', value: dataHealth.score, status: overall, metadata: {} },
+      { metric_name: 'risk_score', value: riskHealth.score, status: overall, metadata: {} },
+      { metric_name: 'infrastructure_score', value: infraHealth.score, status: overall, metadata: {} }
+    ];
+    
+    for (const metric of metricsToInsert) {
+      await db.insert(systemHealthMetrics).values({
+        metric_name: metric.metric_name,
+        value: metric.value,
+        status: metric.status,
+        metadata: metric.metadata,
+        timestamp,
+        overallScore,
+        tradingScore: tradingHealth.score,
+        aiScore: aiHealth.score,
+        dataScore: dataHealth.score,
+        riskScore: riskHealth.score,
+        infrastructureScore: infraHealth.score,
+        activeAlerts: alerts.length,
+        uptime: infraHealth.uptime
+      } as any); // Type assertion to handle schema mismatch
+    }
 
     return {
       overall,

@@ -5,6 +5,16 @@ import { setupAuth, isAuthenticated } from "./replitAuth";
 import { xApiEmergencyProtection, xApiManualOverride, getXApiUsageStats } from "./middleware/xApiProtection.js";
 import { xApiCache } from "./services/xApiCache.js";
 import { SentimentAnalyzer } from "./services/sentimentAnalyzer.js";
+import { 
+  getAllApiStats, 
+  getApiStats,
+  emergencyDisableApi,
+  redditApiGuard,
+  etherscanApiGuard,
+  cryptoPanicApiGuard,
+  recordApiUsage
+} from "./middleware/apiGuardrails.js";
+import { EnhancedSentimentAnalyzer } from "./services/enhancedSentimentAnalyzer.js";
 import { advancedFeaturesRouter } from "./routes/advancedFeatures";
 import layoutRoutes from "./routes/layoutRoutes";
 import experimentRoutes from "./routes/experimentRoutes";
@@ -259,6 +269,170 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       logger.error('Manual sentiment analysis failed', { error, symbol: req.params.symbol });
       res.status(500).json({ error: 'Manual sentiment analysis failed' });
+    }
+  });
+
+  // ===== COMPREHENSIVE API GUARDRAILS SYSTEM =====
+  
+  // All API usage monitoring endpoint (admin only)
+  app.get('/api/admin/api-usage/all', rateLimiters.admin, adminAuth, (req: any, res: any) => {
+    try {
+      const allStats = getAllApiStats();
+      const xStats = getXApiUsageStats();
+      
+      res.json({
+        apis: {
+          x: {
+            usage: xStats,
+            cache: xApiCache.getStats(),
+            limits: {
+              monthlyLimit: 100,
+              dailyRecommended: 3,
+              emergencyCutoff: 90
+            },
+            status: xStats.remaining > 10 ? 'safe' : xStats.remaining > 0 ? 'warning' : 'critical'
+          },
+          ...allStats
+        },
+        summary: {
+          totalApis: Object.keys(allStats).length + 1,
+          criticalApis: Object.values(allStats).filter((stat: any) => stat.status === 'critical').length,
+          warningApis: Object.values(allStats).filter((stat: any) => stat.status === 'warning').length,
+          timestamp: new Date().toISOString()
+        }
+      });
+    } catch (error) {
+      logger.error('Failed to get comprehensive API stats', { error });
+      res.status(500).json({ error: 'Failed to get API usage statistics' });
+    }
+  });
+
+  // Enhanced sentiment analysis with full guardrail protection
+  app.get('/api/sentiment/enhanced/:symbol', recordApiUsage, async (req: any, res: any) => {
+    try {
+      const { symbol } = req.params;
+      const analyzer = new EnhancedSentimentAnalyzer();
+      
+      logger.info('[Enhanced Sentiment] Request received with guardrails active', { 
+        symbol,
+        userAgent: req.headers['user-agent'],
+        ip: req.ip
+      });
+      
+      const sentiment = await analyzer.getComprehensiveSentiment(symbol);
+      
+      res.json({
+        ...sentiment,
+        metadata: {
+          symbol,
+          timestamp: new Date().toISOString(),
+          guardrailsActive: true,
+          apiQuotas: getAllApiStats()
+        }
+      });
+    } catch (error) {
+      logger.error('Enhanced sentiment analysis failed', { error, symbol: req.params.symbol });
+      res.status(500).json({ error: 'Enhanced sentiment analysis failed' });
+    }
+  });
+
+  // Protected Reddit sentiment (with guardrails)
+  app.get('/api/sentiment/reddit/:symbol', redditApiGuard, recordApiUsage, async (req: any, res: any) => {
+    try {
+      const { symbol } = req.params;
+      const analyzer = new EnhancedSentimentAnalyzer();
+      
+      const sentiment = await analyzer.getRedditSentiment(symbol);
+      
+      res.json({
+        ...sentiment,
+        metadata: {
+          symbol,
+          source: 'reddit',
+          timestamp: new Date().toISOString(),
+          quotaRemaining: getApiStats('reddit')?.remaining
+        }
+      });
+    } catch (error) {
+      logger.error('Reddit sentiment analysis failed', { error, symbol: req.params.symbol });
+      res.status(500).json({ error: 'Reddit sentiment analysis failed' });
+    }
+  });
+
+  // Protected CryptoPanic news sentiment (with guardrails)
+  app.get('/api/sentiment/news/:symbol', cryptoPanicApiGuard, recordApiUsage, async (req: any, res: any) => {
+    try {
+      const { symbol } = req.params;
+      const analyzer = new EnhancedSentimentAnalyzer();
+      
+      const sentiment = await analyzer.getCryptoPanicSentiment(symbol);
+      
+      res.json({
+        ...sentiment,
+        metadata: {
+          symbol,
+          source: 'cryptopanic',
+          timestamp: new Date().toISOString(),
+          quotaRemaining: getApiStats('cryptopanic')?.remaining
+        }
+      });
+    } catch (error) {
+      logger.error('News sentiment analysis failed', { error, symbol: req.params.symbol });
+      res.status(500).json({ error: 'News sentiment analysis failed' });
+    }
+  });
+
+  // Protected Etherscan on-chain analysis (with guardrails)
+  app.get('/api/sentiment/onchain/:symbol', etherscanApiGuard, recordApiUsage, async (req: any, res: any) => {
+    try {
+      const { symbol } = req.params;
+      const analyzer = new EnhancedSentimentAnalyzer();
+      
+      const sentiment = await analyzer.getEtherscanOnChainSentiment(symbol);
+      
+      res.json({
+        ...sentiment,
+        metadata: {
+          symbol,
+          source: 'etherscan',
+          timestamp: new Date().toISOString(),
+          quotaRemaining: getApiStats('etherscan')?.remaining
+        }
+      });
+    } catch (error) {
+      logger.error('On-chain sentiment analysis failed', { error, symbol: req.params.symbol });
+      res.status(500).json({ error: 'On-chain sentiment analysis failed' });
+    }
+  });
+
+  // Emergency API disable endpoint (admin only)
+  app.post('/api/admin/api/:apiName/disable', rateLimiters.admin, adminAuth, (req: any, res: any) => {
+    try {
+      const { apiName } = req.params;
+      const { reason } = req.body;
+      
+      if (!['reddit', 'etherscan', 'cryptopanic'].includes(apiName)) {
+        return res.status(400).json({ error: 'Invalid API name' });
+      }
+      
+      emergencyDisableApi(apiName, reason || 'Manual admin disable');
+      
+      logger.warn(`[Admin] Emergency disable triggered for ${apiName.toUpperCase()} API`, {
+        api: apiName,
+        reason: reason || 'Manual admin disable',
+        admin: req.user?.claims?.sub,
+        timestamp: new Date().toISOString()
+      });
+      
+      res.json({
+        success: true,
+        message: `${apiName.toUpperCase()} API disabled`,
+        disabledAt: new Date().toISOString(),
+        reason: reason || 'Manual admin disable'
+      });
+    } catch (error) {
+      logger.error('Failed to disable API', { error, api: req.params.apiName });
+      res.status(500).json({ error: 'Failed to disable API' });
     }
   });
 

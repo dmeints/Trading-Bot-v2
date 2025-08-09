@@ -118,9 +118,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/stevie', stevieRoutes);
   
   // Register comprehensive new API routes for live paper trading
-  registerMarketRoutes(app, requireAuth);
-  registerStrategyRoutes(app, requireAuth); 
-  registerBacktestRoutes(app, requireAuth);
+  registerMarketRoutes(app, isAuthenticated);
+  registerStrategyRoutes(app, isAuthenticated); 
+  registerBacktestRoutes(app, isAuthenticated);
   
   // Stevie Super-Training routes (v1.2 advanced RL system)
   app.use('/api/stevie/supertrain', stevieSupertainRoutes);

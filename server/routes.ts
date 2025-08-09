@@ -158,6 +158,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Data fusion routes (on-chain + sentiment)
   app.use('/api/fusion', dataFusionRoutes);
   
+  // Real algorithm benchmark routes (actual trading performance testing)
+  const { realBenchmarkRoutes } = await import('./routes/realBenchmarkRoutes');
+  app.use('/api/real-benchmark', realBenchmarkRoutes);
+  
   // Plugin system routes
   app.use('/api/plugins', pluginRoutes);
   

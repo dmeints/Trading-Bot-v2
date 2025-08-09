@@ -26,5 +26,33 @@
       "win_rate": 0.6929468983443661,
       "max_drawdown": 0.19156495733180218
     }
+  },
+  {
+    "generation": 2,
+    "timestamp": "2025-08-09T07:28:21.222615",
+    "duration_hours": 0.1,
+    "hyperparams_tested": 5,
+    "best_hyperparams": {
+      "learning_rate": 0.0041994662483055235,
+      "gamma": 0.9349003948887512,
+      "clip_range": 0.316805072342346
+    },
+    "baseline_performance": {},
+    "new_performance": {
+      "total_return": -0.06722462438474155,
+      "sharpe_ratio": -0.01004953824559518,
+      "max_drawdown": 0.19156495733180218,
+      "win_rate": 0.6929468983443661,
+      "mean_reward": -0.06722462438474155
+    },
+    "improvement_percent": 98.99504617544048,
+    "model_saved": true,
+    "session_summary": {
+      "baseline_sharpe": -1.0,
+      "new_sharpe": -0.01004953824559518,
+      "total_return": -0.06722462438474155,
+      "win_rate": 0.6929468983443661,
+      "max_drawdown": 0.19156495733180218
+    }
   }
 ]

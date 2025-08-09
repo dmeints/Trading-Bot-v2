@@ -63,7 +63,9 @@ router.post('/real-session', async (req: Request, res: Response) => {
 
     // Execute Python training script
     const pythonScript = path.join(process.cwd(), 'server/training/realTrainingDay.py');
-    const training = spawn('python3', [pythonScript, duration.toString()]);
+    const training = spawn('python3', [pythonScript, duration.toString()], {
+      cwd: path.join(process.cwd(), 'server/training')
+    });
 
     let stdout = '';
     let stderr = '';

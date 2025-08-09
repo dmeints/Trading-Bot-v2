@@ -257,6 +257,21 @@ export class StevieCore {
   }
 
   /**
+   * Lifecycle management methods
+   */
+  
+  async initialize(): Promise<void> {
+    return this.initializeComponents();
+  }
+  
+  async shutdown(): Promise<void> {
+    if (this.personality) {
+      await this.personality.shutdown();
+    }
+    logger.info('[StevieCore] Stevie core shut down successfully');
+  }
+
+  /**
    * Private implementation methods
    */
   

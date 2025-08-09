@@ -53,6 +53,7 @@ import { AlertingIntegration } from "./services/alertingIntegration";
 import stevieSupertainRoutes from './routes/stevie-supertrain';
 import featureRoutes from './routes/featureRoutes';
 import stevieRoutes from './routes/stevieRoutes';
+import realTrainingRoutes from './routes/realTrainingRoutes';
 import taRoutes from './routes/taRoutes';
 import exchangeRoutes from './routes/exchangeRoutes';
 import { registerEnhancementRoutes } from './routes/enhancementRoutes';
@@ -1377,6 +1378,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Ultra-Adaptive Intelligence Routes
   app.use('/api/ultra-adaptive', (await import('./routes/ultraAdaptive')).default);
+  
+  // Real Training Day Routes (replaces marketing fluff with actual ML training)
+  app.use('/api/training', realTrainingRoutes);
 
   // Feedback routes
   app.post('/api/feedback', isDevelopment ? devBypass : isAuthenticated, async (req: any, res) => {

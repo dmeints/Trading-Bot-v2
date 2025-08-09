@@ -1,0 +1,107 @@
+# 🧪 Skippy Trading Platform: Readiness Test & Audit Prompt for Replit Agent
+
+You are auditing **Skippy**, a production-hardened crypto trading platform built with:
+- Frontend: React + Vite + shadcn/ui + Zustand + TanStack Query
+- Backend: Express.js + TypeScript + PostgreSQL (Neon) + Drizzle ORM + WebSockets
+- AI/ML: OpenAI GPT-4o, vector embeddings, reinforcement learning, LLM-powered recommendations
+- Monitoring: Prometheus, SLA tracking, k6 load testing
+- Deployment: Replit-native, responsive, accessible (WCAG 2.1 AA), <450KB bundle, CI/CD
+
+---
+
+## 🔍 GOAL
+
+Perform a **comprehensive technical readiness audit** of this app to determine whether it is truly **production-ready for a live paper trading test run**. This means we want to verify:
+- All components are **real**, implemented, and **functionally complete**
+- No **fake/stubbed placeholder logic** is remaining
+- All APIs, services, data sources, and vector stores are **connected and testable**
+- **All dependencies** work together in production and runtime env
+- All feature flags / config toggles are valid
+- Secret dependencies are clearly marked and stubbed properly
+- Missing or misleading UI components are flagged
+
+---
+
+## ✅ CHECKLIST (Replit Should Test This Iteratively)
+
+### 1. **Static Analysis**
+- ✅ Check that **every file** in the repo is used and not orphaned
+- ✅ Flag any placeholder text like `TODO`, `Fake`, `Mock`, `Stub`, `Hardcoded`, `return []`, etc.
+- ✅ Identify **dead routes**, unused components, or disconnected state stores
+- ✅ Verify all **env variables** (`process.env`) are used securely and documented in `.env.example`
+- ✅ Check for **unused imports**, non-exported functions, unhooked React components
+
+### 2. **API Coverage & Functionality**
+- ✅ Run through all Express `routes/` and `controllers/`
+  - Does `/api/ai/recommendations` return real model output?
+  - Does `/api/portfolio/summary` pull from real data, not mocks?
+  - Does `/api/trading/trades` reflect actual order logic or stub?
+- ✅ Test WebSocket connection: does it stream **real-time updates** from market data?
+
+### 3. **UI Behavior**
+- ✅ Open every page: `Dashboard`, `Trading`, `Portfolio`, `AI Insights`, `Strategy Builder`, etc.
+  - Check that **buttons are wired** and **not greyed out placeholders**
+  - Verify chart panels show **real data**
+  - Test drag-and-drop layout saves correctly
+  - Test all keyboard shortcuts and modals
+- ✅ Confirm **order entry logic** is hooked into backend and returns realistic order state
+
+### 4. **ML / AI / RL Integration**
+- ✅ Check if OpenAI GPT-4o call is **implemented with key** and receiving embeddings or prompts
+- ✅ Verify vector similarity search ("Find Similar") uses a real vector DB (or a working fallback like local FAISS)
+- ✅ Confirm reinforcement learning loop exists and has a usable model (even if dummy-trained)
+- ✅ Ensure AI insights on chart match real data patterns and confidence values
+
+### 5. **Data Integrity**
+- ✅ Confirm all placeholder datasets have been replaced with **real historical crypto data**
+  - OHLCV, order book, funding, sentiment, etc.
+- ✅ Check local Parquet cache is populated and read from
+- ✅ Test backup data fetching via CoinGecko or Binance fallback
+
+### 6. **Performance & Monitoring**
+- ✅ Validate `/api/monitoring/metrics` emits **Prometheus-compatible output**
+- ✅ Confirm distributed tracing includes `x-trace-id` headers
+- ✅ Check that `/service-level` dashboard is populated with SLA targets and breach alerts
+
+### 7. **Security & Secrets**
+- ✅ Check that all secrets are defined in `.env.example`
+- ✅ Validate that no secrets are hardcoded in source
+- ✅ Confirm secrets are **used** in real services (OpenAI, Grok/X, etc.)
+
+### 8. **Testing & CI**
+- ✅ Verify test suite exists (unit + integration + E2E if any)
+- ✅ Confirm test coverage maps to critical features
+- ✅ CI scripts run without error
+- ✅ Linting + type checking pass (TypeScript compliance)
+
+---
+
+## 🔁 ITERATIVE VALIDATION STRATEGY
+
+1. Load all routes, components, services, and hooks.
+2. For each, test **real-world behavior** — not just code presence.
+3. Flag anything that is:
+   - Unimplemented
+   - Returning fake values
+   - Logging stubs
+   - Using missing or commented logic
+   - Wired to dummy data
+4. Generate a **report** showing:
+   - ✅ = Verified working in real-time or realistic mock
+   - ❌ = Missing, fake, placeholder, or non-functional
+   - ⚠️ = Has partial logic or likely failure point
+
+---
+
+## 📤 OUTPUT
+
+Please return the following:
+- Summary of ✅/❌/⚠️ status by subsystem (API, UI, Data, AI, RL, Monitoring)
+- List of placeholder/fake logic
+- List of routes/components that do **not return real data**
+- Warnings about data that needs to be replaced with production-ready sources
+- If everything passes, suggest a paper test start command (like `skippy trade:simulate --days 7`)
+
+---
+
+This audit is intended to catch everything **before we flip Stevie into real-time paper trading mode**. Be exhaustive.

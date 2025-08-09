@@ -88,7 +88,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           logger.info('[DevBypass] Created development user:', user.id);
         }
       } catch (error) {
-        logger.error('[DevBypass] Error ensuring dev user exists:', error);
+        logger.error('[DevBypass] Error ensuring dev user exists:', { error: error instanceof Error ? error.message : String(error) });
       }
     }
     next();
@@ -171,7 +171,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         isAdmin: req.session?.isAdmin || false
       });
     } catch (error) {
-      const reqLogger = logger.withRequest((req as RequestWithId).id);
+      const reqLogger = logger.withRequest(req.id);
       reqLogger.error("Error fetching auth status", { error: error instanceof Error ? error.message : String(error) });
       res.status(500).json({ message: "Failed to fetch auth status" });
     }
@@ -184,7 +184,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = await storage.getUser(userId);
       res.json(user);
     } catch (error) {
-      const reqLogger = logger.withRequest((req as RequestWithId).id, req.user?.claims.sub);
+      const reqLogger = logger.withRequest(req.id, req.user?.claims.sub);
       reqLogger.error("Error fetching user", { error: error instanceof Error ? error.message : String(error) });
       res.status(500).json({ message: "Failed to fetch user" });
     }

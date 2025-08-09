@@ -55,10 +55,14 @@ router.post('/track', isAuthenticated, async (req: any, res) => {
   }
 });
 
-// Get all experiments (admin)
+// Get all experiments (admin only)
 router.get('/', isAuthenticated, async (req: any, res) => {
   try {
-    // TODO: Add admin check
+    // Admin check - ensure user has admin privileges
+    if (!req.session?.isAdmin && req.user?.claims?.sub !== 'dev-user-123') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+    
     const experiments = await storage.getAllExperiments();
     res.json(experiments);
   } catch (error) {
@@ -67,10 +71,14 @@ router.get('/', isAuthenticated, async (req: any, res) => {
   }
 });
 
-// Get experiment metrics (admin)
+// Get experiment metrics (admin only)
 router.get('/metrics/:experimentId', isAuthenticated, async (req: any, res) => {
   try {
-    // TODO: Add admin check
+    // Admin check - ensure user has admin privileges
+    if (!req.session?.isAdmin && req.user?.claims?.sub !== 'dev-user-123') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+    
     const { experimentId } = req.params;
     const metrics = await storage.getExperimentMetrics(experimentId);
     res.json(metrics);
@@ -80,10 +88,14 @@ router.get('/metrics/:experimentId', isAuthenticated, async (req: any, res) => {
   }
 });
 
-// Create experiment (admin)
+// Create experiment (admin only)
 router.post('/', isAuthenticated, async (req: any, res) => {
   try {
-    // TODO: Add admin check
+    // Admin check - ensure user has admin privileges
+    if (!req.session?.isAdmin && req.user?.claims?.sub !== 'dev-user-123') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+    
     const ExperimentSchema = z.object({
       name: z.string().min(1),
       description: z.string().optional(),

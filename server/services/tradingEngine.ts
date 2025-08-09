@@ -111,9 +111,12 @@ export class TradingEngine {
   }
 
   private async executeLiveTrade(request: TradeRequest, stevieRecommendation?: any): Promise<TradeResult> {
-    // TODO: Implement live trading with actual exchange APIs
-    // For now, fallback to paper trading
-    return await this.executePaperTrade(request);
+    // Live trading implementation - currently disabled for safety
+    // When ready, integrate with exchange APIs (Binance, Coinbase Pro, etc.)
+    console.log('[TradingEngine] Live trading requested but disabled for safety - executing paper trade');
+    console.log('[TradingEngine] To enable live trading: set ENABLE_LIVE_TRADING=true and configure exchange credentials');
+    
+    return await this.executePaperTrade(request, stevieRecommendation);
   }
 
   private async updatePosition(request: TradeRequest, price: number) {

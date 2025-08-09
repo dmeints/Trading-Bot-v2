@@ -201,12 +201,45 @@ export class EnsembleAIOrchestrator {
   }
 
   private async getRecentContributions(symbol: string): Promise<AgentContribution[]> {
-    // In a real implementation, this would fetch recent agent contributions from the database
-    return [];
+    try {
+      const activities = await storage.getAgentActivities('ensemble_orchestrator');
+      return activities
+        .filter(activity => activity.data?.symbol === symbol)
+        .slice(-10) // Last 10 contributions
+        .map(activity => ({
+          agentType: activity.data?.agentType || 'unknown',
+          weight: activity.confidence,
+          confidence: activity.confidence,
+          recommendation: activity.data?.recommendation || 'hold',
+          data: activity.data
+        }));
+    } catch (error) {
+      console.error('[EnsembleAI] Error fetching recent contributions:', error);
+      return [];
+    }
   }
 
   getModelPerformance(): Record<string, number> {
     return Object.fromEntries(this.modelPerformance);
+  }
+
+  private async getRecentSentimentData(symbol: string, limit: number = 10) {
+    try {
+      const activities = await storage.getAgentActivities('sentiment_analyst');
+      return activities
+        .filter(activity => activity.data?.symbol === symbol)
+        .slice(-limit)
+        .map(activity => ({
+          timestamp: activity.timestamp,
+          symbol: activity.data?.symbol || symbol,
+          score: activity.confidence || 0.5,
+          source: activity.data?.source || 'sentiment_analyst',
+          volume: activity.data?.volume || 0
+        }));
+    } catch (error) {
+      console.error('[EnsembleAI] Error fetching sentiment data:', error);
+      return [];
+    }
   }
 }
 
@@ -276,8 +309,8 @@ class MarketAnalystAgent extends EnhancedAIAgent {
 class SentimentAnalystAgent extends EnhancedAIAgent {
   async analyze(symbol: string, marketData: any) {
     try {
-      // Fetch recent sentiment data (placeholder until storage method is implemented)
-      const sentimentData = [];
+      // Fetch recent sentiment data from storage
+      const sentimentData = await this.getRecentSentimentData(symbol, 10);
       
       const prompt = `Analyze sentiment for ${symbol}:
       Market Data: ${JSON.stringify(marketData)}

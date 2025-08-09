@@ -556,8 +556,7 @@ export class BacktestEngine {
 
   private async storeBacktestResult(result: BacktestResult): Promise<void> {
     try {
-      // Store in analytics logger for now
-      // TODO: Add proper database schema for backtest results
+      // Store comprehensive backtest results in agent activity log
       await storage.logAgentActivity({
         agentType: 'backtest_engine',
         activity: `Backtest completed: ${result.config.strategy} on ${result.config.symbol}`,
@@ -566,9 +565,15 @@ export class BacktestEngine {
           backtestId: result.id,
           performance: result.performance,
           config: result.config,
-          tradeCount: result.trades.length
+          tradeCount: result.trades.length,
+          timestamp: new Date().toISOString(),
+          duration: result.performance.duration,
+          metrics: result.metrics
         }
       });
+      
+      console.log(`[Backtest] Stored result for ${result.config.strategy} on ${result.config.symbol}`);
+      console.log(`[Backtest] Performance: ${result.performance.winRate}% win rate, ${result.performance.totalReturn}% return`);
     } catch (error) {
       console.error('Failed to store backtest result:', error);
     }
@@ -578,16 +583,62 @@ export class BacktestEngine {
    * Get backtest result by ID
    */
   async getBacktestResult(id: string): Promise<BacktestResult | null> {
-    // TODO: Implement proper storage retrieval
-    return null;
+    try {
+      // Retrieve from agent activity log
+      const activities = await storage.getAgentActivities('backtest_engine');
+      const activity = activities.find(a => a.data?.backtestId === id);
+      
+      if (!activity || !activity.data) {
+        return null;
+      }
+      
+      // Reconstruct BacktestResult from stored data
+      return {
+        id: activity.data.backtestId,
+        config: activity.data.config,
+        performance: activity.data.performance,
+        trades: [], // Trade details not stored in activity log
+        metrics: activity.data.metrics || {}
+      };
+    } catch (error) {
+      console.error('Failed to retrieve backtest result:', error);
+      return null;
+    }
   }
 
   /**
    * Export backtest results to CSV format
    */
   async exportBacktestCSV(id: string): Promise<string> {
-    // TODO: Implement CSV export functionality
-    return `timestamp,symbol,side,quantity,price,pnl,confidence\n`;
+    try {
+      const result = await this.getBacktestResult(id);
+      if (!result) {
+        return `timestamp,symbol,side,quantity,price,pnl,confidence\n# Backtest ${id} not found\n`;
+      }
+      
+      let csv = `timestamp,symbol,side,quantity,price,pnl,confidence\n`;
+      
+      // Add performance summary as comments
+      csv += `# Backtest: ${result.config.strategy} on ${result.config.symbol}\n`;
+      csv += `# Total Return: ${result.performance.totalReturn}%\n`;
+      csv += `# Win Rate: ${result.performance.winRate}%\n`;
+      csv += `# Sharpe Ratio: ${result.performance.sharpeRatio}\n`;
+      csv += `# Max Drawdown: ${result.performance.maxDrawdown}%\n`;
+      
+      // Add trade data (if available)
+      if (result.trades && result.trades.length > 0) {
+        result.trades.forEach(trade => {
+          csv += `${trade.timestamp.toISOString()},${trade.symbol},${trade.side},${trade.quantity},${trade.price},${trade.pnl},${trade.confidence}\n`;
+        });
+      } else {
+        csv += `# No detailed trade data available for this backtest\n`;
+      }
+      
+      return csv;
+    } catch (error) {
+      console.error('Failed to export backtest CSV:', error);
+      return `timestamp,symbol,side,quantity,price,pnl,confidence\n# Export failed: ${error}\n`;
+    }
   }
 
   /**

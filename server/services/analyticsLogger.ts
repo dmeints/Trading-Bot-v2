@@ -84,12 +84,29 @@ class AnalyticsLogger {
 
   getAnalyticsData(limit?: number): AnalyticsEvent[] {
     try {
-      if (!fs.existsSync(ANALYTICS_PATH)) return [];
+      if (!fs.existsSync(ANALYTICS_PATH)) {
+        console.log('[Analytics] No analytics file exists, returning empty array');
+        return [];
+      }
       
       const data = fs.readFileSync(ANALYTICS_PATH, 'utf8');
-      const lines = data.trim().split('\n').filter(Boolean);
-      const events = lines.map(line => JSON.parse(line));
+      const lines = data.trim().split('\n').filter(line => line && line.startsWith('{'));
       
+      if (lines.length === 0) {
+        console.log('[Analytics] No valid analytics events found');
+        return [];
+      }
+      
+      const events = lines.map(line => {
+        try {
+          return JSON.parse(line);
+        } catch (parseError) {
+          console.error('[Analytics] Failed to parse analytics line:', parseError);
+          return null;
+        }
+      }).filter(event => event !== null);
+      
+      console.log(`[Analytics] Retrieved ${events.length} analytics events`);
       return limit ? events.slice(-limit) : events;
     } catch (error) {
       console.error('[Analytics] Failed to read analytics data:', error);

@@ -16,7 +16,7 @@ export class SentimentAnalyzer {
   constructor() {
     this.sources.set('fear_greed', new FearGreedIndexSource());
     this.sources.set('reddit', new RedditSentimentSource());
-    this.sources.set('twitter', new TwitterSentimentSource());
+    this.sources.set('x', new XSentimentSource());
     this.sources.set('news', new NewsSentimentSource());
     this.sources.set('google_trends', new GoogleTrendsSource());
   }
@@ -211,25 +211,26 @@ class RedditSentimentSource extends SentimentSource {
   }
 }
 
-class TwitterSentimentSource extends SentimentSource {
+class XSentimentSource extends SentimentSource {
   async getSentiment(symbol: string): Promise<SentimentResult> {
-    const apiKey = process.env.TWITTER_API_KEY;
+    // X API v2 requires Bearer Token (free tier) or OAuth 2.0 (paid tier)
+    const bearerToken = process.env.X_BEARER_TOKEN;
     
-    if (!apiKey) {
-      console.warn('[Twitter] API key not provided - sentiment analysis disabled');
+    if (!bearerToken) {
+      console.warn('[X] Bearer token not provided - sentiment analysis disabled');
       return {
         sentiment: 0,
         confidence: 0,
         volume: 0,
-        source: 'twitter',
-        data: { error: 'Twitter API key not configured' }
+        source: 'x',
+        data: { error: 'X API Bearer token not configured' }
       };
     }
 
     try {
       const cleanSymbol = symbol.split('/')[0];
       
-      // Twitter API v2 search for recent tweets
+      // X API v2 search for recent posts (formerly tweets)
       const response = await axios.get('https://api.twitter.com/2/tweets/search/recent', {
         params: {
           query: `${cleanSymbol} OR ${symbol} -is:retweet lang:en`,
@@ -237,7 +238,7 @@ class TwitterSentimentSource extends SentimentSource {
           'tweet.fields': 'created_at,public_metrics,context_annotations'
         },
         headers: {
-          'Authorization': `Bearer ${apiKey}`
+          'Authorization': `Bearer ${bearerToken}`
         }
       });
 
@@ -276,7 +277,7 @@ class TwitterSentimentSource extends SentimentSource {
           sentiment: normalizedSentiment,
           confidence: Math.min(0.9, tweets.length / 100),
           volume: tweets.length,
-          source: 'twitter',
+          source: 'x',
           data: {
             tweets: tweets.length,
             totalEngagement,

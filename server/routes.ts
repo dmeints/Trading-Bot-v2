@@ -1592,14 +1592,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Health check endpoint for monitoring
-  app.get('/api/health', (req, res) => {
-    res.json({ 
-      status: 'healthy', 
-      timestamp: new Date().toISOString(),
-      version: process.env.npm_package_version || '1.0.0'
-    });
-  });
+  // Health and SLO endpoint
+  app.use('/api/health', health);
 
   // Temporal Omniscience routes (Phase 2)
   app.use('/', temporalRoutes);

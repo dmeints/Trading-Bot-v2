@@ -78,11 +78,11 @@ export default function SimulationStudio() {
   const [progress, setProgress] = useState(0);
 
   // Query for available strategies
-  // Fetch real trading strategies from backend
   const { data: strategies = [] } = useQuery<string[]>({
     queryKey: ['/api/strategies/list'],
     enabled: isAuthenticated,
-    retry: 2
+    retry: 2,
+    staleTime: 300000 // 5 minutes
   });
 
   // Fetch real market event templates for simulation
@@ -102,8 +102,11 @@ export default function SimulationStudio() {
   // Run backtest mutation
   const runBacktestMutation = useMutation({
     mutationFn: async (backtestConfig: BacktestConfig & { syntheticEvents: SyntheticEvent[] }): Promise<BacktestResult> => {
-      const response = await apiRequest('POST', '/api/simulation/backtest', backtestConfig);
-      return await response.json();
+      const response = await apiRequest('/api/simulation/backtest', {
+        method: 'POST',
+        data: backtestConfig
+      });
+      return response;
     },
     onSuccess: (result: BacktestResult) => {
       setSelectedResult(result);
@@ -187,7 +190,7 @@ export default function SimulationStudio() {
               // Fetch real results
               const results = await apiRequest(`/api/backtests/results/${jobId}`);
               if (results) {
-                setResult(results);
+                setSelectedResult(results);
                 queryClient.invalidateQueries({ queryKey: ['/api/backtests/history'] });
                 toast({
                   title: "Backtest Complete",

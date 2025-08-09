@@ -1,4 +1,24 @@
 import { useSystemStore } from "@/state/systemStore";
+import { useEffect, useState } from "react";
+
+// Hook for getting real-time quotes
+export function useQuotes(symbol: string) {
+  const [quote, setQuote] = useState(null);
+  
+  useEffect(() => {
+    const handleMarketData = (event: any) => {
+      const data = event.detail;
+      if (data && data[symbol]) {
+        setQuote(data[symbol]);
+      }
+    };
+    
+    window.addEventListener('market_data', handleMarketData);
+    return () => window.removeEventListener('market_data', handleMarketData);
+  }, [symbol]);
+  
+  return quote;
+}
 
 export class WebSocketClient {
   private ws: WebSocket | null = null;

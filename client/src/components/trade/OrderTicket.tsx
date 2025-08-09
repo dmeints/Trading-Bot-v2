@@ -28,7 +28,7 @@ export default function OrderTicket(){
       <Row label='Side'>
         <div className='inline-flex rounded-xl overflow-hidden border'>
           {(['buy','sell'] as const).map(v=> (
-            <button key={v} type='button' onClick={()=>setSide(v)} className={}>{v}</button>
+            <button key={v} type='button' onClick={()=>setSide(v)} className={`px-3 py-1 ${side === v ? 'bg-blue-500 text-white' : 'bg-gray-100 hover:bg-gray-200'}`}>{v}</button>
           ))}
         </div>
       </Row>

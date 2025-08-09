@@ -15,10 +15,12 @@ interface Position {
 }
 
 export default function PositionsTable() {
-  const { data: positions = [], isLoading } = useQuery<Position[]>({
-    queryKey: ['/api/trading/positions'],
+  const { data: positionsResponse, isLoading } = useQuery<{success: boolean, data: {positions: Position[]}}>({
+    queryKey: ['/api/portfolio/summary'],
     refetchInterval: 5000,
   });
+  
+  const positions = positionsResponse?.data?.positions || [];
 
   const { data: account } = useQuery<{equity: number, cash: number, maintenanceMargin: number}>({
     queryKey: ['/api/trading/account'],

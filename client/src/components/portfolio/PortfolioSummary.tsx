@@ -18,10 +18,12 @@ export default function PortfolioSummary() {
     refetchInterval: 5000,
   });
 
-  const { data: positions = [] } = useQuery<Position[]>({
-    queryKey: ['/api/trading/positions'],
+  const { data: positionsResponse } = useQuery<{success: boolean, data: {positions: Position[]}}>({
+    queryKey: ['/api/portfolio/summary'],
     refetchInterval: 5000,
   });
+  
+  const positions = positionsResponse?.data?.positions || [];
 
   const { data: fills = [] } = useQuery<any[]>({
     queryKey: ['/api/trading/fills'],

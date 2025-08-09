@@ -34,15 +34,15 @@ export default function RecentTrades() {
 
   const displayTrades = recentTrades.length > 0 ? recentTrades : (fetchedTrades || []);
 
-  const formatCurrency = (value: string) => {
-    const num = parseFloat(value);
-    return num.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+  const formatCurrency = (value: string | number) => {
+    const num = typeof value === 'string' ? parseFloat(value) : value;
+    return (num || 0).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
   };
 
   const formatQuantity = (quantity: string, symbol: string) => {
     const num = parseFloat(quantity);
     const baseSymbol = symbol.split('/')[0];
-    return `${num.toFixed(6)} ${baseSymbol}`;
+    return `${(num || 0).toFixed(6)} ${baseSymbol}`;
   };
 
   const getTimeAgo = (timestamp: string) => {

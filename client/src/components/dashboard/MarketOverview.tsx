@@ -48,7 +48,7 @@ export default function MarketOverview() {
                   ${price.price.toLocaleString()}
                 </div>
                 <div className={`text-xs ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
-                  {isPositive ? '+' : ''}{price.change24h.toFixed(2)}%
+                  {isPositive ? '+' : ''}{(price.change24h || 0).toFixed(2)}%
                 </div>
               </Button>
             );
@@ -100,7 +100,7 @@ export default function MarketOverview() {
                   ${price.price.toLocaleString()}
                 </div>
                 <div className={`text-xs ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
-                  {isPositive ? '+' : ''}{price.change24h.toFixed(2)}%
+                  {isPositive ? '+' : ''}{(price.change24h || 0).toFixed(2)}%
                 </div>
               </Button>
             );

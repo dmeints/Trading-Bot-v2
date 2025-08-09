@@ -238,7 +238,7 @@ export default function QuickTradePanel() {
         <div className="text-fluid-xs text-gray-400 space-y-1 mt-auto border-t border-gray-700 pt-fluid-1">
           <div className="flex justify-between">
             <span>Estimated Cost:</span>
-            <span data-testid="text-estimated-cost" className="text-white">${calculateEstimatedCost().toFixed(2)}</span>
+            <span data-testid="text-estimated-cost" className="text-white">${(calculateEstimatedCost() || 0).toFixed(2)}</span>
           </div>
           <div className="flex justify-between items-center">
             <span className="flex items-center gap-1">
@@ -247,12 +247,12 @@ export default function QuickTradePanel() {
                 ⓘ
               </span>
             </span>
-            <span data-testid="text-estimated-fee" className="text-white">${calculateFee().toFixed(2)}</span>
+            <span data-testid="text-estimated-fee" className="text-white">${(calculateFee() || 0).toFixed(2)}</span>
           </div>
           {selectedPrice && (
             <div className="flex justify-between">
               <span>Current Price:</span>
-              <span data-testid="text-market-price" className="text-white">${selectedPrice.price.toFixed(2)}</span>
+              <span data-testid="text-market-price" className="text-white">${(selectedPrice.price || 0).toFixed(2)}</span>
             </div>
           )}
           <div className="text-xs text-gray-500 mt-2">

@@ -128,9 +128,9 @@ export default function AIRecommendations() {
                 
                 {rec.entryPrice && rec.targetPrice && rec.stopLoss && (
                   <div className="text-xs text-gray-400 mb-1">
-                    Entry: ${parseFloat(rec.entryPrice).toFixed(2)} | 
-                    Target: ${parseFloat(rec.targetPrice).toFixed(2)} | 
-                    Stop: ${parseFloat(rec.stopLoss).toFixed(2)}
+                    Entry: ${(parseFloat(rec.entryPrice) || 0).toFixed(2)} | 
+                    Target: ${(parseFloat(rec.targetPrice) || 0).toFixed(2)} | 
+                    Stop: ${(parseFloat(rec.stopLoss) || 0).toFixed(2)}
                   </div>
                 )}
                 

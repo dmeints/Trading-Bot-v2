@@ -193,7 +193,7 @@ export default function AdvancedOrderPanel() {
                         onClick={() => form.setValue('price', selectedPrice.price)}
                         className="h-auto p-1 text-xs text-blue-400"
                       >
-                        Use Market: ${selectedPrice.price.toFixed(2)}
+                        Use Market: ${(selectedPrice.price || 0).toFixed(2)}
                       </Button>
                     )}
                   </Label>
@@ -314,13 +314,13 @@ export default function AdvancedOrderPanel() {
                       <div>
                         <p className="text-gray-400">Risk Amount</p>
                         <p className="text-white font-medium">
-                          ${riskCalculation.riskAmount.toFixed(2)}
+                          ${(riskCalculation.riskAmount || 0).toFixed(2)}
                         </p>
                       </div>
                       <div>
                         <p className="text-gray-400">Risk Percentage</p>
                         <p className={`font-medium ${riskCalculation.riskPercentage > 2 ? 'text-red-400' : 'text-green-400'}`}>
-                          {riskCalculation.riskPercentage.toFixed(2)}%
+                          {(riskCalculation.riskPercentage || 0).toFixed(2)}%
                         </p>
                       </div>
                     </div>
@@ -328,7 +328,7 @@ export default function AdvancedOrderPanel() {
                     <div>
                       <div className="flex justify-between text-sm mb-1">
                         <span className="text-gray-400">Risk Level</span>
-                        <span className="text-gray-300">{riskCalculation.riskPercentage.toFixed(1)}%</span>
+                        <span className="text-gray-300">{(riskCalculation.riskPercentage || 0).toFixed(1)}%</span>
                       </div>
                       <Progress 
                         value={Math.min(riskCalculation.riskPercentage, 5)} 
@@ -340,7 +340,7 @@ export default function AdvancedOrderPanel() {
                     <div className="text-sm">
                       <span className="text-gray-400">Reward Ratio: </span>
                       <span className="text-white font-medium">
-                        1:{riskCalculation.rewardRatio.toFixed(2)}
+                        1:{(riskCalculation.rewardRatio || 0).toFixed(2)}
                       </span>
                     </div>
                   </div>

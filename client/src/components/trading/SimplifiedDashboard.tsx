@@ -83,7 +83,7 @@ export default function SimplifiedDashboard() {
                   ) : (
                     <TrendingDown className="w-4 h-4 mr-1" />
                   )}
-                  {Math.abs(market.change24h).toFixed(2)}%
+                  {Math.abs(market.change24h || 0).toFixed(2)}%
                 </div>
               )}
             </CardContent>
@@ -141,13 +141,13 @@ export default function SimplifiedDashboard() {
                       <div className={`font-medium ${
                         position.unrealizedPnl >= 0 ? 'text-green-400' : 'text-red-400'
                       }`}>
-                        ${position.unrealizedPnl > 0 ? '+' : ''}{position.unrealizedPnl.toFixed(2)}
+                        ${position.unrealizedPnl > 0 ? '+' : ''}{(position.unrealizedPnl || 0).toFixed(2)}
                       </div>
                       <div className={`text-sm ${
                         ((position.unrealizedPnl / (position.quantity * position.avgPrice)) * 100) >= 0 ? 'text-green-400' : 'text-red-400'
                       }`}>
                         {((position.unrealizedPnl / (position.quantity * position.avgPrice)) * 100) > 0 ? '+' : ''}
-                        {((position.unrealizedPnl / (position.quantity * position.avgPrice)) * 100).toFixed(2)}%
+                        {(((position.unrealizedPnl || 0) / ((position.quantity || 1) * (position.avgPrice || 1))) * 100).toFixed(2)}%
                       </div>
                     </div>
                   </div>

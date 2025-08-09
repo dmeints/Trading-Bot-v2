@@ -60,6 +60,7 @@ import { registerEnhancementRoutes } from './routes/enhancementRoutes';
 import { temporalRoutes } from './routes/temporalRoutes';
 import universalRoutes from './routes/universalRoutes';
 import trainingJobRoutes from './training/jobs/routes';
+import tradingRoutes from './routes/trading.js';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -1385,6 +1386,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Async Training Job Routes
   app.use('/api', trainingJobRoutes);
+  
+  // Trading system routes
+  app.use('/api/trading', tradingRoutes);
 
   // Feedback routes
   app.post('/api/feedback', isDevelopment ? devBypass : isAuthenticated, async (req: any, res) => {

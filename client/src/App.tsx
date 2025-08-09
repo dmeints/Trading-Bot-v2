@@ -49,6 +49,7 @@ function Router() {
           <>
             <Route path="/" component={Dashboard} />
             <Route path="/trading" component={Trading} />
+            <Route path="/health" component={lazy(() => import("@/routes/Health"))} />
             <Route path="/portfolio" component={Portfolio} />
             <Route path="/analytics" component={Analytics} />
             <Route path="/ai-insights" component={AIInsights} />

@@ -6,6 +6,8 @@ import TradingChart from '@/components/trading/TradingChart';
 import AdvancedChart from '@/components/trading/AdvancedChart';
 import QuickTradePanel from '@/components/trading/QuickTradePanel';
 import AdvancedOrderPanel from '@/components/trading/AdvancedOrderPanel';
+import QuotePanel from '@/components/trade/QuotePanel';
+import OrderTicket from '@/components/trade/OrderTicket';
 import OrderBook from '@/components/trading/OrderBook';
 import AIRecommendations from '@/components/trading/AIRecommendations';
 import SocialTradingFeed from '@/components/social/SocialTradingFeed';
@@ -95,10 +97,10 @@ export default function Trading() {
                   {/* Right sidebar with trade panel and indicators */}
                   <div className="space-y-6">
                     <div className="h-1/3">
-                      <QuickTradePanel />
+                      <QuotePanel />
                     </div>
                     <div className="h-1/3">
-                      <ChartIndicatorsPanel />
+                      <OrderTicket />
                     </div>
                     <div className="h-1/3">
                       <AIRecommendations />
@@ -121,7 +123,7 @@ export default function Trading() {
                 </div>
                 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <AdvancedOrderPanel />
+                  <OrderTicket />
                   <AIRecommendations />
                 </div>
               </TabsContent>

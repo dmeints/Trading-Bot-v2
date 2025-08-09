@@ -397,13 +397,13 @@ export default function Analytics() {
                           <span className="text-gray-400">P&L:</span>
                           <br />
                           <span className={event.pnl >= 0 ? 'text-green-400' : 'text-red-400'}>
-                            ${event.pnl.toFixed(2)}
+                            ${(event.pnl || 0).toFixed(2)}
                           </span>
                         </div>
                         <div>
                           <span className="text-gray-400">Confidence:</span>
                           <br />
-                          <span className="text-white">{(event.confidence * 100).toFixed(1)}%</span>
+                          <span className="text-white">{((event.confidence || 0) * 100).toFixed(1)}%</span>
                         </div>
                         <div>
                           <span className="text-gray-400">Latency:</span>

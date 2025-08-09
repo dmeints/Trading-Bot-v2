@@ -48,7 +48,7 @@ export default function PositionsTable() {
   };
 
   const formatPercent = (value: number) => {
-    return `${(value >= 0 ? '+' : '')}${value.toFixed(2)}%`;
+    return `${(value >= 0 ? '+' : '')}${(value || 0).toFixed(2)}%`;
   };
 
   return (
@@ -94,7 +94,7 @@ export default function PositionsTable() {
                         </div>
                       </TableCell>
                       <TableCell className="text-right text-white">
-                        {position.quantity.toFixed(4)}
+                        {(position.quantity || 0).toFixed(4)}
                       </TableCell>
                       <TableCell className="text-right text-white">
                         {formatCurrency(position.avgPrice)}

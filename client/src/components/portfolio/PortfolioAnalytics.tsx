@@ -88,7 +88,7 @@ export default function PortfolioAnalytics() {
                   {analytics.totalPnL >= 0 ? '+' : ''}${analytics.totalPnL.toLocaleString()}
                 </p>
                 <p className={`text-sm ${analytics.totalPnLPercentage >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {analytics.totalPnLPercentage >= 0 ? '+' : ''}{analytics.totalPnLPercentage.toFixed(2)}%
+                  {analytics.totalPnLPercentage >= 0 ? '+' : ''}{(analytics.totalPnLPercentage || 0).toFixed(2)}%
                 </p>
               </div>
               {analytics.totalPnL >= 0 ? (
@@ -126,10 +126,10 @@ export default function PortfolioAnalytics() {
               <div>
                 <p className="text-sm text-gray-400">Sharpe Ratio</p>
                 <p className="text-2xl font-bold text-white">
-                  {analytics.sharpRatio.toFixed(2)}
+                  {(analytics.sharpRatio || 0).toFixed(2)}
                 </p>
                 <p className="text-sm text-gray-400">
-                  Max Drawdown: {analytics.maxDrawdown.toFixed(2)}%
+                  Max Drawdown: {(analytics.maxDrawdown || 0).toFixed(2)}%
                 </p>
               </div>
               <Activity className="w-8 h-8 text-purple-400" />
@@ -200,10 +200,10 @@ export default function PortfolioAnalytics() {
                     <span className="text-gray-300">{position.symbol}</span>
                   </div>
                   <div className="text-right">
-                    <span className="text-white">{position.percentage.toFixed(1)}%</span>
+                    <span className="text-white">{(position.percentage || 0).toFixed(1)}%</span>
                     <br />
                     <span className={position.pnl >= 0 ? 'text-green-400' : 'text-red-400'}>
-                      {position.pnl >= 0 ? '+' : ''}{position.pnlPercentage.toFixed(2)}%
+                      {position.pnl >= 0 ? '+' : ''}{(position.pnlPercentage || 0).toFixed(2)}%
                     </span>
                   </div>
                 </div>

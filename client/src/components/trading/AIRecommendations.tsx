@@ -48,7 +48,7 @@ export default function AIRecommendations() {
     
     if (risk === 0) return null;
     
-    return (reward / risk).toFixed(2);
+    return ((reward || 0) / (risk || 1)).toFixed(2);
   };
 
   const handleRecommendationClick = (recommendation: Recommendation) => {

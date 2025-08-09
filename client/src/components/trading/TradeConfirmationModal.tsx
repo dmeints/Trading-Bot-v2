@@ -82,12 +82,12 @@ export default function TradeConfirmationModal({
             
             <div className="flex justify-between">
               <span className="text-gray-400">Amount:</span>
-              <span className="font-medium">${tradeDetails.amount.toFixed(2)}</span>
+              <span className="font-medium">${(tradeDetails.amount || 0).toFixed(2)}</span>
             </div>
             
             <div className="flex justify-between">
               <span className="text-gray-400">Price:</span>
-              <span className="font-medium">${tradeDetails.price.toFixed(2)}</span>
+              <span className="font-medium">${(tradeDetails.price || 0).toFixed(2)}</span>
             </div>
           </div>
 
@@ -97,24 +97,24 @@ export default function TradeConfirmationModal({
             
             <div className="flex justify-between text-sm">
               <span className="text-gray-400">Trade Amount:</span>
-              <span>${tradeDetails.amount.toFixed(2)}</span>
+              <span>${(tradeDetails.amount || 0).toFixed(2)}</span>
             </div>
             
             <div className="flex justify-between text-sm">
               <span className="text-gray-400">Estimated Fee:</span>
-              <span>${tradeDetails.estimatedFee.toFixed(2)}</span>
+              <span>${(tradeDetails.estimatedFee || 0).toFixed(2)}</span>
             </div>
             
             <div className="flex justify-between text-sm">
               <span className="text-gray-400">Estimated Slippage:</span>
-              <span>{tradeDetails.estimatedSlippage.toFixed(3)}%</span>
+              <span>{(tradeDetails.estimatedSlippage || 0).toFixed(3)}%</span>
             </div>
             
             {tradeDetails.pnlImpact && (
               <div className="flex justify-between text-sm">
                 <span className="text-gray-400">P&L Impact:</span>
                 <span className={tradeDetails.pnlImpact > 0 ? 'text-green-400' : 'text-red-400'}>
-                  ${tradeDetails.pnlImpact.toFixed(2)}
+                  ${(tradeDetails.pnlImpact || 0).toFixed(2)}
                 </span>
               </div>
             )}
@@ -122,7 +122,7 @@ export default function TradeConfirmationModal({
             <div className="border-t border-gray-700 pt-2 mt-2">
               <div className="flex justify-between font-medium">
                 <span>Total Cost:</span>
-                <span>${totalCost.toFixed(2)}</span>
+                <span>${(totalCost || 0).toFixed(2)}</span>
               </div>
             </div>
           </div>

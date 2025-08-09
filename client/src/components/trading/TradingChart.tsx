@@ -166,7 +166,7 @@ export default function TradingChart() {
                 ${selectedPrice.price.toLocaleString()}
               </div>
               <div className={`text-fluid-xs ${selectedPrice.change24h >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                {selectedPrice.change24h >= 0 ? '+' : ''}{selectedPrice.change24h.toFixed(2)}%
+                {selectedPrice.change24h >= 0 ? '+' : ''}{(selectedPrice.change24h || 0).toFixed(2)}%
               </div>
             </div>
           )}

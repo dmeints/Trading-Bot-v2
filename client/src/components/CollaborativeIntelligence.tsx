@@ -106,11 +106,11 @@ export function CollaborativeIntelligence() {
 
   const formatPerformance = (value: number, type: 'return' | 'sharpe' | 'drawdown') => {
     if (type === 'return') {
-      return `${(value * 100).toFixed(1)}%`;
+      return `${((value || 0) * 100).toFixed(1)}%`;
     } else if (type === 'drawdown') {
-      return `${(value * 100).toFixed(1)}%`;
+      return `${((value || 0) * 100).toFixed(1)}%`;
     } else {
-      return value.toFixed(2);
+      return (value || 0).toFixed(2);
     }
   };
 

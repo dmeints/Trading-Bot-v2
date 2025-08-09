@@ -53,14 +53,14 @@ export default function WatchlistPanel() {
     
     toast({
       title: "Alert Set",
-      description: `Price alert set for ${symbol} ${type} $${alertPrice.toFixed(2)}`,
+      description: `Price alert set for ${symbol} ${type} $${(alertPrice || 0).toFixed(2)}`,
     });
   };
 
   const formatVolume = (volume: number) => {
-    if (volume >= 1e9) return `$${(volume / 1e9).toFixed(1)}B`;
-    if (volume >= 1e6) return `$${(volume / 1e6).toFixed(1)}M`;
-    return `$${(volume / 1e3).toFixed(1)}K`;
+    if (volume >= 1e9) return `$${((volume || 0) / 1e9).toFixed(1)}B`;
+    if (volume >= 1e6) return `$${((volume || 0) / 1e6).toFixed(1)}M`;
+    return `$${((volume || 0) / 1e3).toFixed(1)}K`;
   };
 
   const filteredWatchlist = watchlist.filter(item =>
@@ -117,7 +117,7 @@ export default function WatchlistPanel() {
                           : 'bg-red-600/20 text-red-400'
                       }`}
                     >
-                      {item.change24h >= 0 ? '+' : ''}{item.change24h.toFixed(2)}%
+                      {item.change24h >= 0 ? '+' : ''}{(item.change24h || 0).toFixed(2)}%
                     </Badge>
                   </div>
                   <div className="flex items-center space-x-1">

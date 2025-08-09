@@ -38,7 +38,7 @@ export default function PortfolioSummary() {
   };
 
   const formatPercentage = (value: number) => {
-    return `${value.toFixed(1)}%`;
+    return `${(value || 0).toFixed(1)}%`;
   };
 
   if (isLoading && !displaySnapshot) {
@@ -106,7 +106,7 @@ export default function PortfolioSummary() {
             <div className="text-center flex-shrink-0">
               <div className="text-fluid-xs text-gray-400">Sharpe Ratio</div>
               <div className="text-fluid-sm font-semibold text-white" data-testid="text-sharpe-ratio">
-                {displaySnapshot?.sharpeRatio ? displaySnapshot.sharpeRatio.toFixed(2) : '0.00'}
+                {displaySnapshot?.sharpeRatio ? (displaySnapshot.sharpeRatio || 0).toFixed(2) : '0.00'}
               </div>
             </div>
 

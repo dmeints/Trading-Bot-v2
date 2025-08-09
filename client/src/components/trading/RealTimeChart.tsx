@@ -191,9 +191,9 @@ export default function RealTimeChart({
     if (price >= 1000) {
       return price.toLocaleString([], { minimumFractionDigits: 0, maximumFractionDigits: 0 });
     } else if (price >= 1) {
-      return price.toFixed(2);
+      return (price || 0).toFixed(2);
     } else {
-      return price.toFixed(6);
+      return (price || 0).toFixed(6);
     }
   };
 

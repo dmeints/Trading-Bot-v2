@@ -260,9 +260,9 @@ export default function SocialTradingFeed() {
                   <div>
                     <div className="text-xs text-gray-400 mb-1">P&L</div>
                     <div className={`font-medium ${post.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {post.pnl >= 0 ? '+' : ''}${post.pnl.toFixed(2)}
+                      {post.pnl >= 0 ? '+' : ''}${(post.pnl || 0).toFixed(2)}
                       <span className="text-xs ml-1">
-                        ({post.pnl >= 0 ? '+' : ''}{post.pnlPercentage.toFixed(2)}%)
+                        ({post.pnl >= 0 ? '+' : ''}{(post.pnlPercentage || 0).toFixed(2)}%)
                       </span>
                     </div>
                   </div>
@@ -271,11 +271,11 @@ export default function SocialTradingFeed() {
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <span className="text-gray-400">Price: </span>
-                    <span className="text-white font-mono">${post.price.toFixed(2)}</span>
+                    <span className="text-white font-mono">${(post.price || 0).toFixed(2)}</span>
                   </div>
                   <div>
                     <span className="text-gray-400">Quantity: </span>
-                    <span className="text-white font-mono">{post.quantity.toFixed(4)}</span>
+                    <span className="text-white font-mono">{(post.quantity || 0).toFixed(4)}</span>
                   </div>
                 </div>
               </div>

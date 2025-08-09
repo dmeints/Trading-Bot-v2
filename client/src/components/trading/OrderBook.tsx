@@ -99,8 +99,8 @@ export default function OrderBook() {
     );
   }
 
-  const formatPrice = (price: number) => price.toFixed(2);
-  const formatQuantity = (qty: number) => qty.toFixed(4);
+  const formatPrice = (price: number) => (price || 0).toFixed(2);
+  const formatQuantity = (qty: number) => (qty || 0).toFixed(4);
 
   return (
     <Card className="bg-gray-800 border-gray-700 h-full">
@@ -112,8 +112,8 @@ export default function OrderBook() {
           </Badge>
         </CardTitle>
         <div className="flex items-center justify-between text-sm">
-          <span className="text-gray-400">Spread: ${orderBook.spread.toFixed(2)}</span>
-          <span className="text-gray-400">({orderBook.spreadPercentage.toFixed(3)}%)</span>
+          <span className="text-gray-400">Spread: ${(orderBook.spread || 0).toFixed(2)}</span>
+          <span className="text-gray-400">({(orderBook.spreadPercentage || 0).toFixed(3)}%)</span>
         </div>
       </CardHeader>
       
@@ -151,7 +151,7 @@ export default function OrderBook() {
         <div className="px-4 py-2 bg-gray-700/30 border-y border-gray-600">
           <div className="text-center">
             <span className="text-lg font-mono text-white">
-              ${((orderBook.asks[0].price + orderBook.bids[0].price) / 2).toFixed(2)}
+              ${(((orderBook.asks[0]?.price || 0) + (orderBook.bids[0]?.price || 0)) / 2).toFixed(2)}
             </span>
             <div className="text-xs text-gray-400">Last Price</div>
           </div>

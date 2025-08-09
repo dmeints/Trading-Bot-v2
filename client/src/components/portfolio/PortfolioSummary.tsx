@@ -52,7 +52,7 @@ export default function PortfolioSummary() {
   };
 
   const formatPercent = (value: number) => {
-    return `${(value >= 0 ? '+' : '')}${value.toFixed(2)}%`;
+    return `${(value >= 0 ? '+' : '')}${(value || 0).toFixed(2)}%`;
   };
 
   // Calculate portfolio metrics

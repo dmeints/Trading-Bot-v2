@@ -109,8 +109,19 @@ export class ProductionMonitoringService {
     const alerts = await this.getActiveAlerts();
     const recommendations = this.generateHealthRecommendations(components, alerts);
 
-    // Record health metrics - insert single record matching schema
+    // Record health metrics - insert single record matching actual database schema
     await db.insert(systemHealthMetrics).values({
+      metricName: 'system_health_check',
+      value: overallScore,
+      status: overall,
+      metadata: {
+        tradingScore: tradingHealth.score,
+        aiScore: aiHealth.score,
+        dataScore: dataHealth.score,
+        riskScore: riskHealth.score,
+        infrastructureScore: infraHealth.score,
+        activeAlerts: alerts.length
+      },
       overallScore,
       tradingScore: tradingHealth.score,
       aiScore: aiHealth.score,
@@ -118,6 +129,7 @@ export class ProductionMonitoringService {
       riskScore: riskHealth.score,
       infrastructureScore: infraHealth.score,
       activeAlerts: alerts.length,
+      systemStatus: overall,
       uptime: infraHealth.uptime
     });
 

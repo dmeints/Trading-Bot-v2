@@ -3,6 +3,7 @@ import {
   index,
   jsonb,
   pgTable,
+  serial,
   timestamp,
   varchar,
   decimal,
@@ -419,16 +420,21 @@ export const optionsFlow = pgTable("options_flow", {
 
 // Production Monitoring Tables
 export const systemHealthMetrics = pgTable("system_health_metrics", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  overallScore: real("overall_score").notNull(),
-  tradingScore: real("trading_score").notNull(),
-  aiScore: real("ai_score").notNull(),
-  dataScore: real("data_score").notNull(),
-  riskScore: real("risk_score").notNull(),
-  infrastructureScore: real("infrastructure_score").notNull(),
-  activeAlerts: integer("active_alerts").notNull().default(0),
-  uptime: real("uptime").notNull(),
+  id: serial("id").primaryKey(),
+  metricName: varchar("metric_name").notNull(),
+  value: real("value").notNull(),
+  status: varchar("status"),
+  metadata: jsonb("metadata").default({}),
   timestamp: timestamp("timestamp").defaultNow(),
+  overallScore: real("overall_score"),
+  tradingScore: real("trading_score"),
+  aiScore: real("ai_score"),
+  riskScore: real("risk_score"),
+  dataScore: real("data_score"),
+  infrastructureScore: real("infrastructure_score"),
+  activeAlerts: integer("active_alerts"),
+  systemStatus: varchar("system_status"),
+  uptime: real("uptime"),
 });
 
 export const performanceBenchmarks = pgTable("performance_benchmarks", {

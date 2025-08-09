@@ -115,39 +115,91 @@ class FearGreedIndexSource extends SentimentSource {
 
 class RedditSentimentSource extends SentimentSource {
   async getSentiment(symbol: string): Promise<SentimentResult> {
+    const apiKey = process.env.REDDIT_API_KEY;
+    
+    if (!apiKey) {
+      console.warn('[Reddit] API key not provided - sentiment analysis disabled');
+      return {
+        sentiment: 0,
+        confidence: 0,
+        volume: 0,
+        source: 'reddit',
+        data: { error: 'Reddit API key not configured' }
+      };
+    }
+
     try {
-      // In a real implementation, this would use Reddit API or a sentiment service
-      // For now, we'll simulate based on symbol popularity
-      const popularCoins = ['BTC', 'ETH', 'SOL', 'ADA', 'DOT'];
-      const cleanSymbol = symbol.split('/')[0]; // Remove /USD
+      const cleanSymbol = symbol.split('/')[0].toLowerCase();
       
-      if (popularCoins.includes(cleanSymbol)) {
-        // Simulate positive sentiment for popular coins
+      // Search relevant crypto subreddits
+      const subreddits = ['cryptocurrency', 'cryptomarkets', 'bitcoin', 'ethereum'];
+      const searchQuery = `${cleanSymbol} OR ${symbol}`;
+      
+      const response = await axios.get('https://www.reddit.com/search.json', {
+        params: {
+          q: searchQuery,
+          sort: 'new',
+          limit: 100,
+          t: 'day'
+        },
+        headers: {
+          'User-Agent': 'CryptoTradingBot/1.0'
+        }
+      });
+
+      if (response.data?.data?.children) {
+        const posts = response.data.data.children;
+        let totalSentiment = 0;
+        let postCount = 0;
+        let commentCount = 0;
+
+        for (const post of posts) {
+          const postData = post.data;
+          const title = postData.title.toLowerCase();
+          const content = (postData.selftext || '').toLowerCase();
+          
+          // Simple sentiment analysis based on keywords
+          const positiveWords = ['bullish', 'moon', 'pump', 'buy', 'hodl', 'green', 'up', 'gains'];
+          const negativeWords = ['bearish', 'dump', 'sell', 'crash', 'red', 'down', 'loss', 'fear'];
+          
+          let sentimentScore = 0;
+          positiveWords.forEach(word => {
+            if (title.includes(word) || content.includes(word)) sentimentScore += 1;
+          });
+          negativeWords.forEach(word => {
+            if (title.includes(word) || content.includes(word)) sentimentScore -= 1;
+          });
+          
+          totalSentiment += sentimentScore;
+          postCount++;
+          commentCount += postData.num_comments || 0;
+        }
+
+        const averageSentiment = postCount > 0 ? totalSentiment / postCount : 0;
+        const normalizedSentiment = Math.max(-1, Math.min(1, averageSentiment / 3));
+
         return {
-          sentiment: Math.random() * 0.4 + 0.1, // 0.1 to 0.5
-          confidence: 0.6,
-          volume: Math.floor(Math.random() * 1000) + 100,
+          sentiment: normalizedSentiment,
+          confidence: Math.min(0.8, postCount / 50), // Higher confidence with more data
+          volume: postCount,
           source: 'reddit',
           data: { 
-            posts: Math.floor(Math.random() * 50) + 10,
-            comments: Math.floor(Math.random() * 500) + 100,
-            simulation: true 
+            posts: postCount,
+            comments: commentCount,
+            rawSentiment: totalSentiment
           }
         };
       }
-      
+
       return {
-        sentiment: Math.random() * 0.2 - 0.1, // -0.1 to 0.1
-        confidence: 0.4,
-        volume: Math.floor(Math.random() * 100) + 10,
+        sentiment: 0,
+        confidence: 0,
+        volume: 0,
         source: 'reddit',
-        data: { 
-          posts: Math.floor(Math.random() * 20) + 5,
-          comments: Math.floor(Math.random() * 100) + 20,
-          simulation: true 
-        }
+        data: { error: 'No data found' }
       };
     } catch (error) {
+      console.error('[Reddit] API error:', error);
       return {
         sentiment: 0,
         confidence: 0,
@@ -161,35 +213,87 @@ class RedditSentimentSource extends SentimentSource {
 
 class TwitterSentimentSource extends SentimentSource {
   async getSentiment(symbol: string): Promise<SentimentResult> {
-    try {
-      // Simulate Twitter sentiment analysis
-      const cleanSymbol = symbol.split('/')[0];
-      const majorCoins = ['BTC', 'ETH'];
-      
-      let baseSentiment = 0;
-      let volume = 0;
-      
-      if (majorCoins.includes(cleanSymbol)) {
-        baseSentiment = Math.random() * 0.6 - 0.3; // -0.3 to 0.3
-        volume = Math.floor(Math.random() * 5000) + 1000;
-      } else {
-        baseSentiment = Math.random() * 0.4 - 0.2; // -0.2 to 0.2
-        volume = Math.floor(Math.random() * 1000) + 100;
-      }
-      
+    const apiKey = process.env.TWITTER_API_KEY;
+    
+    if (!apiKey) {
+      console.warn('[Twitter] API key not provided - sentiment analysis disabled');
       return {
-        sentiment: baseSentiment,
-        confidence: 0.5,
-        volume,
+        sentiment: 0,
+        confidence: 0,
+        volume: 0,
         source: 'twitter',
-        data: { 
-          tweets: volume,
-          retweets: Math.floor(volume * 0.3),
-          mentions: Math.floor(volume * 1.2),
-          simulation: true 
+        data: { error: 'Twitter API key not configured' }
+      };
+    }
+
+    try {
+      const cleanSymbol = symbol.split('/')[0];
+      
+      // Twitter API v2 search for recent tweets
+      const response = await axios.get('https://api.twitter.com/2/tweets/search/recent', {
+        params: {
+          query: `${cleanSymbol} OR ${symbol} -is:retweet lang:en`,
+          max_results: 100,
+          'tweet.fields': 'created_at,public_metrics,context_annotations'
+        },
+        headers: {
+          'Authorization': `Bearer ${apiKey}`
         }
+      });
+
+      if (response.data?.data) {
+        const tweets = response.data.data;
+        let totalSentiment = 0;
+        let totalEngagement = 0;
+
+        for (const tweet of tweets) {
+          const text = tweet.text.toLowerCase();
+          
+          // Enhanced sentiment analysis
+          const strongPositive = ['moon', 'bullish', 'pump', 'rocket', 'green', 'gains', 'profit'];
+          const positive = ['buy', 'hold', 'hodl', 'up', 'good', 'strong', 'support'];
+          const negative = ['sell', 'dump', 'bear', 'crash', 'down', 'loss', 'fear'];
+          const strongNegative = ['panic', 'dead', 'rekt', 'liquidated', 'scam'];
+          
+          let sentiment = 0;
+          strongPositive.forEach(word => { if (text.includes(word)) sentiment += 2; });
+          positive.forEach(word => { if (text.includes(word)) sentiment += 1; });
+          negative.forEach(word => { if (text.includes(word)) sentiment -= 1; });
+          strongNegative.forEach(word => { if (text.includes(word)) sentiment -= 2; });
+          
+          const engagement = (tweet.public_metrics?.like_count || 0) + 
+                           (tweet.public_metrics?.retweet_count || 0) * 2 +
+                           (tweet.public_metrics?.reply_count || 0);
+          
+          totalSentiment += sentiment * Math.log(engagement + 1); // Weight by engagement
+          totalEngagement += engagement;
+        }
+
+        const averageSentiment = tweets.length > 0 ? totalSentiment / tweets.length : 0;
+        const normalizedSentiment = Math.max(-1, Math.min(1, averageSentiment / 5));
+
+        return {
+          sentiment: normalizedSentiment,
+          confidence: Math.min(0.9, tweets.length / 100),
+          volume: tweets.length,
+          source: 'twitter',
+          data: {
+            tweets: tweets.length,
+            totalEngagement,
+            averageEngagement: totalEngagement / tweets.length
+          }
+        };
+      }
+
+      return {
+        sentiment: 0,
+        confidence: 0,
+        volume: 0,
+        source: 'twitter',
+        data: { error: 'No tweets found' }
       };
     } catch (error) {
+      console.error('[Twitter] API error:', error);
       return {
         sentiment: 0,
         confidence: 0,
@@ -203,33 +307,87 @@ class TwitterSentimentSource extends SentimentSource {
 
 class NewsSentimentSource extends SentimentSource {
   async getSentiment(symbol: string): Promise<SentimentResult> {
-    try {
-      // Simulate news sentiment analysis
-      const cleanSymbol = symbol.split('/')[0];
-      
-      // Simulate news events affecting sentiment
-      const newsEvents = [
-        { type: 'regulatory', sentiment: -0.3, confidence: 0.8 },
-        { type: 'adoption', sentiment: 0.5, confidence: 0.7 },
-        { type: 'technical', sentiment: 0.2, confidence: 0.6 },
-        { type: 'partnership', sentiment: 0.4, confidence: 0.7 },
-        { type: 'market', sentiment: -0.1, confidence: 0.5 }
-      ];
-      
-      const randomEvent = newsEvents[Math.floor(Math.random() * newsEvents.length)];
-      
+    const apiKey = process.env.CRYPTO_PANIC_API_KEY;
+    
+    if (!apiKey) {
+      console.warn('[News] CryptoPanic API key not provided - sentiment analysis disabled');
       return {
-        sentiment: randomEvent.sentiment + (Math.random() * 0.2 - 0.1),
-        confidence: randomEvent.confidence,
-        volume: Math.floor(Math.random() * 20) + 5,
+        sentiment: 0,
+        confidence: 0,
+        volume: 0,
         source: 'news',
-        data: { 
-          eventType: randomEvent.type,
-          articles: Math.floor(Math.random() * 20) + 5,
-          simulation: true 
+        data: { error: 'CryptoPanic API key not configured' }
+      };
+    }
+
+    try {
+      const cleanSymbol = symbol.split('/')[0].toLowerCase();
+      
+      // CryptoPanic API for crypto news sentiment
+      const response = await axios.get('https://cryptopanic.com/api/v1/posts/', {
+        params: {
+          auth_token: apiKey,
+          currencies: cleanSymbol,
+          filter: 'hot',
+          kind: 'news',
+          public: 'true'
         }
+      });
+
+      if (response.data?.results) {
+        const articles = response.data.results;
+        let totalSentiment = 0;
+        let totalVotes = 0;
+
+        for (const article of articles) {
+          const title = article.title.toLowerCase();
+          
+          // Analyze sentiment from title and votes
+          const positiveWords = ['bullish', 'surge', 'rally', 'adoption', 'partnership', 'green', 'gains', 'growth'];
+          const negativeWords = ['bearish', 'crash', 'sell-off', 'hack', 'ban', 'regulation', 'red', 'loss', 'drop'];
+          
+          let sentimentScore = 0;
+          positiveWords.forEach(word => {
+            if (title.includes(word)) sentimentScore += 1;
+          });
+          negativeWords.forEach(word => {
+            if (title.includes(word)) sentimentScore -= 1;
+          });
+          
+          // Factor in community voting if available
+          const positiveVotes = article.votes?.positive || 0;
+          const negativeVotes = article.votes?.negative || 0;
+          const voteWeight = positiveVotes - negativeVotes;
+          
+          totalSentiment += sentimentScore + (voteWeight * 0.1);
+          totalVotes += positiveVotes + negativeVotes;
+        }
+
+        const averageSentiment = articles.length > 0 ? totalSentiment / articles.length : 0;
+        const normalizedSentiment = Math.max(-1, Math.min(1, averageSentiment / 2));
+
+        return {
+          sentiment: normalizedSentiment,
+          confidence: Math.min(0.8, articles.length / 20),
+          volume: articles.length,
+          source: 'news',
+          data: {
+            articles: articles.length,
+            totalVotes,
+            averageVotes: totalVotes / articles.length
+          }
+        };
+      }
+
+      return {
+        sentiment: 0,
+        confidence: 0,
+        volume: 0,
+        source: 'news',
+        data: { error: 'No news articles found' }
       };
     } catch (error) {
+      console.error('[News] CryptoPanic API error:', error);
       return {
         sentiment: 0,
         confidence: 0,

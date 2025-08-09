@@ -1,0 +1,15 @@
+{
+  "strategy": "default",
+  "version": "1.0.0",
+  "symbols": [
+    "BTC",
+    "ETH"
+  ],
+  "timeframe": "1h",
+  "fromIso": "2025-08-01T00:00:00Z",
+  "toIso": "2025-08-09T23:00:00Z",
+  "feeBps": 10,
+  "slipBps": 5,
+  "rngSeed": 698378,
+  "timestamp": "2025-08-09T22:58:43.961Z"
+}

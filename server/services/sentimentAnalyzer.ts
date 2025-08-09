@@ -1,6 +1,8 @@
 import axios from 'axios';
 import { storage } from '../storage';
 import type { InsertSentimentData } from '@shared/schema';
+import { xApiCache } from './xApiCache.js';
+import { logger } from '../utils/logger.js';
 
 export interface SentimentResult {
   sentiment: number; // -1 (negative) to 1 (positive)
@@ -213,30 +215,49 @@ class RedditSentimentSource extends SentimentSource {
 
 class XSentimentSource extends SentimentSource {
   async getSentiment(symbol: string): Promise<SentimentResult> {
-    // X API v2 requires Bearer Token (free tier) or OAuth 2.0 (paid tier)
     const bearerToken = process.env.X_BEARER_TOKEN;
     
     if (!bearerToken) {
-      console.warn('[X] Bearer token not provided - sentiment analysis disabled');
+      logger.warn('[X API] Bearer token not provided - sentiment analysis disabled');
       return {
         sentiment: 0,
         confidence: 0,
         volume: 0,
         source: 'x',
-        data: { error: 'X API Bearer token not configured' }
+        data: { error: 'X API Bearer token not configured', cached: false }
       };
     }
 
+    const cleanSymbol = symbol.split('/')[0];
+    const queryParams = {
+      query: `${cleanSymbol} OR ${symbol} -is:retweet lang:en`,
+      max_results: 100,
+      'tweet.fields': 'created_at,public_metrics,context_annotations'
+    };
+
+    // Check cache first - CRITICAL for 100/month limit
+    const cached = xApiCache.get(queryParams);
+    if (cached) {
+      logger.info('[X API] Cache hit - precious request saved!', { 
+        symbol, 
+        age: Math.round((Date.now() - cached.timestamp) / 1000 / 60) 
+      });
+      return {
+        ...cached.data,
+        data: { ...cached.data.data, cached: true, cacheAge: Date.now() - cached.timestamp }
+      };
+    }
+
+    // Check if we have remaining quota (simulated check - in real app, would track usage)
+    logger.warn('[X API] Making precious API request', { 
+      symbol, 
+      warning: 'Only 100 requests/month available - use sparingly!' 
+    });
+
     try {
-      const cleanSymbol = symbol.split('/')[0];
-      
-      // X API v2 search for recent posts (formerly tweets)
+      // Make the precious API request
       const response = await axios.get('https://api.twitter.com/2/tweets/search/recent', {
-        params: {
-          query: `${cleanSymbol} OR ${symbol} -is:retweet lang:en`,
-          max_results: 100,
-          'tweet.fields': 'created_at,public_metrics,context_annotations'
-        },
+        params: queryParams,
         headers: {
           'Authorization': `Bearer ${bearerToken}`
         }
@@ -273,7 +294,7 @@ class XSentimentSource extends SentimentSource {
         const averageSentiment = tweets.length > 0 ? totalSentiment / tweets.length : 0;
         const normalizedSentiment = Math.max(-1, Math.min(1, averageSentiment / 5));
 
-        return {
+        const result = {
           sentiment: normalizedSentiment,
           confidence: Math.min(0.9, tweets.length / 100),
           volume: tweets.length,
@@ -281,26 +302,42 @@ class XSentimentSource extends SentimentSource {
           data: {
             tweets: tweets.length,
             totalEngagement,
-            averageEngagement: totalEngagement / tweets.length
+            averageEngagement: totalEngagement / tweets.length,
+            cached: false,
+            timestamp: Date.now()
           }
         };
+
+        // Cache for 24 hours minimum to preserve API quota
+        xApiCache.set(queryParams, result, 24 * 60 * 60 * 1000);
+        logger.warn('[X API] Response cached for 24 hours', { 
+          symbol, 
+          tweets: tweets.length,
+          quotaUsed: '1/100 monthly' 
+        });
+
+        return result;
       }
 
       return {
         sentiment: 0,
         confidence: 0,
         volume: 0,
-        source: 'twitter',
-        data: { error: 'No tweets found' }
+        source: 'x',
+        data: { error: 'No tweets found', cached: false }
       };
     } catch (error) {
-      console.error('[Twitter] API error:', error);
+      logger.error('[X API] Request failed - precious quota may have been wasted!', {
+        error: String(error),
+        symbol,
+        warning: 'Check if this counts against 100/month limit'
+      });
       return {
         sentiment: 0,
         confidence: 0,
         volume: 0,
-        source: 'twitter',
-        data: { error: String(error) }
+        source: 'x',
+        data: { error: String(error), cached: false }
       };
     }
   }

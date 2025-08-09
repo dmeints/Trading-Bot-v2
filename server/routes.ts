@@ -2,6 +2,9 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
+import { xApiEmergencyProtection, xApiManualOverride, getXApiUsageStats } from "./middleware/xApiProtection.js";
+import { xApiCache } from "./services/xApiCache.js";
+import { SentimentAnalyzer } from "./services/sentimentAnalyzer.js";
 import { advancedFeaturesRouter } from "./routes/advancedFeatures";
 import layoutRoutes from "./routes/layoutRoutes";
 import experimentRoutes from "./routes/experimentRoutes";
@@ -174,6 +177,88 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const reqLogger = logger.withRequest((req as RequestWithId).id, req.user?.claims.sub);
       reqLogger.error("Error fetching user", { error: error instanceof Error ? error.message : String(error) });
       res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
+
+  // ===== X API EMERGENCY PROTECTION SYSTEM =====
+  
+  // X API usage monitoring endpoint (admin only)
+  app.get('/api/admin/x-api/usage', rateLimiters.admin, adminAuth, (req: any, res: any) => {
+    try {
+      const stats = getXApiUsageStats();
+      const cacheStats = xApiCache.getStats();
+      
+      res.json({
+        usage: stats,
+        cache: cacheStats,
+        limits: {
+          monthlyLimit: 100,
+          dailyRecommended: 3,
+          emergencyCutoff: 90
+        },
+        status: stats.remaining > 10 ? 'safe' : stats.remaining > 0 ? 'warning' : 'critical'
+      });
+    } catch (error) {
+      logger.error('Failed to get X API usage stats', { error });
+      res.status(500).json({ error: 'Failed to get usage stats' });
+    }
+  });
+
+  // Protected sentiment analysis endpoint (uses X API protection)
+  app.get('/api/sentiment/:symbol', xApiEmergencyProtection, async (req: any, res: any) => {
+    try {
+      const { symbol } = req.params;
+      const analyzer = new SentimentAnalyzer();
+      
+      // Add volatility header for smart triggering
+      const volatility = parseFloat(req.query.volatility as string) || 0;
+      req.headers['x-market-volatility'] = volatility.toString();
+      
+      const sentiment = await analyzer.getAggregatedSentiment(symbol);
+      
+      res.json({
+        ...sentiment,
+        metadata: {
+          symbol,
+          timestamp: new Date().toISOString(),
+          volatilityTrigger: volatility,
+          xApiUsed: sentiment.breakdown.some(s => s.source === 'x'),
+          quotaRemaining: getXApiUsageStats().remaining
+        }
+      });
+    } catch (error) {
+      logger.error('Sentiment analysis failed', { error, symbol: req.params.symbol });
+      res.status(500).json({ error: 'Sentiment analysis failed' });
+    }
+  });
+
+  // Manual X API override endpoint (admin only, for testing)
+  app.get('/api/admin/sentiment/:symbol/force', rateLimiters.admin, adminAuth, xApiManualOverride, async (req: any, res: any) => {
+    try {
+      const { symbol } = req.params;
+      const analyzer = new SentimentAnalyzer();
+      
+      logger.warn('Manual X API override triggered by admin', { 
+        symbol, 
+        admin: req.user?.claims?.sub,
+        warning: 'This consumes precious X API quota!'
+      });
+      
+      const sentiment = await analyzer.getAggregatedSentiment(symbol);
+      
+      res.json({
+        ...sentiment,
+        metadata: {
+          symbol,
+          timestamp: new Date().toISOString(),
+          manualOverride: true,
+          quotaRemaining: getXApiUsageStats().remaining,
+          warning: 'Manual override used - X API quota consumed'
+        }
+      });
+    } catch (error) {
+      logger.error('Manual sentiment analysis failed', { error, symbol: req.params.symbol });
+      res.status(500).json({ error: 'Manual sentiment analysis failed' });
     }
   });
 

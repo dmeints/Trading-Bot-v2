@@ -129,7 +129,7 @@ export default function DepthOfMarketHeatmap() {
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-white">Depth of Market</h3>
         <div className="text-xs text-gray-400">
-          Spread: ${depthData.spread.toFixed(2)}
+          Spread: ${(depthData.spread || 0).toFixed(2)}
         </div>
       </div>
 
@@ -149,12 +149,12 @@ export default function DepthOfMarketHeatmap() {
                 style={{ width: `${getIntensity(ask.size)}%` }}
               />
               <div className="absolute inset-0 flex items-center justify-between px-1 text-xs">
-                <span className="text-red-400 font-mono">{ask.price.toFixed(2)}</span>
-                <span className="text-white">{ask.size.toFixed(3)}</span>
+                <span className="text-red-400 font-mono">{(ask.price || 0).toFixed(2)}</span>
+                <span className="text-white">{(ask.size || 0).toFixed(3)}</span>
               </div>
               {hoveredEntry?.entry === ask && (
                 <div className="absolute right-0 top-4 z-10 bg-gray-900 border border-gray-600 rounded p-1 text-xs text-white">
-                  Total: {ask.total.toFixed(3)}
+                  Total: {(ask.total || 0).toFixed(3)}
                 </div>
               )}
             </div>
@@ -164,7 +164,7 @@ export default function DepthOfMarketHeatmap() {
         {/* Spread Indicator */}
         <div className="py-2 border-t border-b border-gray-600">
           <div className="text-center text-xs text-gray-400">
-            Market Spread: ${depthData.spread.toFixed(2)}
+            Market Spread: ${(depthData.spread || 0).toFixed(2)}
           </div>
         </div>
 
@@ -183,12 +183,12 @@ export default function DepthOfMarketHeatmap() {
                 style={{ width: `${getIntensity(bid.size)}%` }}
               />
               <div className="absolute inset-0 flex items-center justify-between px-1 text-xs">
-                <span className="text-green-400 font-mono">{bid.price.toFixed(2)}</span>
-                <span className="text-white">{bid.size.toFixed(3)}</span>
+                <span className="text-green-400 font-mono">{(bid.price || 0).toFixed(2)}</span>
+                <span className="text-white">{(bid.size || 0).toFixed(3)}</span>
               </div>
               {hoveredEntry?.entry === bid && (
                 <div className="absolute right-0 top-4 z-10 bg-gray-900 border border-gray-600 rounded p-1 text-xs text-white">
-                  Total: {bid.total.toFixed(3)}
+                  Total: {(bid.total || 0).toFixed(3)}
                 </div>
               )}
             </div>

@@ -1,0 +1,130 @@
+# Stevie Training Configuration - Production Grade
+training:
+  project_name: "stevie_v2"
+  
+  # Data configuration (budget-aware)
+  data:
+    symbols: ['BTC/USD', 'ETH/USD', 'SOL/USD']
+    bar_sizes: ['1m', '5m', '15m']
+    train_start: '2024-01-01'
+    train_end: '2024-10-31'
+    test_start: '2024-11-01'
+    test_end: '2024-12-31'
+    
+    # Optional data sources (default OFF)
+    enable_funding_rates: false
+    enable_open_interest: false
+    enable_sentiment: false
+    enable_onchain: false
+    
+    # Data quality
+    max_gap_minutes: 5
+    outlier_std_threshold: 4.0
+    min_volume_filter: 1000
+  
+  # Feature configuration (minimal high-signal)
+  features:
+    price_features: true      # OHLCV, returns, ATR, z-scores
+    microstructure: true      # spread, depth imbalance, OFI/MLOFI
+    derivatives: false        # funding Δ, OI Δ (enable only if ablation shows lift)
+    
+    # Feature windows
+    lookback_periods: [5, 10, 20, 50]
+    volatility_window: 20
+    
+  # Labeling
+  labels:
+    method: 'triple_barrier'
+    volatility_target_multiplier: 2.0  # 2x ATR
+    max_holding_periods: [10, 20, 50]  # bars
+    min_return_threshold: 0.001        # 0.1%
+    enable_meta_labeling: true
+    
+  # Evaluation protocol (leakage-proof)
+  evaluation:
+    method: 'purged_embargo_cv'
+    n_splits: 5
+    embargo_pct: 0.02          # 2% embargo around splits
+    purge_pct: 0.05            # 5% purge before test
+    walk_forward: true
+    cscv_enabled: true         # Combinatorial purged CV for overfitting detection
+    
+  # Execution realism
+  execution:
+    latency_ms: [2, 8]         # min/max latency range
+    slippage_curve:
+      small_size: 0.0005       # 0.05% for < $1000
+      medium_size: 0.0015      # 0.15% for $1000-$10000  
+      large_size: 0.0035       # 0.35% for > $10000
+    partial_fill_prob: 0.85
+    maker_fee: 0.0001          # 0.01%
+    taker_fee: 0.0005          # 0.05%
+    
+  # Risk management
+  risk:
+    max_position_pct: 0.05     # 5% max position size
+    kelly_fraction_cap: 0.25   # 25% of Kelly
+    daily_loss_limit: 0.02     # 2% daily drawdown limit
+    consecutive_loss_limit: 3   # halt after 3 consecutive losses
+    volatility_scaling: true   # ATR-based position sizing
+    
+  # Models
+  models:
+    supervised:
+      type: 'tcn'              # Temporal Convolutional Network (lightweight)
+      hidden_size: 64
+      num_layers: 3
+      kernel_size: 3
+      dropout: 0.2
+      early_stop_patience: 10
+      
+    rl:
+      algorithm: 'ppo'         # Keep your proven PPO
+      total_timesteps: 1000000
+      learning_rate: 0.0003
+      n_steps: 2048
+      batch_size: 64
+      gamma: 0.99
+      clip_range: 0.2
+      
+    offline_rl:
+      enabled: false           # Optional: CQL/AWAC for batch training
+      
+  # Hyperparameter optimization
+  hyperopt:
+    framework: 'optuna'
+    n_trials: 20
+    budget_hours: 2
+    parameters:
+      learning_rate: [0.00001, 0.01, 'log-uniform']
+      lookback_window: [10, 100, 'int']
+      volatility_multiplier: [1.0, 3.0, 'float']
+      
+  # Ablation studies
+  ablations:
+    feature_sets:
+      - 'price_only'
+      - 'price_microstructure'
+      - 'price_microstructure_derivs'
+    improvement_threshold: 0.005  # 0.5% Sharpe improvement required
+    
+  # Benchmarking
+  benchmark:
+    baseline_days: 7
+    version_increment: 0.1
+    plateau_threshold: 0.005   # 0.5% improvement threshold
+    max_plateau_iterations: 5
+    difficulty_ramp: true      # increase complexity on improvement
+    
+  # Reporting
+  reporting:
+    metrics: ['sharpe', 'max_drawdown', 'hit_rate', 'profit_factor', 'calmar']
+    confidence_level: 0.95
+    execution_tca: true        # Transaction Cost Analysis
+    
+  # Infrastructure
+  infrastructure:
+    seeds: [42, 123, 456, 789, 999]  # deterministic runs
+    cache_features: true
+    parallel_folds: true
+    gpu_enabled: false         # CPU-first for cost control

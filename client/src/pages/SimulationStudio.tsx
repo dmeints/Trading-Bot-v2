@@ -97,13 +97,11 @@ export default function SimulationStudio() {
 
   // Run backtest mutation
   const runBacktestMutation = useMutation({
-    mutationFn: async (backtestConfig: BacktestConfig & { syntheticEvents: SyntheticEvent[] }) => {
-      return apiRequest(`/api/simulation/backtest`, {
-        method: 'POST',
-        body: JSON.stringify(backtestConfig)
-      });
+    mutationFn: async (backtestConfig: BacktestConfig & { syntheticEvents: SyntheticEvent[] }): Promise<BacktestResult> => {
+      const response = await apiRequest('POST', '/api/simulation/backtest', backtestConfig);
+      return await response.json();
     },
-    onSuccess: (result) => {
+    onSuccess: (result: BacktestResult) => {
       setSelectedResult(result);
       setIsRunning(false);
       setProgress(100);

@@ -59,6 +59,7 @@ import exchangeRoutes from './routes/exchangeRoutes';
 import { registerEnhancementRoutes } from './routes/enhancementRoutes';
 import { temporalRoutes } from './routes/temporalRoutes';
 import universalRoutes from './routes/universalRoutes';
+import trainingJobRoutes from './training/jobs/routes';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -1381,6 +1382,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Real Training Day Routes (replaces marketing fluff with actual ML training)
   app.use('/api/training', realTrainingRoutes);
+  
+  // Async Training Job Routes
+  app.use('/api', trainingJobRoutes);
 
   // Feedback routes
   app.post('/api/feedback', isDevelopment ? devBypass : isAuthenticated, async (req: any, res) => {

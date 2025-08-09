@@ -1,0 +1,459 @@
+### 🧰 Replit AI Agent — Implement Async Training Jobs + CLI Wrapper for Stevie (One Pass)
+
+**Goal:** Convert the blocking `/api/training/real-session` into a robust **async job system** with a clean **CLI wrapper**, budget/risk guardrails, reproducible manifests, Prometheus metrics, and docs. Keep the core PPO training engine intact—just orchestrate it safely.
+
+---
+
+## 0) Context
+- Existing engine: `POST /api/training/real-session` runs a long PPO job synchronously.
+- We want: `202 Accepted` job creation → pollable status/results endpoints → CLI `skippy-train` that wraps the API.
+- Non-goals: Don’t change the PPO code or model internals.
+
+---
+
+## 1) Server: Async Jobs API (TypeScript / Express)
+
+Create files (or equivalents) under `server/`:
+
+**`server/src/training/jobs/types.ts`**
+```ts
+export type TrainingState = "queued" | "preflight" | "training" | "evaluating" | "done" | "failed";
+
+export interface TrainingRequest {
+  durationHours: number;
+  symbols: string[];
+  skipValidation?: boolean;
+  seed?: number;
+  version?: string;
+  features?: string[];
+  maxDurationHours?: number;
+  maxCostUsd?: number;
+  notes?: string;
+}
+
+export interface TrainingJob extends TrainingRequest {
+  jobId: string;
+  createdAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  state: TrainingState;
+  progress: number; // 0..1
+  phase?: string;   // e.g. "PPO epoch 4/20"
+  etaSeconds?: number;
+  error?: string;
+  manifestPath?: string;
+  artifacts?: {
+    modelPath?: string;
+    reportHtml?: string;
+    metricsPath?: string;
+  };
+  metrics?: {
+    sharpe?: number;
+    returnPct?: number;
+    maxDDPct?: number;
+    ciSharpe95?: [number, number];
+    winRate?: number;
+    generation?: number;
+    improvementPct?: number;
+  };
+}
+server/src/training/jobs/store.ts (in-memory + JSONL persistence; swap to DB later)
+
+ts
+Copy
+Edit
+import fs from "fs";
+import path from "path";
+import { TrainingJob } from "./types.js";
+
+const RUNS_DIR = path.resolve("runs");
+if (!fs.existsSync(RUNS_DIR)) fs.mkdirSync(RUNS_DIR, { recursive: true });
+
+const jobs = new Map<string, TrainingJob>();
+
+export function saveJob(job: TrainingJob) {
+  jobs.set(job.jobId, job);
+  const p = path.join(RUNS_DIR, `${job.jobId}.json`);
+  fs.writeFileSync(p, JSON.stringify(job, null, 2));
+}
+
+export function getJob(jobId: string) { return jobs.get(jobId); }
+export function listJobs() { return Array.from(jobs.values()).sort((a,b)=> (a.createdAt<b.createdAt?1:-1)); }
+server/src/training/jobs/queue.ts (simple queue + worker)
+
+ts
+Copy
+Edit
+import { TrainingJob } from "./types.js";
+import { saveJob, getJob } from "./store.js";
+import { runTrainingWorkflow } from "./worker.js";
+
+const q: string[] = [];
+let running = false;
+
+export function enqueue(job: TrainingJob) {
+  q.push(job.jobId);
+  tick();
+}
+
+async function tick() {
+  if (running) return;
+  const next = q.shift();
+  if (!next) return;
+  running = true;
+  const job = getJob(next);
+  if (!job) { running = false; return tick(); }
+  await runTrainingWorkflow(job).catch(()=>{});
+  running = false;
+  return tick();
+}
+server/src/training/jobs/worker.ts (glues to your existing synchronous engine)
+
+ts
+Copy
+Edit
+import fs from "fs";
+import path from "path";
+import crypto from "crypto";
+import { TrainingJob } from "./types.js";
+import { saveJob } from "./store.js";
+import { exec as _exec } from "child_process";
+import { promisify } from "util";
+const exec = promisify(_exec);
+
+function nowISO() { return new Date().toISOString(); }
+function runDir(jobId: string) { const d = path.resolve("runs", jobId); if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive:true }); return d; }
+
+async function writeManifest(job: TrainingJob) {
+  const manifest = {
+    jobId: job.jobId,
+    createdAt: job.createdAt,
+    seed: job.seed ?? null,
+    version: job.version ?? null,
+    config: {
+      durationHours: job.durationHours,
+      symbols: job.symbols,
+      features: job.features ?? [],
+      maxDurationHours: job.maxDurationHours,
+      maxCostUsd: job.maxCostUsd,
+      skipValidation: job.skipValidation ?? false,
+      notes: job.notes ?? ""
+    },
+    system: {
+      gitSha: process.env.GIT_SHA || null,
+      node: process.version,
+      env: process.env.NODE_ENV || "development"
+    }
+  };
+  const p = path.join(runDir(job.jobId), "manifest.json");
+  fs.writeFileSync(p, JSON.stringify(manifest, null, 2));
+  job.manifestPath = p;
+  saveJob(job);
+}
+
+async function preflight(job: TrainingJob) {
+  job.state = "preflight"; job.phase = "validating inputs"; job.progress = 0.05;
+  saveJob(job);
+  // Bounds & allowlists
+  if (job.durationHours < 0.25 || job.durationHours > (job.maxDurationHours ?? 48)) {
+    throw new Error("Invalid durationHours");
+  }
+  const allow = new Set(["BTC","ETH","SOL","ADA","DOT"]);
+  if (!job.symbols.every(s => allow.has(s))) throw new Error("Unsupported symbol");
+  // Budget guard (example)
+  if ((job.maxCostUsd ?? 10) < 0) throw new Error("Invalid cost budget");
+  // TODO: data availability check, disk space, seeds, feature flags on
+  await writeManifest(job);
+}
+
+export async function runTrainingWorkflow(job: TrainingJob) {
+  try {
+    await preflight(job);
+    job.startedAt = nowISO();
+    job.state = "training"; job.phase = "PPO running"; job.progress = 0.15;
+    saveJob(job);
+
+    // ---- call your existing synchronous engine via HTTP or direct function ----
+    // Example (HTTP): curl POST to /api/training/real-session (internal)
+    // Convert durationHours → duration param your engine expects.
+    const duration = job.durationHours; // keep 1:1 to your endpoint
+    const payload = JSON.stringify({
+      duration, skipValidation: job.skipValidation ?? false,
+      symbols: job.symbols, seed: job.seed, version: job.version, features: job.features
+    });
+
+    // NOTE: If you prefer direct function call, replace this with import & await train(...)
+    const cmd = `curl -s -X POST http://localhost:5000/api/training/real-session \
+      -H "Content-Type: application/json" \
+      -H "x-admin-secret: ${process.env.ADMIN_SECRET || ""}" \
+      -d '${payload}'`;
+    const { stdout, stderr } = await exec(cmd);
+    if (stderr && stderr.trim()) console.error("engine stderr:", stderr);
+
+    job.phase = "evaluating"; job.progress = 0.85; saveJob(job);
+
+    // Parse engine output for metrics (adjust parser to your API response)
+    let res: any = {};
+    try { res = JSON.parse(stdout); } catch { /* fallback */ }
+    job.metrics = {
+      sharpe: res?.metrics?.sharpe ?? res?.sharpe ?? undefined,
+      returnPct: res?.metrics?.returnPct ?? undefined,
+      maxDDPct: res?.metrics?.maxDDPct ?? undefined,
+      ciSharpe95: res?.metrics?.ciSharpe95 ?? undefined,
+      winRate: res?.metrics?.winRate ?? undefined,
+      generation: res?.generation ?? undefined,
+      improvementPct: res?.improvementPct ?? undefined
+    };
+    // Save artifacts paths if engine provides them
+    const d = runDir(job.jobId);
+    job.artifacts = {
+      modelPath: res?.artifacts?.modelPath ?? null,
+      reportHtml: res?.artifacts?.reportHtml ?? null,
+      metricsPath: res?.artifacts?.metricsPath ?? path.join(d, "metrics.json")
+    };
+    fs.writeFileSync(job.artifacts.metricsPath!, JSON.stringify(res?.metrics ?? job.metrics ?? {}, null, 2));
+
+    job.state = "done"; job.phase = "complete"; job.progress = 1.0; job.finishedAt = nowISO();
+    saveJob(job);
+  } catch (e: any) {
+    job.state = "failed"; job.phase = "error"; job.progress = 1.0; job.finishedAt = nowISO();
+    job.error = e?.message || "training failed";
+    saveJob(job);
+  }
+}
+server/src/training/routes.ts
+
+ts
+Copy
+Edit
+import { Router } from "express";
+import crypto from "crypto";
+import { TrainingJob, TrainingRequest } from "./jobs/types.js";
+import { saveJob, getJob, listJobs } from "./jobs/store.js";
+import { enqueue } from "./jobs/queue.js";
+
+const router = Router();
+const ADMIN = process.env.ADMIN_SECRET || "";
+
+function requireAdmin(req: any, res: any, next: any) {
+  if (!ADMIN || req.headers["x-admin-secret"] !== ADMIN) return res.status(401).json({ error: "unauthorized" });
+  next();
+}
+
+router.post("/training/jobs", requireAdmin, (req, res) => {
+  const body = req.body as TrainingRequest;
+  const steps = Number((req.query.steps ?? 0) as any) || 0;
+  // Optional steps→hours rule (100k steps ≈ 1h). Prefer explicit durationHours in body.
+  const durationHours = body.durationHours ?? (steps > 0 ? Math.max(0.25, Math.min(48, steps / 100000)) : 0.25);
+  const jobId = `tr_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
+  const job: TrainingJob = {
+    jobId,
+    createdAt: new Date().toISOString(),
+    durationHours,
+    symbols: body.symbols ?? ["BTC"],
+    skipValidation: !!body.skipValidation,
+    seed: body.seed ?? undefined,
+    version: body.version ?? "1.1",
+    features: body.features ?? ["price","depth"],
+    maxDurationHours: body.maxDurationHours ?? 12,
+    maxCostUsd: body.maxCostUsd ?? 10,
+    notes: body.notes ?? "",
+    state: "queued",
+    progress: 0
+  };
+  saveJob(job);
+  enqueue(job);
+  res.status(202).json({ jobId, acceptedAt: job.createdAt });
+});
+
+router.get("/training/jobs", requireAdmin, (_req, res)=> res.json({ jobs: listJobs() }));
+router.get("/training/jobs/:jobId/status", requireAdmin, (req, res)=> {
+  const j = getJob(req.params.jobId);
+  if (!j) return res.status(404).json({ error: "not_found" });
+  res.json({ job: j });
+});
+router.get("/training/jobs/:jobId/results", requireAdmin, (req, res)=> {
+  const j = getJob(req.params.jobId);
+  if (!j) return res.status(404).json({ error: "not_found" });
+  if (j.state !== "done" && j.state !== "failed") return res.status(409).json({ error: "not_ready", state: j.state });
+  res.json({ job: j, metrics: j.metrics, artifacts: j.artifacts, manifestPath: j.manifestPath });
+});
+
+export default router;
+Wire routes in server/src/index.ts:
+
+ts
+Copy
+Edit
+import trainingRoutes from "./training/routes.js";
+app.use(express.json({ limit: "2mb" }));
+app.use("/api", trainingRoutes);
+2) CLI Wrapper (skippy-train)
+Create cli/skippy-train.ts (Node/TS; package bin script):
+
+ts
+Copy
+Edit
+#!/usr/bin/env node
+import fetch from "node-fetch";
+
+function arg(key: string, def?: any) {
+  const i = process.argv.indexOf(`--${key}`);
+  if (i === -1) return def;
+  const v = process.argv[i+1];
+  return v?.startsWith("--") || v===undefined ? true : v;
+}
+
+async function main() {
+  const sub = process.argv[2]; // ppo | status | results
+  const host = process.env.TRAIN_API_HOST || "http://localhost:5000";
+  const admin = process.env.ADMIN_SECRET || "";
+  if (!admin) { console.error("Missing ADMIN_SECRET"); process.exit(2); }
+
+  if (sub === "ppo") {
+    const steps = Number(arg("steps", 1000000));
+    const symbols = (arg("symbols","BTC") as string).split(",").map(s=>s.trim());
+    const seed = arg("seed");
+    const version = arg("version","1.1");
+    const features = (arg("features","price,depth") as string).split(",").map(s=>s.trim());
+    const maxDuration = Number(arg("max-duration", 12));
+    const maxCost = Number(arg("max-cost", 10));
+    const notes = arg("notes","");
+
+    const durationHours = Number(arg("duration", (steps/100000)));
+    const skipValidation = arg("skip-validation", "false") === "true";
+    const idem = `ppo-${symbols.join("-")}-${steps}-${Date.now()}`;
+
+    const res = await fetch(`${host}/api/training/jobs?steps=${steps}`, {
+      method: "POST",
+      headers: { "Content-Type":"application/json", "x-admin-secret": admin, "Idempotency-Key": idem },
+      body: JSON.stringify({ durationHours, symbols, skipValidation, seed, version, features, maxDurationHours: maxDuration, maxCostUsd: maxCost, notes })
+    });
+    if (!res.ok) { console.error("Create failed", await res.text()); process.exit(3); }
+    const { jobId } = await res.json() as any;
+    console.log("Job accepted:", jobId);
+
+    // poll
+    const start = Date.now();
+    for (;;) {
+      await new Promise(r=>setTimeout(r, 5000));
+      const s = await fetch(`${host}/api/training/jobs/${jobId}/status`, { headers: { "x-admin-secret": admin }});
+      const j = await s.json() as any;
+      if (!s.ok) { console.error("Status err", j); continue; }
+      const st = j.job;
+      process.stdout.write(`\r[${st.state}] ${Math.round((st.progress||0)*100)}% ${st.phase || ""}  ETA:${st.etaSeconds ?? "?"}s   `);
+      if (st.state === "done") { console.log("\n✓ training complete"); break; }
+      if (st.state === "failed") { console.log("\n✗ training failed:", st.error); process.exit(4); }
+      if (Date.now() - start > 1000*60*60*(maxDuration+1)) { console.log("\nTimeout"); process.exit(5); }
+    }
+
+    const r = await fetch(`${host}/api/training/jobs/${jobId}/results`, { headers: { "x-admin-secret": admin }});
+    const out = await r.json();
+    console.log("\nResults:", JSON.stringify(out.metrics, null, 2));
+    process.exit(0);
+  }
+
+  if (sub === "status") {
+    const job = arg("job");
+    if (!job) { console.error("--job required"); process.exit(2); }
+    const r = await fetch(`${host}/api/training/jobs/${job}/status`, { headers: { "x-admin-secret": admin }});
+    console.log(await r.text()); process.exit(0);
+  }
+
+  if (sub === "results") {
+    const job = arg("job");
+    if (!job) { console.error("--job required"); process.exit(2); }
+    const r = await fetch(`${host}/api/training/jobs/${job}/results`, { headers: { "x-admin-secret": admin }});
+    console.log(await r.text()); process.exit(0);
+  }
+
+  console.log(`Usage:
+  skippy-train ppo --steps 1000000 --symbols BTC --max-duration 12 --max-cost 10 --seed 1337 --version 1.1 --features price,depth
+  skippy-train status --job <id>
+  skippy-train results --job <id>
+  `);
+  process.exit(0);
+}
+
+main().catch(e=>{ console.error(e); process.exit(1); });
+package.json (root): add bin + deps
+
+json
+Copy
+Edit
+{
+  "scripts": {
+    "train:ppo": "skippy-train ppo --steps 1000000 --symbols BTC"
+  },
+  "bin": {
+    "skippy-train": "cli/skippy-train.ts"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  }
+}
+If using TS, ensure ts-node/tsx is installed or compile to JS in dist/ and point bin to JS.
+
+3) Security & Guardrails
+Require x-admin-secret on all job endpoints; respect optional Idempotency-Key.
+
+Clamp server-side: 0.25 ≤ durationHours ≤ maxDurationHours (default max 12–48).
+
+Symbol allowlist: BTC,ETH,SOL,ADA,DOT.
+
+Rate-limit job creation: 2 per hour (reuse existing middleware or quick in-memory counter).
+
+Write manifest and metrics under runs/<jobId>/.
+
+4) Prometheus Metrics (optional, recommended)
+Increment counters in worker:
+
+training_jobs_total{state}
+
+training_failures_total
+
+training_hours_total (sum of durationHours)
+
+training_runtime_seconds histogram
+
+Emit job phase/latency logs to your existing Winston logger.
+
+5) Docs & Commands
+Create TRAINING_JOBS.md with:
+
+API spec (create/status/results), auth, idempotency, bounds.
+
+CLI usage examples.
+
+Steps→hours rule, examples with clamps.
+
+How to parse runs/<jobId>/manifest.json and metrics.json.
+
+Smoke test commands:
+
+bash
+Copy
+Edit
+export ADMIN_SECRET=your_admin_secret
+
+# Start server (ensure /api/training/real-session still works)
+npm run dev
+
+# Start a job via CLI (wraps HTTP)
+skippy-train ppo --steps 1000000 --symbols BTC --seed 1337 --version 1.1 --features price,depth --max-duration 12 --max-cost 10
+
+# Check status/results
+skippy-train status --job <jobId>
+skippy-train results --job <jobId>
+6) Acceptance
+POST /api/training/jobs returns 202 with {jobId}; /status & /results work.
+
+Long runs no longer block HTTP; CLI displays phases and final metrics.
+
+Manifests + metrics persisted under runs/.
+
+Auth, bounds, and rate limits enforced.
+
+Existing /api/training/real-session remains the engine—called from the worker.
+
+Return: file diffs, added deps, and a short “how to run” using the commands above.

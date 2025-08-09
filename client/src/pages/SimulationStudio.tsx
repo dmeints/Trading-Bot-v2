@@ -78,21 +78,25 @@ export default function SimulationStudio() {
   const [progress, setProgress] = useState(0);
 
   // Query for available strategies
+  // Fetch real trading strategies from backend
   const { data: strategies = [] } = useQuery<string[]>({
-    queryKey: ['/api/simulation/strategies'],
-    enabled: isAuthenticated
+    queryKey: ['/api/strategies/list'],
+    enabled: isAuthenticated,
+    retry: 2
   });
 
-  // Query for synthetic event templates
+  // Fetch real market event templates for simulation
   const { data: eventTemplates = [] } = useQuery<SyntheticEvent[]>({
-    queryKey: ['/api/simulation/event-templates'],
-    enabled: isAuthenticated
+    queryKey: ['/api/market/event-templates'],
+    enabled: isAuthenticated,
+    retry: 2
   });
 
-  // Query for backtest history
+  // Fetch real backtest results history
   const { data: backtestHistory = [] } = useQuery<BacktestResult[]>({
-    queryKey: ['/api/simulation/history'],
-    enabled: isAuthenticated
+    queryKey: ['/api/backtests/history'],
+    enabled: isAuthenticated,
+    retry: 2
   });
 
   // Run backtest mutation
@@ -148,15 +152,75 @@ export default function SimulationStudio() {
     setProgress(0);
     
     // Simulate progress updates
-    const progressInterval = setInterval(() => {
-      setProgress(prev => {
-        if (prev >= 90) {
-          clearInterval(progressInterval);
-          return 90;
-        }
-        return prev + Math.random() * 10;
-      });
-    }, 500);
+    // Real backtest execution with progress tracking
+    const executeRealBacktest = async () => {
+      try {
+        setProgress(10);
+        
+        // Submit backtest job to real backtesting engine
+        const backtestJob = await apiRequest('/api/backtests/submit', {
+          method: 'POST',
+          data: {
+            ...config,
+            syntheticEvents,
+            timestamp: new Date().toISOString()
+          }
+        });
+        
+        const jobId = backtestJob?.id;
+        if (!jobId) throw new Error('Failed to create backtest job');
+        
+        setProgress(25);
+        
+        // Poll for real progress updates
+        const progressInterval = setInterval(async () => {
+          try {
+            const status = await apiRequest(`/api/backtests/status/${jobId}`);
+            const realProgress = status?.progress || 0;
+            
+            setProgress(Math.min(90, realProgress));
+            
+            if (status?.status === 'completed') {
+              clearInterval(progressInterval);
+              setProgress(100);
+              
+              // Fetch real results
+              const results = await apiRequest(`/api/backtests/results/${jobId}`);
+              if (results) {
+                setResult(results);
+                queryClient.invalidateQueries({ queryKey: ['/api/backtests/history'] });
+                toast({
+                  title: "Backtest Complete",
+                  description: `Strategy performance: ${results.performance?.totalReturn?.toFixed(2)}% return`,
+                });
+              }
+            } else if (status?.status === 'failed') {
+              clearInterval(progressInterval);
+              setProgress(0);
+              toast({
+                title: "Backtest Failed", 
+                description: status?.error || "Unknown error occurred",
+                variant: "destructive"
+              });
+            }
+          } catch (error) {
+            clearInterval(progressInterval);
+            console.error('Progress polling error:', error);
+          }
+        }, 2000);
+        
+      } catch (error) {
+        console.error('Real backtest execution error:', error);
+        setProgress(0);
+        toast({
+          title: "Execution Error",
+          description: "Failed to start backtest. Please check configuration.",
+          variant: "destructive"
+        });
+      }
+    };
+    
+    executeRealBacktest();
 
     runBacktestMutation.mutate({
       ...config,

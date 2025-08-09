@@ -4,12 +4,15 @@ import { Button } from '@/components/ui/button';
 import { Expand, Settings } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useState } from 'react';
+import RealTimeChart from './RealTimeChart';
 
 export default function TradingChart() {
   const { selectedSymbol } = useTradingStore();
   const selectedPrice = useSelectedMarketPrice();
   const { toast } = useToast();
   const [selectedTimeframe, setSelectedTimeframe] = useState('1H');
+  const [selectedIndicators, setSelectedIndicators] = useState<string[]>([]);
+  const [chartData, setChartData] = useState<any[]>([]);
 
   const timeframes = ['1H', '4H', '1D', '1W'];
 
@@ -111,32 +114,18 @@ export default function TradingChart() {
       <div className="bg-gray-900 rounded border border-gray-600 flex-1 relative overflow-hidden min-h-0">
         <div className="absolute inset-0 p-fluid-1">
           {/* Simulated chart - responsive SVG */}
-          <svg className="w-full h-full" viewBox="0 0 800 400" preserveAspectRatio="xMidYMid meet" data-testid="chart-canvas">
-            {/* Grid lines */}
-            <defs>
-              <pattern id="grid" width="40" height="20" patternUnits="userSpaceOnUse">
-                <path d="M 40 0 L 0 0 0 20" fill="none" stroke="#374151" strokeWidth="0.5"/>
-              </pattern>
-            </defs>
-            <rect width="100%" height="100%" fill="url(#grid)" />
-            
-            {/* Price line - responsive stroke width */}
-            <polyline 
-              fill="none" 
-              stroke="#0EA5E9" 
-              strokeWidth="2" 
-              points="0,200 50,180 100,160 150,170 200,150 250,140 300,130 350,125 400,135 450,145 500,140 550,130 600,125 650,120 700,115 750,110 800,105"
-            />
-            
-            {/* Volume bars - responsive */}
-            <g fill="#0EA5E9" fillOpacity="0.3">
-              <rect x="10" y="350" width="8" height="30"/>
-              <rect x="30" y="340" width="8" height="40"/>
-              <rect x="50" y="360" width="8" height="20"/>
-              <rect x="70" y="330" width="8" height="50"/>
-              <rect x="90" y="345" width="8" height="35"/>
-            </g>
-          </svg>
+          <RealTimeChart 
+            symbol={selectedSymbol || 'BTC/USD'} 
+            timeframe={selectedTimeframe} 
+            indicators={selectedIndicators}
+            onDataUpdate={(data) => {
+              // Update chart with real market data
+              if (data && data.length > 0) {
+                setChartData(data);
+              }
+            }}
+            data-testid="chart-canvas"
+          />
           
           {/* Chart controls overlay - responsive positioning */}
           <div className="absolute top-fluid-1 right-fluid-1 flex space-x-1">

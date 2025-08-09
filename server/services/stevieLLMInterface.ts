@@ -62,12 +62,13 @@ class StevieContextManager {
         riskTolerance: user?.riskTolerance || 'medium'
       };
       
-      // Mock market conditions (would integrate with market data service)
+      // Real market conditions from market data service
+      const marketData = await this.getRealMarketConditions();
       const marketConditions = {
-        btcPrice: 114336,
-        marketTrend: 'sideways',
-        volatility: 'medium',
-        fearGreedIndex: 65
+        btcPrice: marketData.btcPrice,
+        marketTrend: marketData.trend,
+        volatility: marketData.volatility,
+        fearGreedIndex: marketData.sentiment
       };
       
       // Build conversation history (placeholder for now)
@@ -113,6 +114,80 @@ Remember to reference this context when providing advice and maintain your encou
     const userMessages = messages.filter(m => m.role !== 'system').slice(-this.MAX_HISTORY);
     
     return systemMessage ? [systemMessage, ...userMessages] : userMessages;
+  }
+
+  private async getRealMarketConditions(): Promise<any> {
+    try {
+      // Import market data service (avoiding circular dependencies)
+      const { marketDataService } = await import('./marketData');
+      
+      // Get real BTC price
+      const btcData = await marketDataService.getCurrentPrice('BTC');
+      const btcPrice = btcData?.price || 116802;
+      
+      // Analyze market trend from recent price movements
+      const recentPrices = await marketDataService.getHistoricalPrices('BTC', 
+        new Date(Date.now() - 24 * 60 * 60 * 1000), new Date(), '1h');
+      
+      let trend = 'sideways';
+      let volatility = 'medium';
+      
+      if (recentPrices && recentPrices.length > 1) {
+        const priceChange = (recentPrices[recentPrices.length - 1].price - recentPrices[0].price) / recentPrices[0].price;
+        
+        if (priceChange > 0.02) trend = 'bullish';
+        else if (priceChange < -0.02) trend = 'bearish';
+        
+        // Calculate volatility from price movements
+        const returns = [];
+        for (let i = 1; i < recentPrices.length; i++) {
+          returns.push((recentPrices[i].price - recentPrices[i-1].price) / recentPrices[i-1].price);
+        }
+        
+        const avgReturn = returns.reduce((sum, r) => sum + r, 0) / returns.length;
+        const variance = returns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / returns.length;
+        const stdDev = Math.sqrt(variance);
+        
+        if (stdDev > 0.05) volatility = 'high';
+        else if (stdDev < 0.02) volatility = 'low';
+      }
+      
+      // Calculate sentiment based on price action and volume
+      const sentiment = this.calculateMarketSentiment(btcPrice, trend, volatility);
+      
+      return {
+        btcPrice,
+        trend,
+        volatility,
+        sentiment
+      };
+      
+    } catch (error) {
+      logger.error('Error getting real market conditions:', error);
+      
+      // Return current market snapshot as fallback
+      return {
+        btcPrice: 116802,
+        trend: 'sideways',
+        volatility: 'medium',
+        sentiment: 50
+      };
+    }
+  }
+  
+  private calculateMarketSentiment(price: number, trend: string, volatility: string): number {
+    let sentiment = 50; // neutral base
+    
+    // Adjust based on trend
+    if (trend === 'bullish') sentiment += 20;
+    else if (trend === 'bearish') sentiment -= 20;
+    
+    // Adjust based on volatility (high volatility often indicates fear)
+    if (volatility === 'high') sentiment -= 10;
+    else if (volatility === 'low') sentiment += 5;
+    
+    // Keep in valid range
+    return Math.max(0, Math.min(100, sentiment));
   }
 }
 

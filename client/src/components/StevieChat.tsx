@@ -50,18 +50,18 @@ export function StevieChat() {
 
   const personality: SteviePersonality | undefined = (personalityData as any)?.data;
 
-  // Get daily tip on component mount
-  const { data: dailyTipData } = useQuery({
+  // Get real daily tip from Stevie AI
+  const { data: dailyTipData, isLoading: tipLoading } = useQuery({
     queryKey: ['/api/stevie/daily-tip'],
     staleTime: 1000 * 60 * 60 * 24, // Cache for 24 hours
-    retry: false
+    retry: 2
   });
 
-  // Get greeting on component mount  
-  const { data: greetingData } = useQuery({
+  // Get real greeting from Stevie AI
+  const { data: greetingData, isLoading: greetingLoading } = useQuery({
     queryKey: ['/api/stevie/greeting'],
     staleTime: 1000 * 60 * 15, // Cache for 15 minutes
-    retry: false
+    retry: 2
   });
 
   // Chat mutation
@@ -107,32 +107,44 @@ export function StevieChat() {
   useEffect(() => {
     const initMessages: ChatMessage[] = [];
     
-    const greetingResponse = greetingData as any;
-    const tipResponse = dailyTipData as any;
+    // Handle real greeting response from Stevie
+    if (greetingData && typeof greetingData === 'object') {
+      const greeting = (greetingData as any);
+      if (greeting.message || greeting.content) {
+        initMessages.push({
+          id: 'greeting',
+          type: 'stevie',
+          content: greeting.message || greeting.content,
+          timestamp: greeting.timestamp || new Date().toISOString(),
+          messageType: 'greeting'
+        });
+      }
+    }
     
-    if (greetingResponse?.data?.message) {
-      initMessages.push({
-        id: 'greeting',
-        type: 'stevie',
-        content: greetingResponse.data.message,
-        timestamp: greetingResponse.timestamp || new Date().toISOString(),
-        messageType: 'greeting'
+    // Handle real daily tip from Stevie
+    if (dailyTipData && typeof dailyTipData === 'object') {
+      const tipData = (dailyTipData as any);
+      if (tipData.tip || tipData.content || tipData.message) {
+        const tipContent = tipData.tip || tipData.content || tipData.message;
+        initMessages.push({
+          id: 'daily-tip',
+          type: 'stevie',
+          content: `💡 Today's Trading Insight: ${tipContent}`,
+          timestamp: tipData.timestamp || new Date().toISOString()
+        });
+      }
+    }
+    
+    // Only update if we have real messages to avoid infinite loops
+    if (initMessages.length > 0 && !greetingLoading && !tipLoading) {
+      setMessages(prev => {
+        // Only add if not already present
+        const existingIds = prev.map(m => m.id);
+        const newMessages = initMessages.filter(m => !existingIds.includes(m.id));
+        return newMessages.length > 0 ? [...prev, ...newMessages] : prev;
       });
     }
-    
-    if (tipResponse?.data?.tip) {
-      initMessages.push({
-        id: 'daily-tip',
-        type: 'stevie',
-        content: `💡 Today's Trading Tip: ${tipResponse.data.tip}`,
-        timestamp: tipResponse.timestamp || new Date().toISOString()
-      });
-    }
-    
-    if (initMessages.length > 0) {
-      setMessages(initMessages);
-    }
-  }, [greetingData, dailyTipData]);
+  }, [greetingData, dailyTipData, greetingLoading, tipLoading]);
 
   // Auto-scroll to bottom
   useEffect(() => {

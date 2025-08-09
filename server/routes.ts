@@ -43,6 +43,8 @@ import { env } from "./config/env";
 import { logger } from "./utils/logger";
 import type { RequestWithId } from "./middleware/requestId";
 import { healthRoutes } from "./routes/healthRoutes";
+import { health } from "./routes/health";
+import { bench } from "./routes/bench";
 import { mlopsRoutes } from "./routes/mlopsRoutes";
 // import vectorRoutes from './routes/vectorRoutes';
 import dataFusionRoutes from './routes/dataFusionRoutes';
@@ -59,7 +61,7 @@ import exchangeRoutes from './routes/exchangeRoutes';
 import { registerEnhancementRoutes } from './routes/enhancementRoutes';
 import { temporalRoutes } from './routes/temporalRoutes';
 import universalRoutes from './routes/universalRoutes';
-import trainingJobRoutes from './training/jobs/routes';
+import { trainingJobsRouter } from './training/jobs/routes';
 import tradingRoutes from './routes/trading.js';
 import tradingTestRoutes from './routes/trading-tests.js';
 import { registerMarketRoutes } from './routes/marketRoutes';
@@ -127,6 +129,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Health & monitoring routes
   app.use('/api', healthRoutes);
+  app.use('/api/bench', bench);
   
   // MLOps routes
   app.use('/api/mlops', mlopsRoutes);
@@ -1565,7 +1568,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/training', realTrainingRoutes);
   
   // Async Training Job Routes
-  app.use('/api', trainingJobRoutes);
+  app.use('/api/training-jobs', trainingJobsRouter);
   
   // Trading system routes
   app.use('/api/trading', tradingRoutes);

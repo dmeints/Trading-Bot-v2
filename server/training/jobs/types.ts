@@ -1,7 +1,3 @@
-/**
- * Training Job Types - Async Job System for Stevie
- */
-
 export type TrainingState = "queued" | "preflight" | "training" | "evaluating" | "done" | "failed";
 
 export interface TrainingRequest {

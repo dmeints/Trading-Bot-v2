@@ -23,6 +23,8 @@ const StrategyBuilder = lazy(() => import("@/pages/StrategyBuilderPage"));
 const LayoutCustomization = lazy(() => import("@/pages/LayoutCustomizationPage"));
 const ServiceLevelPage = lazy(() => import("@/pages/ServiceLevelPage"));
 const StevieHome = lazy(() => import("@/pages/StevieHome"));
+const SimulationStudio = lazy(() => import("@/pages/SimulationStudio"));
+const TradeJournal = lazy(() => import("@/pages/TradeJournal"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 
 function Router() {
@@ -59,6 +61,8 @@ function Router() {
             <Route path="/customization" component={LayoutCustomization} />
             <Route path="/service-level" component={ServiceLevelPage} />
             <Route path="/stevie" component={StevieHome} />
+            <Route path="/simulation" component={SimulationStudio} />
+            <Route path="/journal" component={TradeJournal} />
             <Route path="/settings" component={Settings} />
           </>
         )}

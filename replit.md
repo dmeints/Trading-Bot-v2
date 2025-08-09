@@ -5,6 +5,8 @@ Skippy is a professional cryptocurrency trading platform providing real-time mar
 Preferred communication style: Simple, everyday language.
 Technical Focus: Remove conceptual overhead and focus on practical, measurable trading functionality.
 Architecture Preference: Consolidated, efficient systems over complex multi-agent architectures.
+Data Integrity Priority: Real algorithm performance testing over marketing metrics - eliminate fake/fabricated data.
+Anti-Fabrication Requirement: Verifiable, reproducible benchmark results with full provenance tracking.
 
 # System Architecture
 

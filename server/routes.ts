@@ -162,6 +162,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const { realBenchmarkRoutes } = await import('./routes/realBenchmarkRoutes');
   app.use('/api/real-benchmark', realBenchmarkRoutes);
   
+  // Health routes (SLO monitoring)
+  const { health } = await import('./routes/health');
+  app.use('/api/health', health);
+  
   // Plugin system routes
   app.use('/api/plugins', pluginRoutes);
   

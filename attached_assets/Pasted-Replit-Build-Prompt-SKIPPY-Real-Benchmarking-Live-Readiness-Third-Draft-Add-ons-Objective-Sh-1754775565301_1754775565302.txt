@@ -1,0 +1,482 @@
+Replit Build Prompt — SKIPPY Real Benchmarking + Live Readiness (Third Draft + Add-ons)
+Objective
+Ship a truthful, reproducible, observable trading bot. Replace any “marketing” placeholders with verifiable metrics. Block merges if tests, anti-fabrication, or SLOs fail. Provide UI to prove where numbers come from. Add dataset hashing, provenance on all benchmark responses, and a safety banner tied to circuit breakers.
+
+Keep as-is (context)
+Monorepo: client (React 18/TS, Tailwind, shadcn/ui) + server (Express/TS), Drizzle + Neon, WS at /ws.
+
+Async job system, RL engine (PPO/DQN + Optuna), API protection middleware, OIDC auth.
+
+No fake data. If unknown → render “unknown” with reason.
+
+Deliverables (add/extend)
+Anti-Fabrication Sentinel test (build fails on hardcoded metrics).
+
+Provenance fields + artifact bundle (manifest.json, metrics.json, trades.csv, logs.ndjson) per run.
+
+Env validation (Zod) + secret-safe logging.
+
+CI: lint, unit, anti-fabrication, tiny deterministic bench sample, e2e smoke.
+
+Health SLO cards (p50/p95/p99, quotas, error budget).
+
+Explain Drawer for each metric (formula + dataset hash + runId + commit + re-run).
+
+Chaos flags (WS drop, 429, latency); breakers must trip + banner visible.
+
+Dataset hasher to stamp datasetId on results.
+
+Benchmark DTOs updated to carry provenance across API/UI.
+
+Safety Banner component wired to breaker WS messages and health.
+
+Files to add/update (create exactly as named)
+1) Anti-Fabrication Sentinel
+tools/antiFabrication.spec.ts
+
+ts
+Copy
+Edit
+import fs from "fs";
+import path from "path";
+
+const suspicious = [
+  /\bSharpe\b\s*[:=]\s*\d+(\.\d+)?/i,
+  /\bWin\s*Rate\b\s*[:=]\s*\d+%/i,
+  /\bMax\s*Drawdown\b\s*[:=]\s*-?\d+(\.\d+)?%/i,
+  /\bProfit\s*Factor\b\s*[:=]\s*\d+(\.\d+)?/i,
+];
+const allow = [/(__tests__|fixtures|README|\.md$|mock|example)/i];
+
+function walk(dir: string, acc: string[] = []): string[] {
+  for (const f of fs.readdirSync(dir)) {
+    const p = path.join(dir, f);
+    const st = fs.statSync(p);
+    if (st.isDirectory()) walk(p, acc);
+    else if (/\.(ts|tsx|js|mjs|cjs)$/.test(p)) acc.push(p);
+  }
+  return acc;
+}
+
+describe("Anti-fabrication: no hardcoded performance metrics in source", () => {
+  const roots = ["server", "client"].filter(fs.existsSync);
+  const files = roots.flatMap(r => walk(r)).filter(f => !allow.some(r => r.test(f)));
+  test.each(files)("no hardcoded metrics in %s", (file) => {
+    const txt = fs.readFileSync(file, "utf8");
+    for (const pat of suspicious) expect(pat.test(txt)).toBe(false);
+  });
+});
+2) Optional “no marketing in server” check
+tools/noMarketing.spec.ts
+
+ts
+Copy
+Edit
+import fs from "fs"; import path from "path";
+const banned = [/world[-\s]?class/i, /breakthrough/i, /revolutionary/i, /best[-\s]?in[-\s]?class/i];
+const allow = [/README|COPY|LICENSE|marketing|docs|\.md$/i];
+
+function files(dir:string, acc:string[]=[]):string[]{ for(const f of fs.readdirSync(dir)){ const p=path.join(dir,f);
+  const st=fs.statSync(p); if(st.isDirectory()) files(p,acc); else if(/\.(ts|tsx|js|json)$/.test(p)) acc.push(p);} return acc;}
+
+test("no marketing language in server code/responses", () => {
+  if (!fs.existsSync("server")) return;
+  for (const f of files("server")) {
+    if (allow.some(r=>r.test(f))) continue;
+    const t = fs.readFileSync(f,"utf8");
+    for (const b of banned) expect(b.test(t)).toBe(false);
+  }
+});
+3) Env validation (fail fast)
+server/env.ts
+
+ts
+Copy
+Edit
+import { z } from "zod";
+
+const Env = z.object({
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  PORT: z.string().optional(),
+  DATABASE_URL: z.string().url(),
+  ADMIN_SECRET: z.string().min(16),
+  COINGECKO_API_KEY: z.string().min(1),
+  OPENAI_API_KEY: z.string().min(1),
+  BENCH_ENABLED: z.string().optional(),
+  PAPER_TRADING_UI: z.string().optional(),
+  OCO_ENABLED: z.string().optional(),
+}).passthrough();
+
+export const env = (() => {
+  const parsed = Env.safeParse(process.env);
+  if (!parsed.success) {
+    const redacted = parsed.error.flatten().fieldErrors;
+    throw new Error("ENV VALIDATION FAILED: " + JSON.stringify(redacted));
+  }
+  return parsed.data;
+})();
+Import ./env at the very start of the server bootstrap to crash early if misconfigured.
+
+4) CI pipeline
+.github/workflows/ci.yml
+
+yaml
+Copy
+Edit
+name: ci
+on: [push, pull_request]
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'pnpm' }
+      - run: corepack enable
+      - run: pnpm i --frozen-lockfile
+      - name: Lint
+        run: pnpm -w eslint .
+      - name: Unit tests
+        run: pnpm -w vitest run
+      - name: Anti-fabrication & no-marketing
+        run: pnpm -w vitest run tools/antiFabrication.spec.ts tools/noMarketing.spec.ts
+      - name: Env check
+        run: node -e "require('./server/env')"
+      - name: Tiny bench sample (deterministic 1-day window)
+        run: |
+          pnpm bench run --strategy stevie --version 1.6 \
+            --symbols BTCUSDT --timeframe 5m \
+            --from 2024-01-01 --to 2024-01-02 \
+            --fee-bps 2 --slip-bps 1 --rng-seed 42
+          test -f artifacts/latest/manifest.json
+          test -f artifacts/latest/metrics.json
+      - name: E2E smoke (toggle when ready)
+        if: ${{ false }}
+        run: pnpm -w playwright test --project=chromium --grep "@smoke"
+5) Health route (SLO snapshot)
+server/routes/health.ts (extend if exists)
+
+ts
+Copy
+Edit
+import { Router } from "express";
+export const health = Router();
+
+health.get("/", async (_req, res) => {
+  // TODO: replace placeholders with real histogram snapshots
+  const slo = {
+    submitAckMs: { p50: 120, p95: 280, p99: 340 },
+    wsStalenessMs: { p50: 200, p95: 1200, p99: 2600 },
+    backtestSuccessRate: 0.99,
+    apiQuota: { x: { used: 120, limit: 800 }, coingecko: { used: 500, limit: 5000 } },
+    errorBudgetBurn24h: 0.07,
+    refreshedAt: Date.now(),
+  };
+  res.json({ status: "ok", slo });
+});
+6) Health page (SLO cards)
+client/src/routes/Health.tsx
+
+tsx
+Copy
+Edit
+import { useQuery } from "@tanstack/react-query";
+import { Card } from "@/components/ui/card";
+
+export default function Health() {
+  const { data } = useQuery({
+    queryKey: ["health"],
+    queryFn: async () => (await fetch("/api/health")).json(),
+    refetchInterval: 30_000,
+  });
+  if (!data) return <div className="p-4">Loading health…</div>;
+  const { slo } = data;
+  const Row = ({ k, v }:{k:string; v:string|number}) => (
+    <div className="flex items-center justify-between py-1"><span className="text-sm opacity-80">{k}</span><span className="font-mono">{v}</span></div>
+  );
+  return (
+    <div className="grid gap-4 p-4 md:grid-cols-2">
+      <Card className="p-4"><h3 className="font-semibold mb-2">Submit→ACK (ms)</h3>
+        <Row k="p50" v={slo.submitAckMs.p50} /><Row k="p95" v={slo.submitAckMs.p95} /><Row k="p99" v={slo.submitAckMs.p99} />
+      </Card>
+      <Card className="p-4"><h3 className="font-semibold mb-2">WS Staleness (ms)</h3>
+        <Row k="p50" v={slo.wsStalenessMs.p50} /><Row k="p95" v={slo.wsStalenessMs.p95} /><Row k="p99" v={slo.wsStalenessMs.p99} />
+      </Card>
+      <Card className="p-4"><h3 className="font-semibold mb-2">Backtests</h3>
+        <Row k="Success rate" v={(slo.backtestSuccessRate*100).toFixed(1)+"%"} />
+        <Row k="Error budget (24h)" v={(slo.errorBudgetBurn24h*100).toFixed(1)+"%"} />
+      </Card>
+      <Card className="p-4"><h3 className="font-semibold mb-2">API Quotas</h3>
+        <Row k="X" v={`${slo.apiQuota.x.used}/${slo.apiQuota.x.limit}`} />
+        <Row k="CoinGecko" v={`${slo.apiQuota.coingecko.used}/${slo.apiQuota.coingecko.limit}`} />
+      </Card>
+    </div>
+  );
+}
+7) Explain Drawer (metric provenance)
+client/src/components/bench/ExplainMetricDrawer.tsx
+
+tsx
+Copy
+Edit
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
+
+type ExplainProps = {
+  open: boolean; onOpenChange: (o:boolean)=>void;
+  metric: "sharpe"|"sortino"|"winRate"|"profitFactor"|"maxDrawdown"|"returnPct";
+  value?: number;
+  inputs: { window:{ fromIso:string; toIso:string; timeframe:string; symbols:string[] }; feesBps:number; slipBps:number; rngSeed:number; };
+  provenance: { datasetId?: string; runId?: string; commit: string; generatedAt: string };
+};
+
+const formulas: Record<ExplainProps["metric"], string> = {
+  sharpe: "Sharpe = mean(excess returns) / std(excess returns) × √periods",
+  sortino: "Sortino = mean(excess returns) / std(negative returns) × √periods",
+  winRate: "Win Rate = winning trades / total trades",
+  profitFactor: "Profit Factor = gross profit / gross loss",
+  maxDrawdown: "Max DD = max(peak - trough) / peak / over equity curve",
+  returnPct: "Return % = (final equity - initial equity) / initial equity × 100",
+};
+
+export function ExplainMetricDrawer({ open, onOpenChange, metric, value, inputs, provenance }: ExplainProps) {
+  return (
+    <Drawer open={open} onOpenChange={onOpenChange}>
+      <DrawerContent>
+        <DrawerHeader><DrawerTitle>About {metric}</DrawerTitle></DrawerHeader>
+        <div className="p-4 space-y-3">
+          <div><strong>Formula:</strong> {formulas[metric]}</div>
+          <div><strong>Value:</strong> {value ?? "unknown"}</div>
+          <div className="text-sm opacity-80">
+            <div><strong>Window:</strong> {inputs.window.fromIso} → {inputs.window.toIso} ({inputs.window.timeframe})</div>
+            <div><strong>Symbols:</strong> {inputs.window.symbols.join(", ")}</div>
+            <div><strong>Fees/Slippage:</strong> {inputs.feesBps} / {inputs.slipBps} bps</div>
+            <div><strong>RNG Seed:</strong> {inputs.rngSeed}</div>
+          </div>
+          <div className="text-sm">
+            <strong>Provenance</strong>
+            <div>datasetId: {provenance.datasetId ?? "none"}</div>
+            <div>runId: {provenance.runId ?? "none"}</div>
+            <div>commit: {provenance.commit}</div>
+            <div>generatedAt: {provenance.generatedAt}</div>
+          </div>
+          <button className="btn btn-primary mt-2" onClick={() => { window.location.href = `/bench?rerun=${provenance.runId ?? ""}`; }}>
+            Re-run identical test
+          </button>
+        </div>
+      </DrawerContent>
+    </Drawer>
+  );
+}
+8) Chaos flags (used by WS/exec paths)
+server/services/chaos.ts
+
+ts
+Copy
+Edit
+export const chaos = {
+  wsDrop: process.env.SIMULATE_WS_DROP === "1",
+  latencyMs: Number(process.env.SIMULATE_LATENCY_MS ?? "0"),
+  force429: process.env.SIMULATE_429 === "1",
+  clockDriftMs: Number(process.env.SIMULATE_CLOCK_DRIFT_MS ?? "0"),
+};
+9) Dataset hasher (NEW)
+server/utils/datasetHash.ts
+
+ts
+Copy
+Edit
+import crypto from "crypto";
+export type Bar = { t: number; o: number; h: number; l: number; c: number; v?: number }; // ms epoch
+
+export function hashDataset(params: {
+  symbols: string[]; timeframe: "1m"|"5m"|"1h"|"1d"; fromIso: string; toIso: string;
+  feeBps?: number; slipBps?: number; seed?: number;
+  data: Record<string, Bar[]>; // sorted ascending by t
+}): string {
+  const { symbols, timeframe, fromIso, toIso, feeBps = 0, slipBps = 0, seed = 0, data } = params;
+  const h = crypto.createHash("sha256");
+  h.update(JSON.stringify({ symbols: [...symbols].sort(), timeframe, fromIso, toIso, feeBps, slipBps, seed }));
+  const r = (x: number) => Math.round(x * 1e8) / 1e8;
+  for (const sym of [...symbols].sort()) {
+    h.update(sym);
+    const bars = (data[sym] || []).slice().sort((a, b) => a.t - b.t);
+    for (const b of bars) h.update(`${b.t}|${r(b.o)}|${r(b.h)}|${r(b.l)}|${r(b.c)}|${b.v != null ? r(b.v) : ""};`);
+  }
+  return `sha256:${h.digest("hex")}`;
+}
+10) Benchmark DTOs with provenance (NEW)
+shared/src/types/provenance.ts
+
+ts
+Copy
+Edit
+export type Provenance = {
+  source: "computed" | "external";
+  datasetId?: string;
+  commit: string;
+  runId?: string;
+  generatedAt: string;
+};
+shared/src/types/bench.ts
+
+ts
+Copy
+Edit
+import type { Provenance } from "./provenance";
+export type Timeframe = "1m"|"5m"|"1h"|"1d";
+
+export interface BenchRunRequest {
+  strategy: string; version: string; symbols: string[];
+  timeframe: Timeframe; fromIso: string; toIso: string;
+  feeBps: number; slipBps: number; rngSeed?: number;
+}
+
+export interface BenchHeadline {
+  cashGrowthScore: number; totalReturnPct: number; sharpe: number; sortino: number;
+  winRatePct: number; maxDrawdownPct: number; profitFactor: number;
+}
+
+export interface BenchRunResult {
+  runId: string; status: "queued"|"running"|"done"|"error";
+  headline?: BenchHeadline; provenance?: Provenance; error?: string;
+}
+
+export interface BenchCompareDelta {
+  sharpe: number; totalReturnPct: number; winRatePct: number;
+  maxDrawdownPct: number; profitFactor: number; cashGrowthScore: number;
+}
+
+export interface BenchCompareResponse {
+  a: { runId: string; headline: BenchHeadline; provenance: Provenance };
+  b: { runId: string; headline: BenchHeadline; provenance: Provenance };
+  delta: BenchCompareDelta;
+}
+Server integration snippet (ensure all bench responses include provenance):
+
+ts
+Copy
+Edit
+// server/routes/bench.ts (inside your handler after metrics computed)
+import { execSync } from "node:child_process";
+import { hashDataset } from "../utils/datasetHash";
+import type { BenchRunResult } from "../../shared/src/types/bench";
+import type { Provenance } from "../../shared/src/types/provenance";
+
+const commit = (() => { try { return execSync("git rev-parse HEAD").toString().trim(); } catch { return "unknown"; } })();
+
+// example:
+const datasetId = hashDataset({ symbols, timeframe, fromIso, toIso, feeBps, slipBps, seed: rngSeed, data });
+const provenance: Provenance = {
+  source: "computed", datasetId, commit, runId, generatedAt: new Date().toISOString(),
+};
+const result: BenchRunResult = { runId, status: "done", headline, provenance };
+res.json(result);
+11) Safety Banner (NEW)
+client/src/state/systemStore.ts
+
+ts
+Copy
+Edit
+import { create } from "zustand";
+type BreakerReason = "stale_quotes"|"high_latency"|"slippage_breach"|"manual_kill"|"unknown";
+type SystemState = {
+  breakerActive: boolean; reason?: BreakerReason; since?: number; details?: string;
+  setBreaker: (on: boolean, reason?: BreakerReason, details?: string) => void;
+  clearBreaker: () => void;
+};
+export const useSystemStore = create<SystemState>((set) => ({
+  breakerActive: false,
+  setBreaker: (on, reason, details) => set({ breakerActive: on, reason, details, since: on ? Date.now() : undefined }),
+  clearBreaker: () => set({ breakerActive: false, reason: undefined, details: undefined, since: undefined }),
+}));
+client/src/components/system/SafetyBanner.tsx
+
+tsx
+Copy
+Edit
+import { useSystemStore } from "@/state/systemStore";
+import { useMemo } from "react";
+
+export function SafetyBanner() {
+  const { breakerActive, reason, since, details } = useSystemStore();
+  const sinceText = useMemo(() => (since ? new Date(since).toLocaleTimeString() : ""), [since]);
+  if (!breakerActive) return null;
+  const label =
+    reason === "stale_quotes" ? "Data feed is stale" :
+    reason === "high_latency" ? "Latency too high" :
+    reason === "slippage_breach" ? "Slippage too high" :
+    reason === "manual_kill" ? "Kill-switch engaged" :
+    "Trading paused";
+  return (
+    <div className="w-full bg-yellow-100 border-b border-yellow-300 text-yellow-900 px-3 py-2 text-sm">
+      <div className="max-w-5xl mx-auto flex items-center justify-between">
+        <div className="font-medium">⚠ {label}. Submissions are blocked.</div>
+        <div className="opacity-75">{sinceText && <span>since {sinceText}</span>}{details && <span className="ml-2">{details}</span>}</div>
+      </div>
+    </div>
+  );
+}
+Wire into Trading page & WS client
+
+tsx
+Copy
+Edit
+// client/src/routes/Trading.tsx
+import { SafetyBanner } from "@/components/system/SafetyBanner";
+export default function Trading() {
+  return (
+    <div className="min-h-screen">
+      <SafetyBanner />
+      {/* existing QuotePanel, OrderTicket, etc. */}
+    </div>
+  );
+}
+ts
+Copy
+Edit
+// client/src/lib/ws.ts (when handling server messages)
+import { useSystemStore } from "@/state/systemStore";
+// ...
+if (msg.type === "breaker") {
+  useSystemStore.getState().setBreaker(Boolean(msg.active), msg.reason, msg.details);
+}
+Server should emit WS messages like:
+
+json
+Copy
+Edit
+{ "type":"breaker", "active":true, "reason":"stale_quotes", "details":"No quote for 5.2s" }
+12) Package scripts
+package.json (root; add if missing)
+
+json
+Copy
+Edit
+{
+  "scripts": {
+    "lint": "eslint .",
+    "test": "vitest",
+    "bench": "tsx server/cli/bench.ts",
+    "ci": "pnpm lint && pnpm test && vitest run tools/antiFabrication.spec.ts tools/noMarketing.spec.ts"
+  }
+}
+Agent conduct (hard rules)
+If any value cannot be computed truthfully from code/data, return null/undefined + a user-visible explanation. Do not backfill placeholders.
+
+Extend existing middlewares; do not create parallel versions. If filenames differ, adapt and summarize diffs.
+
+Acceptance Criteria (final)
+✅ Anti-fabrication & no-marketing tests pass; fail on violations.
+
+✅ Env validation blocks boot on misconfig.
+
+✅ Bench sample writes all artifacts with provenance including datasetId from the hasher.
+
+✅ Health page shows SLOs & quotas; auto-refresh.
+
+✅ Explain Drawer attached to headline metrics with formula, inputs, provenance, and re-run button.
+
+✅ Chaos flags trip breakers; Safety Banner appears; metrics increment.
+
+✅ No fabricated values anywhere; unknowns labeled with reasons.

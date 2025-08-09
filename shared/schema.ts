@@ -118,6 +118,19 @@ export const portfolioSnapshots = pgTable("portfolio_snapshots", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Benchmark results table
+export const benchmarkResults = pgTable("benchmark_results", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  runId: varchar("run_id").notNull().unique(),
+  version: varchar("version").notNull(),
+  timestamp: timestamp("timestamp").defaultNow(),
+  performance: jsonb("performance").notNull(), // AlgorithmPerformance object
+  cashReserveScore: real("cash_reserve_score").notNull(),
+  recommendations: jsonb("recommendations").notNull(),
+  provenance: jsonb("provenance").notNull(), // Provenance object
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Feedback submissions table
 export const feedbackSubmissions = pgTable("feedback_submissions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

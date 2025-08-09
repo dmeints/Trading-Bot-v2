@@ -9,6 +9,10 @@ import { stevieRL } from './stevieRL';
 import { marketDataService } from './marketData';
 import { logger } from '../utils/logger';
 import { storage } from '../storage';
+import { hashDataset } from '../utils/datasetHash';
+import type { Provenance } from '../../shared/types/provenance';
+import type { BenchHeadline, BenchRunResult } from '../../shared/types/bench';
+import crypto from 'crypto';
 
 export interface RealBenchmarkConfig {
   version: string;
@@ -31,6 +35,7 @@ export interface AlgorithmPerformance {
 }
 
 export interface BenchmarkResult {
+  runId: string;
   version: string;
   timestamp: Date;
   testPeriod: {
@@ -54,6 +59,8 @@ export interface BenchmarkResult {
   };
   cashReserveGrowthScore: number; // 0-100 based on actual money-making ability
   recommendations: string[];
+  provenance: Provenance;
+  headline: BenchHeadline;
 }
 
 export class StevieRealBenchmark {
@@ -65,33 +72,67 @@ export class StevieRealBenchmark {
    * Run comprehensive algorithm performance test using real market data
    */
   async runRealAlgorithmBenchmark(config: RealBenchmarkConfig): Promise<BenchmarkResult> {
-    logger.info(`[RealBenchmark] Starting algorithm test for Stevie ${config.version}`);
+    const runId = crypto.randomUUID();
+    logger.info(`[RealBenchmark] Starting algorithm test for Stevie ${config.version}`, { runId });
     const startTime = Date.now();
 
     try {
       // 1. Get real historical market data
       const marketData = await this.getHistoricalMarketData(config.testPeriodDays);
       
-      // 2. Run Stevie's actual trading algorithm
+      // 2. Generate dataset hash for provenance
+      const datasetId = hashDataset({
+        symbols: config.symbols,
+        timeframe: "1h",
+        fromIso: new Date(Date.now() - config.testPeriodDays * 24 * 60 * 60 * 1000).toISOString(),
+        toIso: new Date().toISOString(),
+        feeBps: 2,
+        slipBps: 1,
+        seed: 42,
+        data: this.formatDataForHash(marketData)
+      });
+      
+      // 3. Run Stevie's actual trading algorithm
       const tradingResults = await this.runStevieAlgorithm(marketData, config);
       
-      // 3. Calculate comprehensive performance metrics
+      // 4. Calculate comprehensive performance metrics
       const performance = this.calculatePerformanceMetrics(tradingResults, config.initialCapital);
       
-      // 4. Analyze market conditions during test period
+      // 5. Analyze market conditions during test period
       const marketConditions = this.analyzeMarketConditions(marketData);
       
-      // 5. Compare to previous version if specified
+      // 6. Compare to previous version if specified
       const comparison = config.compareToVersion ? 
         await this.compareToVersion(performance, config.compareToVersion) : undefined;
       
-      // 6. Calculate cash reserve growth score (what actually matters)
+      // 7. Calculate cash reserve growth score (what actually matters)
       const cashReserveScore = this.calculateCashReserveGrowthScore(performance, marketConditions);
       
-      // 7. Generate improvement recommendations
+      // 8. Generate improvement recommendations
       const recommendations = this.generateRecommendations(performance, tradingResults);
 
+      // 9. Create provenance record
+      const provenance: Provenance = {
+        source: "computed",
+        datasetId,
+        commit: process.env.REPLIT_GIT_COMMIT_SHA || "dev",
+        runId,
+        generatedAt: new Date().toISOString()
+      };
+
+      // 10. Create headline metrics
+      const headline: BenchHeadline = {
+        cashGrowthScore: cashReserveScore,
+        totalReturnPct: performance.totalReturn * 100,
+        sharpe: performance.sharpeRatio,
+        sortino: performance.sortinoRatio || 0,
+        winRatePct: performance.winRate * 100,
+        maxDrawdownPct: performance.maxDrawdown * 100,
+        profitFactor: performance.profitFactor
+      };
+
       const result: BenchmarkResult = {
+        runId,
         version: config.version,
         timestamp: new Date(),
         testPeriod: {
@@ -103,24 +144,31 @@ export class StevieRealBenchmark {
         detailedMetrics: this.calculateDetailedMetrics(tradingResults, marketData),
         comparisonToPrevious: comparison,
         cashReserveGrowthScore: cashReserveScore,
-        recommendations
+        recommendations,
+        provenance,
+        headline
       };
 
       // Save benchmark result for future comparisons
       await this.saveBenchmarkResult(result);
       
+      // Generate artifact bundle
+      await this.generateArtifactBundle(result, tradingResults);
+      
       const duration = Date.now() - startTime;
       logger.info(`[RealBenchmark] Completed in ${duration}ms`, {
+        runId,
         version: config.version,
         cashReserveScore,
         sharpeRatio: performance.sharpeRatio,
-        totalReturn: performance.totalReturn
+        totalReturn: performance.totalReturn,
+        datasetId
       });
 
       return result;
 
     } catch (error: any) {
-      logger.error('[RealBenchmark] Algorithm test failed', { error: error.message });
+      logger.error('[RealBenchmark] Algorithm test failed', { error: error.message, runId });
       throw error;
     }
   }
@@ -385,15 +433,89 @@ export class StevieRealBenchmark {
     return recommendations;
   }
 
+  private formatDataForHash(marketData: any[]): Record<string, any[]> {
+    const formatted: Record<string, any[]> = {};
+    for (const data of marketData) {
+      if (!formatted[data.symbol]) formatted[data.symbol] = [];
+      formatted[data.symbol].push({
+        t: new Date(data.timestamp).getTime(),
+        o: data.open || data.close,
+        h: data.high || data.close,
+        l: data.low || data.close,
+        c: data.close,
+        v: data.volume || 0
+      });
+    }
+    return formatted;
+  }
+
+  private async generateArtifactBundle(result: BenchmarkResult, trades: any[]): Promise<void> {
+    try {
+      const fs = await import('fs').then(m => m.promises);
+      const path = await import('path');
+      
+      const artifactsDir = `./artifacts/${result.runId}`;
+      await fs.mkdir(artifactsDir, { recursive: true });
+      
+      // Create manifest.json
+      const manifest = {
+        runId: result.runId,
+        version: result.version,
+        timestamp: result.timestamp.toISOString(),
+        provenance: result.provenance,
+        files: ['manifest.json', 'metrics.json', 'trades.csv', 'logs.ndjson']
+      };
+      await fs.writeFile(path.join(artifactsDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
+      
+      // Create metrics.json
+      const metrics = {
+        headline: result.headline,
+        performance: result.algorithmPerformance,
+        detailedMetrics: result.detailedMetrics,
+        cashReserveScore: result.cashReserveGrowthScore,
+        recommendations: result.recommendations
+      };
+      await fs.writeFile(path.join(artifactsDir, 'metrics.json'), JSON.stringify(metrics, null, 2));
+      
+      // Create trades.csv
+      const tradesCSV = [
+        'timestamp,symbol,action,quantity,price,value,confidence,reason',
+        ...trades.map(t => 
+          `${t.timestamp.toISOString()},${t.symbol},${t.action},${t.quantity},${t.price},${t.value},${t.confidence},"${t.reason}"`
+        )
+      ].join('\n');
+      await fs.writeFile(path.join(artifactsDir, 'trades.csv'), tradesCSV);
+      
+      // Create logs.ndjson (simplified)
+      const logs = [
+        JSON.stringify({ level: 'info', message: 'Benchmark started', runId: result.runId, timestamp: result.timestamp.toISOString() }),
+        JSON.stringify({ level: 'info', message: 'Benchmark completed', runId: result.runId, cashReserveScore: result.cashReserveGrowthScore })
+      ].join('\n');
+      await fs.writeFile(path.join(artifactsDir, 'logs.ndjson'), logs);
+      
+      // Create symlink to latest
+      const latestDir = './artifacts/latest';
+      try {
+        await fs.unlink(latestDir);
+      } catch {}
+      await fs.symlink(result.runId, latestDir);
+      
+    } catch (error) {
+      logger.warn('[RealBenchmark] Failed to generate artifact bundle', error);
+    }
+  }
+
   private async saveBenchmarkResult(result: BenchmarkResult): Promise<void> {
     try {
       // Save to database for future comparisons
       await storage.createBenchmarkResult({
+        runId: result.runId,
         version: result.version,
         timestamp: result.timestamp,
         performance: JSON.stringify(result.algorithmPerformance),
         cashReserveScore: result.cashReserveGrowthScore,
-        recommendations: JSON.stringify(result.recommendations)
+        recommendations: JSON.stringify(result.recommendations),
+        provenance: JSON.stringify(result.provenance)
       });
     } catch (error) {
       logger.warn('[RealBenchmark] Failed to save result', error);

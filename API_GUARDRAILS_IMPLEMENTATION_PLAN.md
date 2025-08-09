@@ -18,7 +18,7 @@ With 8 API integrations now active (only $49/month CoinGecko Pro cost, but stric
 - **CoinGecko Pro**: $49/month, unlimited requests (low risk)
 
 ### Free Tier APIs (Rate Limit Risk)
-- **X (Twitter) API**: FREE tier, 1500 posts/month limit (CRITICAL RISK)
+- **X (Twitter) API**: FREE tier, 100 posts/month limit (EXTREME CRITICAL RISK)
 
 - **Binance**: 1200 requests/minute (medium risk)
 - **Reddit**: 100 requests/minute (medium risk) 
@@ -41,7 +41,7 @@ With 8 API integrations now active (only $49/month CoinGecko Pro cost, but stric
 const API_LIMITS = {
   coingecko: { requests: 50, window: 60000 },     // 50/minute
   binance: { requests: 1000, window: 60000 },     // Conservative limit
-  twitter: { requests: 10, window: 86400000 },    // 10/day (1500/month ÷ 150 days buffer)
+  twitter: { requests: 2, window: 86400000 },     // 2/day (100/month ÷ 50 days buffer)
   reddit: { requests: 80, window: 60000 },        // 80/minute
   etherscan: { requests: 200, window: 60000 },    // 200/minute (conservative)
   cryptopanic: { requests: 100, window: 86400000 } // 100/day
@@ -117,12 +117,12 @@ const API_LIMITS = {
 - **Caching**: 30-second market data, 1-hour historical data
 - **Priority**: High (core market data)
 
-### X (Twitter) API (1500/month FREE - CRITICAL RISK)
-- **Critical**: This is our biggest limit risk - only 50 requests/day budget
-- **Guardrail**: Ultra-strict 10/day limit (1500/month ÷ 150 days = 10/day buffer)
-- **Smart usage**: ONLY fetch during major market events (>10% volatility)
-- **Cache**: 1-hour cache minimum for sentiment aggregations
-- **Emergency**: Auto-disable at 1400/month to prevent cutoff
+### X (Twitter) API (100/month FREE - EXTREME CRITICAL RISK)
+- **Critical**: ONLY 100 requests total per month - roughly 3 requests/day budget
+- **Guardrail**: Emergency 2/day limit maximum (100/month ÷ 50 days = 2/day)
+- **Smart usage**: Reserve for MAJOR market crashes/pumps only (>15% volatility)
+- **Cache**: 24-hour cache minimum - treat each request as precious
+- **Emergency**: Auto-disable at 90/month to prevent complete cutoff
 
 ### Etherscan (5/second - HIGH RISK)  
 - **Guardrail**: Conservative 3/second with 1-second spacing
@@ -211,8 +211,8 @@ export const apiGuardrails = (service: string) => {
 
 ## Implementation Timeline
 
-**Day 1 (Immediate)**:
-- Rate limiting middleware for Twitter/X API (highest limit risk - only 50/day budget)
+**Day 1 (EMERGENCY)**:
+- Rate limiting middleware for Twitter/X API (EXTREME RISK - only 3/day budget)
 - Basic memory caching for market data
 - Emergency circuit breakers
 
@@ -226,4 +226,4 @@ export const apiGuardrails = (service: string) => {
 - Testing resource allocation system
 - Complete monitoring and alerting
 
-This implementation protects your free-tier API limits (especially the critical 1500/month X API limit) while ensuring the system remains responsive and sustainable during extensive testing phases.
+This implementation protects your extremely limited free-tier API allocations (especially the critical 100/month X API limit - only 3/day) while ensuring the system remains functional during testing phases.

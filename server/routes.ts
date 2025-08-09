@@ -1059,6 +1059,169 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Paper Run routes (for frontend access)
+  app.post('/api/paperrun/start', rateLimiters.trading, isAuthenticated, async (req: any, res) => {
+    try {
+      const config = req.body;
+      // Import ExchangeService dynamically to avoid initialization issues
+      const { default: ExchangeService } = await import('./services/exchangeService');
+      
+      const defaultConfig = {
+        mode: 'paper' as const,
+        exchange: 'mock' as const,
+        testnet: true,
+        maxPositionSize: 0.1,
+        riskPerTrade: 0.02,
+        killSwitchEnabled: true,
+        killSwitchConditions: {
+          maxDailyLoss: 5,
+          maxDrawdown: 10,
+          minWinRate: 40
+        }
+      };
+      
+      const exchangeService = new ExchangeService(defaultConfig);
+      await exchangeService.initialize();
+      const runId = await exchangeService.startPaperRun(config);
+      
+      res.json({ 
+        success: true,
+        runId,
+        message: 'Paper run started successfully'
+      });
+    } catch (error) {
+      console.error('Start paper run error:', error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : 'Failed to start paper run' 
+      });
+    }
+  });
+
+  app.get('/api/paperrun/current', rateLimiters.general, isAuthenticated, async (req: any, res) => {
+    try {
+      const { default: ExchangeService } = await import('./services/exchangeService');
+      
+      const defaultConfig = {
+        mode: 'paper' as const,
+        exchange: 'mock' as const,
+        testnet: true,
+        maxPositionSize: 0.1,
+        riskPerTrade: 0.02,
+        killSwitchEnabled: true,
+        killSwitchConditions: {
+          maxDailyLoss: 5,
+          maxDrawdown: 10,
+          minWinRate: 40
+        }
+      };
+      
+      const exchangeService = new ExchangeService(defaultConfig);
+      const currentRun = await exchangeService.getCurrentRun();
+      
+      res.json(currentRun || { message: 'No active paper run' });
+    } catch (error) {
+      console.error('Get current paper run error:', error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : 'Failed to get current paper run' 
+      });
+    }
+  });
+
+  app.post('/api/paperrun/stop', rateLimiters.trading, isAuthenticated, async (req: any, res) => {
+    try {
+      const { reason = 'Manual stop via API' } = req.body;
+      const { default: ExchangeService } = await import('./services/exchangeService');
+      
+      const defaultConfig = {
+        mode: 'paper' as const,
+        exchange: 'mock' as const,
+        testnet: true,
+        maxPositionSize: 0.1,
+        riskPerTrade: 0.02,
+        killSwitchEnabled: true,
+        killSwitchConditions: {
+          maxDailyLoss: 5,
+          maxDrawdown: 10,
+          minWinRate: 40
+        }
+      };
+      
+      const exchangeService = new ExchangeService(defaultConfig);
+      await exchangeService.stopCurrentRun(reason);
+      
+      res.json({ 
+        success: true,
+        message: 'Paper run stopped successfully'
+      });
+    } catch (error) {
+      console.error('Stop paper run error:', error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : 'Failed to stop paper run' 
+      });
+    }
+  });
+
+  app.get('/api/paperrun/history', rateLimiters.general, isAuthenticated, async (req: any, res) => {
+    try {
+      const { default: ExchangeService } = await import('./services/exchangeService');
+      
+      const defaultConfig = {
+        mode: 'paper' as const,
+        exchange: 'mock' as const,
+        testnet: true,
+        maxPositionSize: 0.1,
+        riskPerTrade: 0.02,
+        killSwitchEnabled: true,
+        killSwitchConditions: {
+          maxDailyLoss: 5,
+          maxDrawdown: 10,
+          minWinRate: 40
+        }
+      };
+      
+      const exchangeService = new ExchangeService(defaultConfig);
+      const history = await exchangeService.getRunHistory();
+      
+      res.json(history);
+    } catch (error) {
+      console.error('Get paper run history error:', error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : 'Failed to get paper run history' 
+      });
+    }
+  });
+
+  app.get('/api/paperrun/positions', rateLimiters.general, isAuthenticated, async (req: any, res) => {
+    try {
+      const { default: ExchangeService } = await import('./services/exchangeService');
+      
+      const defaultConfig = {
+        mode: 'paper' as const,
+        exchange: 'mock' as const,
+        testnet: true,
+        maxPositionSize: 0.1,
+        riskPerTrade: 0.02,
+        killSwitchEnabled: true,
+        killSwitchConditions: {
+          maxDailyLoss: 5,
+          maxDrawdown: 10,
+          minWinRate: 40
+        }
+      };
+      
+      const exchangeService = new ExchangeService(defaultConfig);
+      const positions = await exchangeService.getPositions();
+      const positionsArray = Array.from(positions.values());
+      
+      res.json(positionsArray);
+    } catch (error) {
+      console.error('Get paper run positions error:', error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : 'Failed to get paper run positions' 
+      });
+    }
+  });
+
   // Journal routes (placeholder implementations)
   app.get('/api/journal/analysis', rateLimiters.general, isAuthenticated, async (req: any, res) => {
     try {

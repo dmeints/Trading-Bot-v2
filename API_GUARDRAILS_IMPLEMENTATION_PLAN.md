@@ -4,7 +4,7 @@
 
 ## Executive Summary
 
-With 8 professional API integrations now active ($149/month in API costs), implementing intelligent guardrails is critical for:
+With 8 API integrations now active (only $49/month CoinGecko Pro cost, but strict free-tier limits), implementing intelligent guardrails is critical for:
 - **Cost Control**: Preventing runaway API usage charges
 - **Rate Limit Protection**: Avoiding service interruptions
 - **Testing Efficiency**: Conserving resources during development
@@ -16,9 +16,10 @@ With 8 professional API integrations now active ($149/month in API costs), imple
 
 ### Professional Tier APIs (Cost Risk)
 - **CoinGecko Pro**: $49/month, unlimited requests (low risk)
-- **X (Twitter) API**: $100/month, 10K tweets/month limit (high risk)
 
 ### Free Tier APIs (Rate Limit Risk)
+- **X (Twitter) API**: FREE tier, 1500 posts/month limit (CRITICAL RISK)
+
 - **Binance**: 1200 requests/minute (medium risk)
 - **Reddit**: 100 requests/minute (medium risk) 
 - **Etherscan**: 5 requests/second (high risk)
@@ -40,7 +41,7 @@ With 8 professional API integrations now active ($149/month in API costs), imple
 const API_LIMITS = {
   coingecko: { requests: 50, window: 60000 },     // 50/minute
   binance: { requests: 1000, window: 60000 },     // Conservative limit
-  twitter: { requests: 100, window: 900000 },     // 100/15min
+  twitter: { requests: 10, window: 86400000 },    // 10/day (1500/month ÷ 150 days buffer)
   reddit: { requests: 80, window: 60000 },        // 80/minute
   etherscan: { requests: 200, window: 60000 },    // 200/minute (conservative)
   cryptopanic: { requests: 100, window: 86400000 } // 100/day
@@ -116,12 +117,12 @@ const API_LIMITS = {
 - **Caching**: 30-second market data, 1-hour historical data
 - **Priority**: High (core market data)
 
-### X (Twitter) API (10K/month - HIGH RISK)
-- **Critical**: This is our biggest cost risk at $100/month
-- **Guardrail**: Strict 300/day limit (10K/month ÷ 30 days = 333/day)
-- **Smart usage**: Only fetch on market volatility spikes >5%
-- **Cache**: 10-minute cache for sentiment aggregations
-- **Emergency**: Auto-disable if approaching monthly limit
+### X (Twitter) API (1500/month FREE - CRITICAL RISK)
+- **Critical**: This is our biggest limit risk - only 50 requests/day budget
+- **Guardrail**: Ultra-strict 10/day limit (1500/month ÷ 150 days = 10/day buffer)
+- **Smart usage**: ONLY fetch during major market events (>10% volatility)
+- **Cache**: 1-hour cache minimum for sentiment aggregations
+- **Emergency**: Auto-disable at 1400/month to prevent cutoff
 
 ### Etherscan (5/second - HIGH RISK)  
 - **Guardrail**: Conservative 3/second with 1-second spacing
@@ -191,10 +192,10 @@ export const apiGuardrails = (service: string) => {
 
 ## Expected Benefits
 
-### Cost Savings
-- **Prevent overages**: X API monthly limit protection saves $100+ potential overrun charges
+### Resource Conservation
+- **Prevent service cutoff**: X API monthly limit protection prevents losing social sentiment entirely
 - **Efficient usage**: 60-80% reduction in redundant API calls through smart caching
-- **Predictable costs**: Monthly API spend becomes controllable and budgetable
+- **Sustainable operation**: Free-tier limits become manageable and predictable
 
 ### Performance Improvements  
 - **Faster responses**: Cache hits eliminate network latency
@@ -211,7 +212,7 @@ export const apiGuardrails = (service: string) => {
 ## Implementation Timeline
 
 **Day 1 (Immediate)**:
-- Rate limiting middleware for Twitter/X API (highest cost risk)
+- Rate limiting middleware for Twitter/X API (highest limit risk - only 50/day budget)
 - Basic memory caching for market data
 - Emergency circuit breakers
 
@@ -225,4 +226,4 @@ export const apiGuardrails = (service: string) => {
 - Testing resource allocation system
 - Complete monitoring and alerting
 
-This implementation protects your $149/month API investment while ensuring the system remains responsive and cost-effective during extensive testing phases.
+This implementation protects your free-tier API limits (especially the critical 1500/month X API limit) while ensuring the system remains responsive and sustainable during extensive testing phases.

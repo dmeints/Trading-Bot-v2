@@ -137,9 +137,11 @@
 
 ### Active Professional Tier
 - **CoinGecko Pro**: $49/month - Unlimited requests, full historical data
+
+### Active Free Tier (With Strict Limits)
+- **X API v2**: FREE tier - 1500 posts/month limit (CRITICAL - only ~50/day budget)
 - **Binance API**: Free tier - Real-time trading data
-- **X API v2**: $100/month Basic tier - Social sentiment analysis
-- **Reddit API**: Free tier - Community sentiment
+- **Reddit API**: Free tier - Community sentiment  
 - **Etherscan API**: Free tier - Ethereum analytics
 - **CryptoPanic API**: Free tier - News sentiment
 
@@ -148,8 +150,8 @@
 - **Blockchair**: Free tier - Bitcoin on-chain data
 
 ### Total Monthly Cost
-- **Estimated**: $149/month for professional data feeds
-- **ROI**: Enterprise-grade data vs previous mock/simulated data
+- **Actual**: $49/month for CoinGecko Pro only
+- **Critical**: X API free tier has only 1500 requests/month (50/day) - requires extreme conservation
 
 ---
 

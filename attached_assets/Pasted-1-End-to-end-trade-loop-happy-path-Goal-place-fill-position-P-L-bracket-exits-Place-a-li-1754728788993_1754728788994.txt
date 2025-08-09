@@ -1,0 +1,81 @@
+1) End-to-end trade loop (happy path)
+Goal: place → fill → position/P&L → bracket exits.
+
+Place a limit and market order via UI; verify server returns accepted.
+
+Confirm fills stream over WS and show up in /api/trading/fills.
+
+Verify positions and account update within 2s (WS) or 5s (poll fallback).
+
+Attach a bracket OCO on entry and see reduce-only exits behave correctly.
+
+Quick tests
+
+Market buy 0.01 BTC → TP +0.5% / SL −0.25%.
+
+Cancel/replace a live limit using the same clientId (idempotent).
+
+2) Risk & validation gates
+Goal: make sure we can’t hurt ourselves.
+
+Try oversize order ( > maxPositionSizePct ) → blocked with clear UI error.
+
+Hit daily loss threshold via test harness → trading blocks; banner shows.
+
+Send bad precision / minNotional → local validation rejects before REST.
+
+3) Circuit breakers & staleness
+Goal: prove we stop trading when data/latency is bad.
+
+Kill WS for 10s → app shows “stale” & blocks submit.
+
+Artificially bump submit→ACK latency > p99 threshold (use a sleep in dev) → breaker trips, metrics increment.
+
+4) Observability slice
+Goal: you can see what’s happening.
+
+Expose and render on Health page:
+
+latencyMs.submitAck p50/p95/p99
+
+wsStalenessMs p50/p95/p99
+
+slippageBps p50/p95/p99
+
+rejectsByReason counts
+
+Log each order with {clientId, symbol, qty, latencyMs, slippageBps, riskRule}.
+
+5) Soak & rate handling (30–45 min run)
+Goal: stability + no 429 storms.
+
+Loop 1 order/min for 30 min across 2 symbols.
+
+Verify token bucket prevents bursts; no unhandled rejections; memory steady.
+
+Minimal commands to run (example)
+bash
+Copy
+Edit
+# happy path (market)
+curl -X POST localhost:3000/api/trading/orders \
+ -H "content-type: application/json" \
+ -d '{"symbol":"BTCUSDT","side":"buy","type":"market","quantity":0.01,"clientId":"test-1","bracket":{"takeProfitPct":0.5,"stopLossPct":0.25,"reduceOnly":true}}'
+
+# positions / fills / account
+curl localhost:3000/api/trading/positions
+curl localhost:3000/api/trading/fills?limit=50
+curl localhost:3000/api/trading/account
+
+# risk change
+curl -X POST localhost:3000/api/trading/risk \
+ -H "content-type: application/json" \
+ -d '{"maxPositionSizePct":10,"maxDailyLoss":50,"defaultStopPct":0.25,"defaultTakeProfitPct":0.5,"killSwitch":false}'
+Definition of done (for this slice)
+Two green paths (market & limit) verified end-to-end.
+
+Risk, validation, and circuit breakers all provably block bad actions.
+
+Health shows live p50/p95/p99 and reject taxonomy.
+
+No console errors or unhandled promise rejections during the soak.

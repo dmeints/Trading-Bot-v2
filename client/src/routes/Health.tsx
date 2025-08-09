@@ -24,6 +24,12 @@ export default function Health() {
     retry: 1
   });
 
+  const { data: tradingMetrics } = useQuery<{data: any}>({
+    queryKey: ['/api/trading/metrics'],
+    refetchInterval: 5000, // Auto-refresh every 5 seconds
+    retry: 1
+  });
+
   if (authLoading) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">

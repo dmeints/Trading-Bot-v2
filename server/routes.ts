@@ -61,6 +61,7 @@ import { temporalRoutes } from './routes/temporalRoutes';
 import universalRoutes from './routes/universalRoutes';
 import trainingJobRoutes from './training/jobs/routes';
 import tradingRoutes from './routes/trading.js';
+import tradingTestRoutes from './routes/trading-tests.js';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -1389,6 +1390,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Trading system routes
   app.use('/api/trading', tradingRoutes);
+  app.use('/api/trading', tradingTestRoutes);
 
   // Feedback routes
   app.post('/api/feedback', isDevelopment ? devBypass : isAuthenticated, async (req: any, res) => {

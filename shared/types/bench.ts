@@ -21,3 +21,9 @@ export interface BenchCompareDelta {
   sharpe: number; totalReturnPct: number; winRatePct: number;
   maxDrawdownPct: number; profitFactor: number; cashGrowthScore: number;
 }
+
+export interface BenchCompareResponse {
+  a: { runId: string; headline: BenchHeadline; provenance: Provenance };
+  b: { runId: string; headline: BenchHeadline; provenance: Provenance };
+  delta: BenchCompareDelta;
+}

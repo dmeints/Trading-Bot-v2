@@ -17,6 +17,7 @@ import ChartIndicatorsPanel from '@/components/trading/ChartIndicatorsPanel';
 import ChartDrawingTools from '@/components/trading/ChartDrawingTools';
 import OnboardingTour from '@/components/onboarding/OnboardingTour';
 import TradingNotifications from '@/components/notifications/TradingNotifications';
+import { SafetyBanner } from '@/components/SafetyBanner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export default function Trading() {
@@ -53,6 +54,7 @@ export default function Trading() {
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       <TopNavigation />
+      <SafetyBanner />
       
       <div className="flex pt-16">
         <SidebarNavigation />

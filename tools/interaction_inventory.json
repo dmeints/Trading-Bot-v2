@@ -1,0 +1,102 @@
+[
+  {
+    "route": "/trading",
+    "component": "OrderTicket",
+    "selector": "button[type='submit']",
+    "type": "button",
+    "intendedAction": "place order",
+    "handler": "onSubmit",
+    "wired": true,
+    "notes": "Form submission with mutation, has pending state"
+  },
+  {
+    "route": "/trading",
+    "component": "OrderTicket", 
+    "selector": "button[data-side='buy']",
+    "type": "button",
+    "intendedAction": "select buy side",
+    "handler": "onClick",
+    "wired": true,
+    "notes": "Side selection button"
+  },
+  {
+    "route": "/trading",
+    "component": "OrderTicket",
+    "selector": "button[data-side='sell']", 
+    "type": "button",
+    "intendedAction": "select sell side",
+    "handler": "onClick",
+    "wired": true,
+    "notes": "Side selection button"
+  },
+  {
+    "route": "/trading",
+    "component": "QuickTradePanel",
+    "selector": "[data-testid='buy-button']",
+    "type": "button", 
+    "intendedAction": "execute buy trade",
+    "handler": "onClick",
+    "wired": true,
+    "notes": "Quick buy with mutation, needs data-testid"
+  },
+  {
+    "route": "/trading",
+    "component": "QuickTradePanel",
+    "selector": "[data-testid='sell-button']",
+    "type": "button",
+    "intendedAction": "execute sell trade", 
+    "handler": "onClick",
+    "wired": true,
+    "notes": "Quick sell with mutation, needs data-testid"
+  },
+  {
+    "route": "/trading",
+    "component": "AdvancedOrderPanel",
+    "selector": "[data-testid='place-order']",
+    "type": "button",
+    "intendedAction": "place advanced order",
+    "handler": "onSubmit", 
+    "wired": true,
+    "notes": "Advanced order form submission, needs data-testid"
+  },
+  {
+    "route": "/health",
+    "component": "Health",
+    "selector": "[data-testid='refresh-health']",
+    "type": "button",
+    "intendedAction": "refresh health data",
+    "handler": "onClick",
+    "wired": false,
+    "notes": "Missing manual refresh button"
+  },
+  {
+    "route": "/portfolio",
+    "component": "Portfolio",
+    "selector": "[data-testid='export-portfolio']",
+    "type": "button",
+    "intendedAction": "export portfolio data",
+    "handler": "onClick", 
+    "wired": false,
+    "notes": "Export functionality needed"
+  },
+  {
+    "route": "/simulation",
+    "component": "SimulationStudio",
+    "selector": "[data-testid='run-backtest']",
+    "type": "button",
+    "intendedAction": "run backtest simulation",
+    "handler": "onClick",
+    "wired": true,
+    "notes": "Backtest execution with progress tracking"
+  },
+  {
+    "route": "/settings",
+    "component": "Settings", 
+    "selector": "[data-testid='save-settings']",
+    "type": "button",
+    "intendedAction": "save user settings",
+    "handler": "onSubmit",
+    "wired": false,
+    "notes": "Settings form submission needed"
+  }
+]

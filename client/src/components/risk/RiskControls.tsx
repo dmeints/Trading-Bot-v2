@@ -21,7 +21,7 @@ export default function RiskControls(){
           )}
         </label>
       ))}
-      <button onClick={()=>m.mutate(form)} className='rounded-xl bg-black text-white px-4 py-2' disabled={m.isPending}>Save</button>
+      <button onClick={()=>m.mutate(form)} className='rounded-xl bg-black text-white px-4 py-2' disabled={m.isPending} data-testid="save-risk-controls">Save</button>
       {m.data && <div className='text-sm text-green-700'>Saved.</div>}
     </div>
   );

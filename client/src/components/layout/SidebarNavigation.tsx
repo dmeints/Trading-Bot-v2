@@ -24,7 +24,7 @@ export default function SidebarNavigation() {
   };
 
   return (
-    <aside className="hidden lg:flex w-64 bg-gray-800 border-r border-gray-700 flex-col">
+    <aside className="hidden lg:flex w-64 bg-gray-800 border-r border-gray-700 flex-col" data-testid="side-rail">
       <div className="p-fluid-2 border-b border-gray-700">
         <h3 className="text-fluid-xs font-semibold text-gray-300 uppercase tracking-wide">AI Agents Status</h3>
       </div>

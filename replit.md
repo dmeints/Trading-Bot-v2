@@ -7,6 +7,7 @@ Technical Focus: Remove conceptual overhead and focus on practical, measurable t
 Architecture Preference: Consolidated, efficient systems over complex multi-agent architectures.
 Data Integrity Priority: Real algorithm performance testing over marketing metrics - eliminate fake/fabricated data.
 Anti-Fabrication Requirement: Verifiable, reproducible benchmark results with full provenance tracking.
+UI/UX Quality: Comprehensive accessibility compliance (WCAG 2.2) and systematic interaction validation following ChatGPT-5 specifications.
 
 # System Architecture
 

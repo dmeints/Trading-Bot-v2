@@ -300,7 +300,7 @@ export default ${config.name.replace(/\s+/g, '')}Strategy;`;
                 />
               </div>
               <div className="flex gap-2">
-                <Button onClick={saveStrategy} variant="outline" size="sm">
+                <Button onClick={saveStrategy} variant="outline" size="sm" data-testid="save-strategy">
                   <Save className="h-4 w-4 mr-2" />
                   Save
                 </Button>

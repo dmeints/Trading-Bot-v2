@@ -1,0 +1,380 @@
+Replit Task — UI/UX Audit, Accessibility, and Wiring (Compliance Mode v3 + Verify Loop)
+Execution rules (read first)
+Mode: Discover → Plan → Implement in Phases → Verify → Report. No skipping.
+
+Adaptation: If my paths differ from your repo, print an OLD→NEW mapping and adapt before writing code.
+
+No fabrication: Unknowns must be returned as unknown with a reason. Do not mark as “pass” without proof.
+
+Show work: After each phase, STOP and print: file manifest, key diffs, commands to reproduce, and a pass/fail checklist.
+
+Idempotent: Re-running must not duplicate files or break prior runs.
+
+Phase 0 — Repo discovery (no changes)
+Print a repo map of client/, server/, tests, package scripts.
+
+Detect routing (Wouter/React Router), list routes and top-level page components.
+
+Static scan client/src/**/*.tsx for interactive elements: button, a[href], input[type=submit], [role="button"], elements with onClick.
+
+Emit Interaction Inventory to tools/interaction_inventory.json:
+
+json
+Copy
+Edit
+[
+  {
+    "route": "/trading",
+    "component": "OrderTicket",
+    "selector": "[data-testid='submit-order']",
+    "type": "button",
+    "intendedAction": "place order",
+    "handler": "onSubmit",
+    "wired": true,
+    "notes": ""
+  }
+]
+Propose a task plan with checkboxes for Phases 1–4. STOP and show outputs.
+
+Phase 1 — Static wiring audit (no runtime yet)
+Create tools/ui_wiring_check.js that flags:
+
+Buttons without onClick or type="submit".
+
+Links with href="#" or missing href.
+
+Forms without onSubmit.
+
+Missing data-testid on critical controls (Submit/Save/Place Order/Buy/Sell/Cancel/Delete).
+
+Mutations using TanStack Query but lacking disabled={isPending} and success/error toasts.
+
+Add script in root package.json:
+
+json
+Copy
+Edit
+{ "scripts": { "check:ui": "node tools/ui_wiring_check.js" } }
+Acceptance: pnpm run check:ui prints issues with file:line and exits non-zero on “critical”.
+STOP and show results.
+
+Phase 2 — E2E + Accessibility + Heuristics (Playwright + axe-core)
+Add these files (adapt paths if repo differs and print mapping):
+
+2.1 Playwright config
+client/tests/e2e/config.ts
+
+ts
+Copy
+Edit
+import { defineConfig, devices } from "@playwright/test";
+export default defineConfig({
+  testDir: __dirname,
+  reporter: [["list"]],
+  use: { baseURL: "http://localhost:5173", trace: "on-first-retry" },
+  projects: [
+    { name: "mobile", use: { ...devices["iPhone 12"] } },
+    { name: "desktop", use: { ...devices["Desktop Chrome"] } },
+  ],
+});
+2.2 Axe helper
+client/tests/e2e/axe.ts
+
+ts
+Copy
+Edit
+import AxeBuilder from "@axe-core/playwright";
+import { expect, Page } from "@playwright/test";
+export async function runA11y(page: Page) {
+  const results = await new AxeBuilder({ page }).analyze();
+  const severe = results.violations.filter(v => ["serious","critical"].includes(v.impact || ""));
+  expect(severe, JSON.stringify(severe, null, 2)).toHaveLength(0);
+}
+2.3 Route smoke (no console errors; basic clicks)
+client/tests/e2e/routes.spec.ts
+
+ts
+Copy
+Edit
+import { test, expect } from "@playwright/test";
+import { runA11y } from "./axe";
+
+const routes = ["/trading", "/portfolio", "/risk", "/health"]; // extend from inventory if present
+
+test.describe("UI/UX route smoke", () => {
+  for (const route of routes) {
+    test(`loads cleanly: ${route}`, async ({ page }) => {
+      const errors: any[] = [];
+      page.on("console", (msg) => {
+        const type = msg.type();
+        if (type === "error" || type === "warning") errors.push({ type, text: msg.text() });
+      });
+
+      await page.goto(route);
+      await expect(page).toHaveURL(new RegExp(route.replace("/", "\\/")));
+      await runA11y(page);
+
+      // Basic interaction sampling
+      const buttons = page.locator("button:visible");
+      const links = page.locator("a[href]:visible");
+      await buttons.first().scrollIntoViewIfNeeded().catch(()=>{});
+      const max = 5;
+      for (const loc of [buttons, links]) {
+        const n = Math.min(await loc.count(), max);
+        for (let i = 0; i < n; i++) {
+          const el = loc.nth(i);
+          const before = page.url();
+          await Promise.all([page.waitForLoadState("networkidle").catch(()=>{}), el.click().catch(()=>{})]);
+          const after = page.url();
+          if (after === before) {
+            // Look for visible feedback
+            const changed = await page.locator("[role='status'], [data-sonner-toast], [role='dialog']").count();
+            if (!changed) console.log(`No visible effect for click ${i} on ${route} (check data-testids/pending states).`);
+          }
+        }
+      }
+
+      expect(errors.filter(e => e.type === "error")).toHaveLength(0);
+    });
+  }
+});
+2.4 WCAG 2.2 target size + keyboard traversal + drag alternative
+client/tests/e2e/accessibility.spec.ts
+
+ts
+Copy
+Edit
+import { test, expect } from "@playwright/test";
+import { runA11y } from "./axe";
+import fs from "fs";
+
+const inventoryPath = "tools/interaction_inventory.json";
+const routes: string[] = fs.existsSync(inventoryPath) ? JSON.parse(fs.readFileSync(inventoryPath,"utf8")).map((i:any)=>i.route).filter((v:string,i:number,a:string[])=>a.indexOf(v)===i) : ["/trading","/portfolio","/risk","/health"];
+
+test.describe("WCAG 2.2 essentials", () => {
+  test("tap targets >= 24x24 on mobile for primary controls", async ({ page, browserName }) => {
+    test.skip(browserName !== "chromium");
+    await page.setViewportSize({ width: 375, height: 812 });
+    for (const route of routes) {
+      await page.goto(route);
+      // Primary controls from inventory or common testids
+      const selectors = [
+        "[data-testid='submit-order']",
+        "[data-testid='buy']",
+        "[data-testid='sell']",
+        "[data-testid='save']",
+        "[data-testid='cancel']",
+        "[data-testid='place-order']"
+      ];
+      for (const sel of selectors) {
+        const el = page.locator(sel);
+        if (await el.count()) {
+          const bb = await el.first().boundingBox();
+          expect(bb, `Small tap target for ${sel} on ${route}`).not.toBeNull();
+          if (bb) {
+            expect(bb.width).toBeGreaterThanOrEqual(24);
+            expect(bb.height).toBeGreaterThanOrEqual(24);
+          }
+        }
+      }
+    }
+  });
+
+  test("keyboard traversal shows visible, unobscured focus and no traps", async ({ page }) => {
+    for (const route of routes) {
+      await page.goto(route);
+      // Tab through the first ~30 focusable elements
+      for (let i=0;i<30;i++){
+        await page.keyboard.press("Tab");
+        const active = await page.evaluate(() => document.activeElement && (document.activeElement as HTMLElement).outerHTML);
+        const rect = await page.evaluate(() => {
+          const el = document.activeElement as HTMLElement | null;
+          if (!el) return null;
+          const r = el.getBoundingClientRect();
+          return { x: r.x, y: r.y, w: r.width, h: r.height, computed: getComputedStyle(el).outlineStyle };
+        });
+        expect(rect).not.toBeNull();
+        if (rect) {
+          expect(rect.w).toBeGreaterThan(0);
+          expect(rect.h).toBeGreaterThan(0);
+          // focus should not be completely off-screen
+          expect(rect.y + rect.h).toBeGreaterThanOrEqual(0);
+        }
+      }
+      await runA11y(page);
+    }
+  });
+
+  test("drag actions have non-drag alternative", async ({ page }) => {
+    for (const route of routes) {
+      await page.goto(route);
+      const sliders = page.locator("[role='slider'], input[type=range]");
+      const n = await sliders.count();
+      for (let i=0;i<n;i++){
+        const slider = sliders.nth(i);
+        // Look for sibling numeric input or +/- buttons
+        const alt = page.locator("input[type=number], [data-testid='decrement'], [data-testid='increment']");
+        expect(await alt.count(), `No alternative to drag for slider on ${route}`).toBeGreaterThan(0);
+      }
+    }
+  });
+});
+2.5 Heuristics (NN/g) + Nav pattern checks (Material/HIG)
+client/tests/e2e/heuristics.spec.ts
+
+ts
+Copy
+Edit
+import { test, expect } from "@playwright/test";
+
+const routes = ["/trading","/portfolio","/risk","/health"];
+
+test.describe("NN/g heuristics & nav patterns", () => {
+  for (const route of routes) {
+    test(`status, errors, consistency: ${route}`, async ({ page }) => {
+      await page.goto(route);
+      // Status visibility: loading skeletons or aria-busy
+      const hasLoading = await page.locator("[data-skeleton], [aria-busy='true']").count();
+      expect(hasLoading, "Missing loading state marker").toBeGreaterThan(0);
+
+      // Error prevention/recovery: region to display errors + recovery action
+      const errorRegion = page.locator("[role='alert'], [data-error]");
+      // Not required to be visible unless error, but element should exist or be stubbed
+      expect(await errorRegion.count(), "Missing error region").toBeGreaterThan(0);
+
+      // Consistency: primary labels should exist and match across pages if present
+      const buy = await page.locator("text=Buy, [data-testid='buy']").count();
+      const sell = await page.locator("text=Sell, [data-testid='sell']").count();
+      // presence optional per page, but if present must not conflict with other primary labels
+      expect(buy >= 0 && sell >= 0).toBeTruthy();
+    });
+  }
+
+  test("Nav pattern matches viewport (Material/HIG): bottom nav on mobile, side rail on desktop", async ({ browser }) => {
+    const mobile = await browser.newPage();
+    await mobile.setViewportSize({ width: 375, height: 812 });
+    await mobile.goto("/trading");
+    // Expect bottom navigation marker (add data-testid if missing)
+    expect(await mobile.locator("[data-testid='bottom-nav']").count(), "Missing bottom nav on mobile").toBeGreaterThan(0);
+    await mobile.close();
+
+    const desktop = await browser.newPage();
+    await desktop.setViewportSize({ width: 1440, height: 900 });
+    await desktop.goto("/trading");
+    expect(await desktop.locator("[data-testid='side-rail'], [data-testid='app-drawer']").count(), "Missing side rail/drawer on desktop").toBeGreaterThan(0);
+    await desktop.close();
+  });
+});
+Phase 3 — Wire gaps found by Phase 1–2
+Add missing data-testids.
+
+Add pending/disabled states and success/error toasts for mutations.
+
+Replace href="#" / dead buttons with real actions.
+
+Add [data-skeleton], [data-error], [data-testid='bottom-nav'], [data-testid='side-rail'] hooks where appropriate.
+
+Acceptance:
+
+pnpm run check:ui → 0 critical.
+
+Playwright E2E (all spec files) → green on mobile & desktop.
+
+No console errors/warnings; axe serious/critical = 0.
+STOP and show results.
+
+Optional Phase 4 — Storybook interaction & a11y
+Init Storybook under client/.storybook/
+
+Stories for: QuotePanel, OrderTicket, PositionsTable, RiskControls, SafetyBanner
+
+Add script:
+"sb": "storybook dev -p 6006", "sb:test": "test-storybook --watch=false"
+
+Acceptance: pnpm run sb:test green.
+
+CI integration (append to your workflow)
+yaml
+Copy
+Edit
+- name: UI wiring check
+  run: pnpm run check:ui
+
+- name: E2E (UI/UX)
+  run: pnpm -w playwright test --config client/tests/e2e/config.ts
+
+- name: Storybook interaction & a11y (optional)
+  run: pnpm run sb:test
+Verify→Fix→Re-verify loop (runner)
+Add a tiny runner that re-checks automatically until green (max retries), so you can just run one command while you patch.
+
+tools/ux_audit_runner.js
+
+js
+Copy
+Edit
+/* Runs UI checks + E2E in a loop until all green or max retries reached */
+const { spawnSync } = require("child_process");
+
+const run = (cmd, args) => {
+  console.log(`\n$ ${cmd} ${args.join(" ")}`);
+  const r = spawnSync(cmd, args, { stdio: "inherit" });
+  return r.status === 0;
+};
+
+const RETRIES = Number(process.env.UX_RETRIES || 3);
+for (let i = 1; i <= RETRIES; i++) {
+  console.log(`\n=== UX AUDIT PASS ${i}/${RETRIES} ===`);
+  const a = run("pnpm", ["run", "check:ui"]);
+  const b = run("pnpm", ["-w", "playwright", "test", "--config", "client/tests/e2e/config.ts"]);
+  const c = process.env.RUN_STORYBOOK_TESTS ? run("pnpm", ["run", "sb:test"]) : true;
+
+  if (a && b && c) {
+    console.log("\n✅ UI/UX audit green. All checks passed.");
+    process.exit(0);
+  } else {
+    console.warn("\n⚠ Some checks failed. Fix and I will re-run on next pass.");
+  }
+}
+console.error("\n❌ UI/UX audit did not pass within retry budget. See logs above for exact failures.");
+process.exit(1);
+Add to root package.json:
+
+json
+Copy
+Edit
+{
+  "scripts": {
+    "check:ui": "node tools/ui_wiring_check.js",
+    "e2e": "playwright test --config client/tests/e2e/config.ts",
+    "audit:ux": "node tools/ux_audit_runner.js"
+  }
+}
+How to use the loop
+
+bash
+Copy
+Edit
+pnpm i
+pnpm run audit:ux            # runs check:ui + all E2E; retries up to 3 passes
+UX_RETRIES=5 pnpm run audit:ux
+RUN_STORYBOOK_TESTS=1 pnpm run audit:ux
+Self-grade rubric (include in your final report)
+Coverage: % of routes with at least 1 tested interaction; % of listed controls clicked.
+
+A11y: # of axe serious/critical violations (target 0); focus visibility and tap-target checks pass.
+
+Stability: console errors/warnings (target 0); flaky retries (target 0).
+
+Actionability: remaining issues with exact file paths + suggested fix.
+
+Stop conditions (do not proceed if triggered)
+Any “critical” in check:ui.
+
+Any console error/warning during E2E.
+
+Any axe serious/critical issue.
+
+Missing data-testid on primary actions after Phase 3.
+
+Now, begin with Phase 0. Print the repo map, the Interaction Inventory, and a checkbox plan. Then proceed phase-by-phase, using the audit loop after each fix batch until everything is green.

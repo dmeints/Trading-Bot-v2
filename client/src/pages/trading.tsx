@@ -41,7 +41,7 @@ export default function Trading() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-white">Loading...</div>
+        <div className="text-white" data-skeleton aria-busy="true">Loading...</div>
       </div>
     );
   }
@@ -53,6 +53,8 @@ export default function Trading() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
+      {/* Error region for alerts */}
+      <div role="alert" data-error className="hidden" aria-live="polite"></div>
       <TopNavigation />
       <SafetyBanner />
       

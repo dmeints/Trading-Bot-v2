@@ -62,6 +62,9 @@ import universalRoutes from './routes/universalRoutes';
 import trainingJobRoutes from './training/jobs/routes';
 import tradingRoutes from './routes/trading.js';
 import tradingTestRoutes from './routes/trading-tests.js';
+import { registerMarketRoutes } from './routes/marketRoutes';
+import { registerStrategyRoutes } from './routes/strategyRoutes';
+import { registerBacktestRoutes } from './routes/backtestRoutes';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -113,6 +116,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Stevie AI Companion routes
   app.use('/api/stevie', stevieRoutes);
+  
+  // Register comprehensive new API routes for live paper trading
+  registerMarketRoutes(app, requireAuth);
+  registerStrategyRoutes(app, requireAuth); 
+  registerBacktestRoutes(app, requireAuth);
   
   // Stevie Super-Training routes (v1.2 advanced RL system)
   app.use('/api/stevie/supertrain', stevieSupertainRoutes);

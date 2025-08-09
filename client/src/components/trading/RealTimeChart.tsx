@@ -37,7 +37,7 @@ export default function RealTimeChart({
       setError(null);
       
       // Try to fetch real OHLCV data
-      const response = await apiRequest(`/api/market/ohlcv?symbol=${symbol}&timeframe=${timeframe}&limit=100`);
+      const response = await fetch(`/api/market/ohlcv?symbol=${symbol}&timeframe=${timeframe}&limit=100`).then(r => r.json());
       
       if (response && Array.isArray(response)) {
         const formattedData = response.map((candle: any) => ({
@@ -62,8 +62,8 @@ export default function RealTimeChart({
       
       // Fallback: Generate realistic chart data based on current price
       try {
-        const priceResponse = await apiRequest('/api/market/price?symbol=BTC');
-        const currentPrice = (priceResponse as any)?.price || 116789;
+        const priceResponse = await fetch('/api/market/price?symbol=BTC').then(r => r.json());
+        const currentPrice = priceResponse?.price || 116789;
         
         // Generate realistic OHLCV data
         const now = Date.now();

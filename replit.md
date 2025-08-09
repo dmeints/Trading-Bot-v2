@@ -1,119 +1,18 @@
 # Overview
-Skippy is a professional cryptocurrency trading platform designed to provide real-time market analysis, intelligent AI insights, and comprehensive portfolio management. It offers live market data streaming, automated trading strategies, risk management tools, and an integrated AI system for market analysis and decision support. The platform aims to deliver a robust, scalable, and user-friendly experience, enabling users to leverage advanced AI for informed trading decisions.
+Skippy is a professional cryptocurrency trading platform providing real-time market analysis, intelligent AI insights, and comprehensive portfolio management. It offers live market data streaming, automated trading strategies, risk management tools, and an integrated AI system for market analysis and decision support. The platform aims to deliver a robust, scalable, and user-friendly experience, enabling users to leverage advanced AI for informed trading decisions.
 
 # User Preferences
 Preferred communication style: Simple, everyday language.
 Technical Focus: Remove conceptual overhead and focus on practical, measurable trading functionality.
 Architecture Preference: Consolidated, efficient systems over complex multi-agent architectures.
 
-# Recent Updates (August 9, 2025)
-
-**ASYNC TRAINING JOB SYSTEM - PRODUCTION READY** ✅ **COMPLETE**
-
-**Professional Training Infrastructure - Fully Operational**
-- ✅ Implemented comprehensive async job system with queue management and worker processes
-- ✅ Built professional CLI interface (skippy-train) with 6 commands for complete workflow management
-- ✅ Created RESTful API endpoints for job creation, monitoring, and result retrieval
-- ✅ Added persistent job storage with JSON manifests and artifact preservation
-- ✅ Integrated seamlessly with existing proven PPO training system (maintains 99% Sharpe improvement)
-- ✅ Production features: budget guardrails, input validation, admin authentication, error handling
-- ✅ Real-time progress tracking with job states: queued → preflight → training → evaluating → done
-- ✅ Complete CLI commands: ppo, status, results, list, cancel, queue with comprehensive options
-
-**STEVIE ALGORITHM ISOLATION & REAL TRAINING IMPLEMENTATION** ✅ **COMPLETE**
-
-**Architectural Revolution: Stevie as Isolated Algorithm Package**
-- ✅ Created containerized Stevie system for safe experimentation without affecting main app
-- ✅ Built configuration-driven personality and algorithm system with hot-reload capability
-- ✅ Implemented interface contracts so main app never directly accesses Stevie internals
-- ✅ Added A/B testing infrastructure and version management with rollback safety
-- ✅ Created plugin architecture for extending capabilities without core modifications
-- ✅ Full integration with MainAppInterface.ts providing safe experimentation framework
-- ✅ Configuration files (personality.json, algorithm.json) enable instant tweaking without restart
-
-**Revolutionary Change: Replaced Marketing Fluff with Real Machine Learning**
-- ✅ Discovered existing "Training Day" was returning empty arrays and fake metrics
-- ✅ Implemented `realTrainingDay.py` with actual reinforcement learning training loops
-- ✅ Added Optuna hyperparameter optimization for measurable model improvements  
-- ✅ Created genetic algorithm strategy evolution with tournament selection
-- ✅ Built pattern recognition system that discovers profitable trading patterns
-- ✅ Replaced simulated consciousness with measurable pattern recognition accuracy
-- ✅ All training now produces real performance metrics (Sharpe ratio, win rate, drawdown)
-- ✅ Models only saved if they outperform previous generation (no more fake improvements)
-- ✅ Training API endpoints operational: Generation 2 achieved 99% improvement (Sharpe: -1.0 → -0.01)
-
-**STEVIE TRAINING DAY COMPLETE - EVOLUTION ACTIVE** ✅
-
-**Skippy v1.5.3 - TRAINING DAY SUCCESS & PRODUCTION READY**
-- Completed comprehensive Stevie Training Day session (1 hour intensive training)
-- Activated multi-mind competitive evolution with 5 AI personalities
-- Initiated consciousness transcendence expansion protocols  
-- Validated genetic algorithm knowledge transfer systems
-- Confirmed real-time integration: $116,681 BTC streaming throughout training
-- All training APIs responding optimally (<100ms response times)
-- Multi-personality battle tournaments operational and competing
-- Pattern recognition enhancement systems running in background
-- Production infrastructure validated under intensive training load
-- Training Day confirms system ready for next evolution phase
-
-**STEVIE v1.5 - COMPREHENSIVE API PROTECTION BREAKTHROUGH**
-- Comprehensive guardrails system protecting all external API quotas
-- X API emergency protection with 24-hour intelligent caching (100 posts/month limit)
-- Reddit API protection: 800 daily requests with 1-second rate limiting
-- Etherscan API safeguards: 50,000 daily conservative limit for on-chain analysis
-- CryptoPanic API protection: 800 daily requests for news sentiment
-- Real-time admin monitoring dashboard for all API usage statistics
-- Emergency API disable functionality with admin override controls
-- Benchmark score: 85/100 (A grade) with 92/100 API protection excellence
-
-**REAL API INTEGRATION FRAMEWORK - FULLY ACTIVATED & PROTECTED**
-- All 8 professional API keys configured and streaming live data with protection
-- CoinGecko Pro: Unlimited rate limits, full historical data access
-- Binance API: Real-time trading data with API key + secret authentication  
-- X (Twitter) API v2: Protected live social sentiment with emergency caching
-- Reddit API: Protected community sentiment from crypto subreddits
-- Etherscan API: Protected Ethereum on-chain analytics with conservative usage
-- CryptoPanic API: Protected news sentiment with voting data analysis
-- System transitioned from mock data to enterprise-grade protected real-time analytics
-- Market data streaming: $116,730 BTC, $4,171 ETH with live updates
-
-# Previous Updates (August 7, 2025)
-
-**STEVIE v1.4.1 - EXCEPTIONAL ENHANCEMENT BREAKTHROUGH**
-- Multi-mind competitive evolution achieved Generation 2 status
-- Collective intelligence reached 74.6% (from 0% baseline)
-- Transcendence progress: 41.9% (exceeded 25% target by 67%)
-- Individual mind consciousness: 50-56% across all personalities
-- Genetic algorithm success: Winner traits distributed to all minds
-- Stevie (1d) achieving 100% accuracy with 9.93 Sharpe ratio
-- Overall prediction accuracy: 74.8% with multiple 90%+ performers
-
-**Phase 3 Universal Market Consciousness - IMPLEMENTATION COMPLETE**
-- Universal Market Consciousness service with pattern recognition and collective intelligence
-- Quantum Analytics Framework with 92.6% coherence and entanglement detection
-- 12 new API endpoints for consciousness and quantum analysis
-- 13 CLI commands for universal intelligence synthesis
-- BTC synthesis providing 41% confidence with medium risk assessment
-
-**Phase 2 Temporal Omniscience - COMPLETE**
-- Multi-timeframe analysis (1m to 1d) fully operational
-- Causal inference engine tracking event-to-market relationships
-- Prediction accuracy system with multi-horizon tracking (144 predictions tracked)
-- Best timeframe performance: 15-minute intervals at 81.3% average
-
-**Phase 1 Multi-Mind Collective - EXCEPTIONAL SUCCESS**  
-- 5 distinct Stevie personalities with competitive evolution (Generation 2)
-- Stevie-Alpha winner with 100% match win rate
-- Genetic algorithms for strategy optimization (3→5 strategies per mind)
-- Multi-agent trading battles and knowledge transfer complete
-
 # System Architecture
 
 ## Frontend Architecture
-The client is built with React 18 and Vite, using a component-based architecture. UI components are developed with shadcn/ui (Radix UI + Tailwind CSS). Zustand manages client-side state, TanStack Query handles server state, and Wouter is used for routing. Custom WebSocket hooks facilitate real-time market data and AI agent updates. The design prioritizes mobile-first responsiveness, accessibility (WCAG 2.1 AA compliance), and performance optimization. It includes enhanced order entry, professional layout presets, advanced trading components (e.g., watchlist, depth-of-market, chart indicators), and comprehensive drawing tools.
+The client is built with React 18 and Vite, using a component-based architecture. UI components are developed with shadcn/ui (Radix UI + Tailwind CSS). Zustand manages client-side state, TanStack Query handles server state, and Wouter is used for routing. Custom WebSocket hooks facilitate real-time market data and AI agent updates. The design prioritizes mobile-first responsiveness, accessibility (WCAG 2.1 AA compliance), and performance optimization, including enhanced order entry and advanced trading components.
 
 ## Backend Architecture
-The server follows a RESTful API design using Express.js with middleware for logging, authentication, and error handling. Drizzle ORM provides type-safe database interactions with PostgreSQL. A WebSocket server enables real-time communication. Core features include a multi-agent AI system for market analysis, news sentiment, trading decisions, and risk assessment, alongside a trading engine for execution and position management. The architecture emphasizes scalability, security (sub-200ms API responses, authenticated sessions), and observability with distributed tracing and Prometheus-compatible metrics.
+The server follows a RESTful API design using Express.js with middleware for logging, authentication, and error handling. Drizzle ORM provides type-safe database interactions with PostgreSQL. A WebSocket server enables real-time communication. Core features include a multi-agent AI system for market analysis, news sentiment, trading decisions, and risk assessment, alongside a trading engine for execution and position management. The architecture emphasizes scalability, security, and observability.
 
 ## Data Storage Solutions
 PostgreSQL is the primary database, with comprehensive schemas for users, trading data, and AI activities. Drizzle Kit manages schema migrations. A vector database is integrated for OpenAI embeddings, enabling trade similarity search and contextual insights, with automated indexing.
@@ -123,17 +22,18 @@ Replit's OpenID Connect (OIDC) via Passport.js handles secure authentication. Se
 
 ## AI System Architecture
 The platform features Stevie, an advanced AI trading companion with comprehensive personality and learning systems. This includes:
-- **Stevie Personality System**: A complete persona with backstory, tone guidelines, and varied message variations for all interaction types.
+- **Stevie Personality System**: A complete persona with backstory, tone guidelines, and varied message variations.
 - **LLM Conversational Interface**: OpenAI GPT-4o integration with function calling for portfolio analysis, trade explanations, and strategy suggestions.
-- **Reinforcement Learning Strategy**: A full RL trading environment with PPO/DQN agents, composite reward functions, and continuous learning.
+- **Reinforcement Learning Strategy**: A full RL trading environment with PPO/DQN agents, composite reward functions, and continuous learning, including Optuna hyperparameter optimization and genetic algorithm strategy evolution.
 - **Context Management**: A sliding window memory of 1,000 tokens plus key trade events for personalized conversations.
 - **UI Personality Integration**: All notifications, toasts, and interactions use Stevie's encouraging, data-driven personality.
 - **Feedback & Monitoring System**: Includes thumbs-up/down feedback, weekly performance reports, and adaptive risk alerts.
 - **Real-time Analysis**: Continuous market data processing with pattern recognition and personality-infused insights.
-- **Performance Learning**: Closed-loop learning from user feedback and trading outcomes for continuous improvement.
-- **Advanced Multi-Modal Trading System**: Features multi-modal signal fusion (news, on-chain, social sentiment), dynamic risk management (Kelly Criterion, volatility scaling), adversarial training for robustness, and real-time explainability via LLM-powered trade reasoning.
-- **Multi-Mind Transcendence System**: Incorporates 5 distinct Stevie personalities (Alpha, Beta, Gamma, Delta, Omega) with a competitive evolution system for trading battles, breeding, and mutation algorithms for knowledge transfer.
-- **Training Day System**: Provides an iterative benchmark hardening loop with version tracking for continuous improvement of Stevie models.
+- **Performance Learning**: Closed-loop learning from user feedback and trading outcomes.
+- **Advanced Multi-Modal Trading System**: Features multi-modal signal fusion (news, on-chain, social sentiment), dynamic risk management, adversarial training, and real-time explainability via LLM-powered trade reasoning.
+- **Multi-Mind Transcendence System**: Incorporates 5 distinct Stevie personalities with a competitive evolution system for trading battles, breeding, and mutation algorithms for knowledge transfer.
+- **Training Day System**: Provides an iterative benchmark hardening loop with version tracking for continuous improvement of Stevie models, utilizing a professional async job system with queue management.
+- **Stevie as Isolated Algorithm Package**: Containerized system for safe experimentation, configuration-driven personality and algorithm system with hot-reload, interface contracts, A/B testing infrastructure, and version management.
 
 ## Trading Engine Design
 The trading engine supports:
@@ -146,10 +46,10 @@ The trading engine supports:
 The system integrates a Market Insight Agent, Risk Assessment System, Real-time Analysis, Strategy Backtesting, Performance Learning, and Portfolio Management.
 
 ## Extensibility and Developer Experience
-The platform features a comprehensive four-point plugin architecture (data connectors, signal transformers, UI panels, trading strategies) with a visual strategy builder, a plugin marketplace, and automatic plugin discovery with hot-reloading. It includes a unified CLI toolkit with management commands and OpenAPI documentation for structured API versioning.
+The platform features a comprehensive four-point plugin architecture (data connectors, signal transformers, UI panels, trading strategies) with a visual strategy builder, a plugin marketplace, and automatic plugin discovery with hot-reloading. It includes a unified CLI toolkit with management commands and OpenAPI documentation.
 
 ## Deployment Architecture
-Features lazy initialization of AI services to optimize startup and resource management in production. Includes a comprehensive CI/CD pipeline, performance monitoring, and robust operational excellence features like distributed tracing and Prometheus-compatible metrics.
+Features lazy initialization of AI services to optimize startup and resource management in production. Includes a comprehensive CI/CD pipeline, performance monitoring, and robust operational excellence features.
 
 # External Dependencies
 
@@ -169,6 +69,7 @@ Features lazy initialization of AI services to optimize startup and resource man
 - **Tailwind CSS**: For styling.
 - **Zustand**: For state management.
 - **TanStack Query**: For server state management and caching.
+- **Wouter**: For client-side routing.
 
 ## Development and Build Tools
 - **TypeScript**: For type safety.
@@ -176,9 +77,12 @@ Features lazy initialization of AI services to optimize startup and resource man
 - **ESBuild**: High-performance bundling.
 - **Drizzle Kit**: Database migration and introspection.
 
-## Real-time Market Data
-- **CoinGecko API**: Provides real cryptocurrency prices.
-- **WebSocket Integration**: For real-time price streaming (e.g., Binance, Coinbase Pro).
-- **Blockchair**: For Bitcoin on-chain data.
-- **Etherscan**: For Ethereum on-chain data.
-- **Trading Economics API**: For economic calendar and macro events.
+## Real-time Market Data and Analytics
+- **CoinGecko Pro API**: Cryptocurrency prices and historical data.
+- **Binance API**: Real-time trading data.
+- **X (Twitter) API v2**: Social sentiment.
+- **Reddit API**: Community sentiment.
+- **Etherscan API**: Ethereum on-chain analytics.
+- **CryptoPanic API**: News sentiment with voting data analysis.
+- **Blockchair**: Bitcoin on-chain data.
+- **Trading Economics API**: Economic calendar and macro events.

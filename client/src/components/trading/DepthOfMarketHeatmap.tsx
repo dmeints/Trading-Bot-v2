@@ -118,9 +118,9 @@ export default function DepthOfMarketHeatmap() {
     );
   }
 
-  const maxBidSize = Math.max(...depthData.bids.map(b => b.size));
-  const maxAskSize = Math.max(...depthData.asks.map(a => a.size));
-  const maxSize = Math.max(maxBidSize, maxAskSize);
+  const maxBidSize = depthData.bids?.length > 0 ? Math.max(...depthData.bids.map(b => b.size)) : 0;
+  const maxAskSize = depthData.asks?.length > 0 ? Math.max(...depthData.asks.map(a => a.size)) : 0;
+  const maxSize = Math.max(maxBidSize, maxAskSize) || 1;
 
   const getIntensity = (size: number) => Math.min(100, (size / maxSize) * 100);
 
@@ -137,7 +137,7 @@ export default function DepthOfMarketHeatmap() {
         {/* Asks (Sellers) - Red */}
         <div className="space-y-0.5">
           <div className="text-xs text-red-400 font-medium mb-1">ASKS</div>
-          {depthData.asks.slice().reverse().map((ask, index) => (
+          {(depthData.asks || []).slice().reverse().map((ask, index) => (
             <div
               key={`ask-${index}`}
               className="relative h-4 cursor-pointer group"
@@ -171,7 +171,7 @@ export default function DepthOfMarketHeatmap() {
         {/* Bids (Buyers) - Green */}
         <div className="space-y-0.5">
           <div className="text-xs text-green-400 font-medium mb-1">BIDS</div>
-          {depthData.bids.map((bid, index) => (
+          {(depthData.bids || []).map((bid, index) => (
             <div
               key={`bid-${index}`}
               className="relative h-4 cursor-pointer group"

@@ -1,0 +1,28 @@
+STEVIE TRAINING JOB SUMMARY
+===========================
+
+Job ID: tr_1754727391391_837998cc
+Completed: undefined
+Duration: 0.1 hours
+Symbols: BTC
+
+PERFORMANCE METRICS
+-------------------
+Sharpe Ratio: -0.0100
+Total Return: -0.07%
+Max Drawdown: 0.19%
+Win Rate: 0.7%
+Generation: 3
+Improvement: 99.0%
+
+TRAINING DETAILS
+----------------
+Features: price, microstructure
+Validation: enabled
+Seed: random
+Version: 1.1
+
+STATUS: TRAINING
+
+
+Generated: 2025-08-09T08:16:33.016Z

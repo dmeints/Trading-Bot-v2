@@ -1,0 +1,25 @@
+{
+  "jobId": "tr_1754727391391_837998cc",
+  "createdAt": "2025-08-09T08:16:31.391Z",
+  "seed": null,
+  "version": "1.1",
+  "config": {
+    "durationHours": 0.1,
+    "symbols": [
+      "BTC"
+    ],
+    "features": [
+      "price",
+      "microstructure"
+    ],
+    "maxDurationHours": 12,
+    "maxCostUsd": 10,
+    "skipValidation": false,
+    "notes": ""
+  },
+  "system": {
+    "gitSha": null,
+    "node": "v20.19.3",
+    "env": "development"
+  }
+}

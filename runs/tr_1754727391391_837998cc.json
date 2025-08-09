@@ -1,0 +1,36 @@
+{
+  "jobId": "tr_1754727391391_837998cc",
+  "createdAt": "2025-08-09T08:16:31.391Z",
+  "durationHours": 0.1,
+  "symbols": [
+    "BTC"
+  ],
+  "skipValidation": false,
+  "version": "1.1",
+  "features": [
+    "price",
+    "microstructure"
+  ],
+  "maxDurationHours": 12,
+  "maxCostUsd": 10,
+  "notes": "",
+  "state": "done",
+  "progress": 1,
+  "phase": "complete",
+  "manifestPath": "/home/runner/workspace/runs/tr_1754727391391_837998cc/manifest.json",
+  "startedAt": "2025-08-09T08:16:31.396Z",
+  "metrics": {
+    "sharpe": -0.01004953824559518,
+    "returnPct": -0.06722462438474155,
+    "maxDDPct": 0.19156495733180218,
+    "winRate": 0.6929468983443661,
+    "generation": 3,
+    "improvementPct": 98.99504617544048
+  },
+  "artifacts": {
+    "modelPath": null,
+    "reportHtml": null,
+    "metricsPath": "/home/runner/workspace/runs/tr_1754727391391_837998cc/metrics.json"
+  },
+  "finishedAt": "2025-08-09T08:16:33.016Z"
+}

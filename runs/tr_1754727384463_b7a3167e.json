@@ -1,0 +1,22 @@
+{
+  "jobId": "tr_1754727384463_b7a3167e",
+  "createdAt": "2025-08-09T08:16:24.463Z",
+  "durationHours": 0.05,
+  "symbols": [
+    "BTC"
+  ],
+  "skipValidation": false,
+  "version": "1.1",
+  "features": [
+    "price",
+    "microstructure"
+  ],
+  "maxDurationHours": 12,
+  "maxCostUsd": 10,
+  "notes": "",
+  "state": "failed",
+  "progress": 1,
+  "phase": "error",
+  "finishedAt": "2025-08-09T08:16:24.468Z",
+  "error": "Invalid durationHours: 0.05. Must be between 0.1 and 12"
+}

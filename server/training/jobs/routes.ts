@@ -14,9 +14,26 @@ const router = Router();
 // Admin authentication middleware
 function requireAdmin(req: any, res: any, next: any) {
   const adminSecret = process.env.ADMIN_SECRET;
-  if (!adminSecret || req.headers["x-admin-secret"] !== adminSecret) {
+  const providedSecret = req.headers["x-admin-secret"];
+  
+  logger.debug('[TrainingAuth] Admin auth check', { 
+    hasEnvSecret: !!adminSecret,
+    hasProvidedSecret: !!providedSecret,
+    secretsMatch: adminSecret === providedSecret,
+    expectedSecret: adminSecret,
+    providedSecretValue: providedSecret
+  });
+  
+  if (!adminSecret || providedSecret !== adminSecret) {
+    logger.warn('[TrainingAuth] Unauthorized access attempt', { 
+      path: req.path,
+      providedSecret: providedSecret ? 'provided' : 'missing',
+      expectedSecret: adminSecret ? 'configured' : 'missing'
+    });
     return res.status(401).json({ error: "unauthorized" });
   }
+  
+  logger.info('[TrainingAuth] Admin access granted', { path: req.path });
   next();
 }
 

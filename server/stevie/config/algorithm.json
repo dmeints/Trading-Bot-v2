@@ -1,0 +1,108 @@
+{
+  "version": "1.0.0",
+  "algorithm_type": "ensemble_hybrid",
+  "description": "Hybrid ensemble combining RL, LLM sentiment, and technical analysis",
+  
+  "trading_models": {
+    "primary": {
+      "type": "reinforcement_learning",
+      "model": "ppo",
+      "weight": 0.4,
+      "parameters": {
+        "learning_rate": 0.0003,
+        "gamma": 0.99,
+        "clip_range": 0.2,
+        "n_steps": 2048,
+        "batch_size": 64
+      }
+    },
+    "secondary": {
+      "type": "reinforcement_learning", 
+      "model": "dqn",
+      "weight": 0.3,
+      "parameters": {
+        "learning_rate": 0.001,
+        "epsilon_decay": 0.995,
+        "buffer_size": 100000,
+        "target_update_freq": 1000
+      }
+    },
+    "sentiment": {
+      "type": "llm_analysis",
+      "model": "gpt-4o",
+      "weight": 0.3,
+      "parameters": {
+        "temperature": 0.1,
+        "max_tokens": 500,
+        "confidence_threshold": 0.7
+      }
+    }
+  },
+
+  "risk_management": {
+    "max_position_size": 0.1,
+    "stop_loss_threshold": 0.05,
+    "take_profit_ratio": 2.0,
+    "max_daily_loss": 0.02,
+    "position_sizing_method": "kelly_criterion",
+    "volatility_adjustment": true
+  },
+
+  "decision_framework": {
+    "consensus_threshold": 0.6,
+    "confidence_minimum": 0.5,
+    "ensemble_method": "weighted_average",
+    "uncertainty_handling": "conservative",
+    "contradictory_signal_action": "hold"
+  },
+
+  "training_schedule": {
+    "retrain_frequency": "daily",
+    "minimum_data_points": 1000,
+    "performance_evaluation_window": 7,
+    "improvement_threshold": 0.05,
+    "rollback_trigger": -0.1
+  },
+
+  "data_sources": {
+    "price_data": {
+      "primary": "binance",
+      "fallback": "coinbase",
+      "timeframes": ["1m", "5m", "15m", "1h", "4h", "1d"]
+    },
+    "sentiment_data": {
+      "social": ["reddit", "twitter"],
+      "news": ["cryptopanic"],
+      "onchain": ["etherscan"]
+    },
+    "technical_indicators": [
+      "rsi",
+      "macd", 
+      "bollinger_bands",
+      "moving_averages",
+      "volume_profile"
+    ]
+  },
+
+  "performance_metrics": {
+    "primary": "sharpe_ratio",
+    "secondary": ["total_return", "win_rate", "max_drawdown"],
+    "benchmark": "buy_and_hold_btc",
+    "evaluation_period": "30d"
+  },
+
+  "experimental_settings": {
+    "enable_new_models": false,
+    "a_b_test_split": 0.1,
+    "fallback_to_stable": true,
+    "max_experimental_risk": 0.01
+  },
+
+  "integration_settings": {
+    "response_timeout": 5000,
+    "max_concurrent_analyses": 3,
+    "cache_predictions": true,
+    "cache_duration": 300,
+    "logging_level": "info"
+  }
+}

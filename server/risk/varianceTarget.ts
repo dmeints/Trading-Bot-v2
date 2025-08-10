@@ -1,57 +1,65 @@
-/**
- * Variance Targeting System
- * Dynamic position sizing based on volatility
- */
 
-export type TF = "1m" | "5m" | "15m" | "1h" | "4h" | "1d";
+import { logger } from '../utils/logger';
 
-const M: Record<TF, number> = {
-  "1m": 1,
-  "5m": 5,
-  "15m": 15,
-  "1h": 60,
-  "4h": 240,
-  "1d": 1440
-};
-
-export function annualizationFactor(tf: TF): number {
-  return Math.sqrt(525_600 / M[tf]);
+export enum TimeFrame {
+  M1 = '1m',
+  M5 = '5m',
+  M15 = '15m',
+  H1 = '1h',
+  H4 = '4h',
+  D1 = '1d'
 }
 
-export function rollingAnnualizedVolPct(
-  closes: number[], 
-  tf: TF, 
-  window: number
-): number[] {
-  if (closes.length < window + 1) return [];
+const TIMEFRAME_MULTIPLIERS = {
+  [TimeFrame.M1]: Math.sqrt(1440), // Minutes in a day
+  [TimeFrame.M5]: Math.sqrt(288),
+  [TimeFrame.M15]: Math.sqrt(96),
+  [TimeFrame.H1]: Math.sqrt(24),
+  [TimeFrame.H4]: Math.sqrt(6),
+  [TimeFrame.D1]: 1
+};
+
+const ANNUALIZATION_FACTOR = Math.sqrt(365);
+
+export function annualizationFactor(timeframe: TimeFrame): number {
+  return TIMEFRAME_MULTIPLIERS[timeframe] * ANNUALIZATION_FACTOR;
+}
+
+export function rollingAnnualizedVolPct(returns: number[], timeframe: TimeFrame = TimeFrame.D1): number {
+  if (returns.length < 2) return 0.02; // Default 2% daily vol
   
-  const vols: number[] = [];
-  const af = annualizationFactor(tf);
-  const logs: number[] = [];
+  const mean = returns.reduce((sum, r) => sum + r, 0) / returns.length;
+  const variance = returns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / (returns.length - 1);
+  const volatility = Math.sqrt(variance);
   
-  // Calculate log returns
-  for (let i = 1; i < closes.length; i++) {
-    logs.push(Math.log(closes[i] / closes[i - 1]));
-  }
-  
-  // Calculate rolling volatility
-  for (let i = window; i <= logs.length; i++) {
-    const segment = logs.slice(i - window, i);
-    const mean = segment.reduce((a, b) => a + b, 0) / segment.length;
-    const variance = segment.reduce((a, b) => a + (b - mean) * (b - mean), 0) / (segment.length - 1);
-    vols.push(Math.sqrt(variance) * af * 100);
-  }
-  
-  return vols;
+  return volatility * annualizationFactor(timeframe);
 }
 
 export function varianceTargetMultiplier(
-  volPct: number | undefined,
-  target: number = 10,
-  bounds: { min: number; max: number } = { min: 0.25, max: 2.0 }
+  currentVol: number,
+  targetVol: number = 0.15, // 15% annual target
+  minMultiplier: number = 0.1,
+  maxMultiplier: number = 2.0
 ): number {
-  if (!volPct || volPct <= 0) return bounds.min;
+  if (currentVol <= 0) return minMultiplier;
   
-  const multiplier = target / volPct;
-  return Math.max(bounds.min, Math.min(bounds.max, multiplier));
+  const multiplier = targetVol / currentVol;
+  return Math.max(minMultiplier, Math.min(maxMultiplier, multiplier));
+}
+
+export function applyVarianceTarget(
+  symbol: string,
+  currentVolatility: number,
+  targetVolatility: number = 0.15
+): number {
+  const multiplier = varianceTargetMultiplier(currentVolatility, targetVolatility);
+  
+  logger.info('[VarianceTarget] Applied variance targeting', {
+    symbol,
+    currentVol: currentVolatility.toFixed(4),
+    targetVol: targetVolatility.toFixed(4),
+    multiplier: multiplier.toFixed(4)
+  });
+  
+  return multiplier;
 }

@@ -4,13 +4,14 @@
  */
 
 import { Request, Response, NextFunction } from "express";
+import logger from "./logger"; // Assuming logger is available
 
 export function requireProvenance(req: Request, res: Response, next: NextFunction) {
   const send = res.json.bind(res);
-  
+
   res.json = (body: any) => {
     const ok = body && (body.provenance || (body.headline && body.provenance));
-    
+
     if (!ok) {
       res.status(500);
       return send({
@@ -19,17 +20,17 @@ export function requireProvenance(req: Request, res: Response, next: NextFunctio
         timestamp: new Date().toISOString()
       });
     }
-    
+
     return send(body);
   };
-  
+
   next();
 }
 
-export function addProvenance(data: any, options: { 
-  runId?: string; 
-  datasetId?: string; 
-  commit?: string; 
+export function addProvenance(data: any, options: {
+  runId?: string;
+  datasetId?: string;
+  commit?: string;
 } = {}): any {
   return {
     ...data,
@@ -42,23 +43,86 @@ export function addProvenance(data: any, options: {
   };
 }
 
-export function validateProvenance(data: any): boolean {
-  return data && data.provenance && data.provenance.generatedAt;
+export async function validateProvenance(): Promise<boolean> {
+  try {
+    // Check for mock data fingerprints
+    const mockScanResult = await runMockScan();
+    if (!mockScanResult.passed) {
+      logger.error('[ProvenanceGuard] Mock data detected', mockScanResult.issues);
+      return false;
+    }
+
+    // Validate external data source connectivity
+    const connectivityCheck = await validateDataSources();
+    if (!connectivityCheck.passed) {
+      logger.error('[ProvenanceGuard] Data source validation failed', connectivityCheck.failures);
+      return false;
+    }
+
+    logger.info('[ProvenanceGuard] Provenance validation passed');
+    return true;
+  } catch (error) {
+    logger.error('[ProvenanceGuard] Validation error', { error });
+    return false;
+  }
+}
+
+async function runMockScan(): Promise<{ passed: boolean; issues: string[] }> {
+  const { spawnSync } = await import('child_process');
+  const result = spawnSync('node', ['tools/audit_mock_scan.js'], {
+    stdio: 'pipe',
+    encoding: 'utf8'
+  });
+
+  return {
+    passed: result.status === 0,
+    issues: result.status !== 0 ? [result.stderr || result.stdout] : []
+  };
+}
+
+async function validateDataSources(): Promise<{ passed: boolean; failures: string[] }> {
+  const failures: string[] = [];
+
+  // Check critical data sources
+  const sources = [
+    { name: 'binance', url: 'https://api.binance.com/api/v3/time' },
+    { name: 'coingecko', url: 'https://api.coingecko.com/api/v3/ping' }
+  ];
+
+  for (const source of sources) {
+    try {
+      const response = await fetch(source.url, {
+        method: 'GET',
+        timeout: 5000
+      });
+
+      if (!response.ok) {
+        failures.push(`${source.name}: HTTP ${response.status}`);
+      }
+    } catch (error) {
+      failures.push(`${source.name}: ${error.message}`);
+    }
+  }
+
+  return {
+    passed: failures.length === 0,
+    failures
+  };
 }
 
 export function scanForMockData(data: any): string[] {
   const mockPatterns = [
     /mock/i, /faker/i, /dummy/i, /stub/i, /sample/i, /lorem/i
   ];
-  
+
   const violations: string[] = [];
   const dataStr = JSON.stringify(data);
-  
+
   for (const pattern of mockPatterns) {
     if (pattern.test(dataStr)) {
       violations.push(`Pattern ${pattern} found in data`);
     }
   }
-  
+
   return violations;
 }

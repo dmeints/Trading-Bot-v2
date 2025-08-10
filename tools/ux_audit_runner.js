@@ -1,3 +1,4 @@
+
 /* Runs UI checks + E2E in a loop until all green or max retries reached */
 import { spawnSync } from "child_process";
 

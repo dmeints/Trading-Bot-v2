@@ -66,3 +66,26 @@ export const defaultStevieConfig: StevieConfig = {
   minInterTradeSec: 20,
   burstCapPerMin: 3
 };
+
+/**
+ * Apply environment overrides for tuning (STEVIETUNE_* variables)
+ */
+export function getStevieConfigWithOverrides(): StevieConfig {
+  const config = { ...defaultStevieConfig };
+  
+  // Apply STEVIETUNE_* environment overrides
+  const overrides = Object.entries(process.env)
+    .filter(([key]) => key.startsWith('STEVIETUNE_'))
+    .map(([key, value]) => [key.replace('STEVIETUNE_', ''), value]);
+  
+  for (const [key, value] of overrides) {
+    if (value && key in config) {
+      const numValue = parseFloat(value);
+      if (!isNaN(numValue)) {
+        (config as any)[key] = numValue;
+      }
+    }
+  }
+  
+  return config;
+}

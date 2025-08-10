@@ -3,7 +3,7 @@
  * Core algorithmic trading decision engine
  */
 
-import { defaultStevieConfig, StevieConfig } from "../../shared/src/stevie/config";
+import { defaultStevieConfig, getStevieConfigWithOverrides, StevieConfig } from "../../shared/src/stevie/config";
 import { varianceTargetMultiplier } from "../risk/varianceTarget";
 import { temperedKellyFraction } from "../sizing/temperedKelly";
 
@@ -100,7 +100,7 @@ function snapback(f: Features): boolean {
 export function decide(
   f: Features,
   pos: Position,
-  cfg: StevieConfig = defaultStevieConfig,
+  cfg: StevieConfig = getStevieConfigWithOverrides(),
   score7d: number = 0
 ): Action {
   // Mandatory blackout conditions

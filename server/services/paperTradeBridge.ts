@@ -1,7 +1,7 @@
 /**
  * PHASE 4: LIVE-PAPER TRADE BURN-IN
  * Production-ready paper trading bridge with real-time persistence
- * 
+ *
  * Features:
  * - Paper trading bridge with live logic parity
  * - Real-time trade metrics and daily aggregates
@@ -16,7 +16,7 @@ import { logger } from '../utils/logger.js';
 import { paperTradingEngine, type TradingSession } from './paperTradingEngine.js';
 import { executionEngine } from './executionEngine.js';
 import { riskManagementService } from './riskManagement.js';
-import { marketData } from './marketData.js';
+import { MarketDataService } from './marketData.js'; // Corrected import
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -156,6 +156,7 @@ export class PaperTradeBridge extends EventEmitter {
   private isRunning = false;
   private metricsTimer?: NodeJS.Timeout;
   private persistenceTimer?: NodeJS.Timeout;
+  private marketDataService: MarketDataService; // Added service instance
 
   constructor(config: PaperTradeBridgeConfig) {
     super();
@@ -164,6 +165,7 @@ export class PaperTradeBridge extends EventEmitter {
     this.tradeMetrics = new Map();
     this.dailyAggregates = new Map();
     this.burnInReports = new Map();
+    this.marketDataService = new MarketDataService(); // Initialize the service
   }
 
   async initialize(): Promise<void> {
@@ -205,7 +207,7 @@ export class PaperTradeBridge extends EventEmitter {
     });
 
     // Listen to market data updates
-    marketData.on('priceUpdate', (data) => {
+    this.marketDataService.on('priceUpdate', (data) => { // Use the service instance
       this.handlePriceUpdate(data);
     });
 
@@ -411,7 +413,7 @@ export class PaperTradeBridge extends EventEmitter {
 
   private async getCurrentPrice(symbol: string): Promise<number | null> {
     try {
-      const marketPrice = await marketData.getLatestPrice(symbol);
+      const marketPrice = await this.marketDataService.getCurrentPrice(symbol); // Use the service instance
       return marketPrice?.price || null;
     } catch (error) {
       return null;
@@ -480,7 +482,7 @@ export class PaperTradeBridge extends EventEmitter {
       const today = new Date().toISOString().split('T')[0];
 
       for (const [sessionId, metrics] of this.tradeMetrics) {
-        const todayMetrics = metrics.filter(m => 
+        const todayMetrics = metrics.filter(m =>
           new Date(m.timestamp).toISOString().split('T')[0] === today
         );
 
@@ -743,8 +745,8 @@ export class PaperTradeBridge extends EventEmitter {
     const var95 = this.calculateVaR(returns, confidence);
     const tailReturns = returns.filter(r => r <= var95);
 
-    return tailReturns.length > 0 
-      ? tailReturns.reduce((sum, r) => sum + r, 0) / tailReturns.length 
+    return tailReturns.length > 0
+      ? tailReturns.reduce((sum, r) => sum + r, 0) / tailReturns.length
       : 0;
   }
 
@@ -906,8 +908,8 @@ Logic Match: ${report.liveParityCheck.logicMatch ? 'PASS' : 'FAIL'}
 Risk Match: ${report.liveParityCheck.riskMatch ? 'PASS' : 'FAIL'}
 Execution Match: ${report.liveParityCheck.executionMatch ? 'PASS' : 'FAIL'}
 
-${report.liveParityCheck.deviations.length > 0 ? 
-  'Deviations:\n' + report.liveParityCheck.deviations.map(d => `- ${d}`).join('\n') : 
+${report.liveParityCheck.deviations.length > 0 ?
+  'Deviations:\n' + report.liveParityCheck.deviations.map(d => `- ${d}`).join('\n') :
   'No deviations detected'}
 
 RECOMMENDATIONS

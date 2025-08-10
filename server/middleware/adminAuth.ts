@@ -8,11 +8,11 @@ import { Request, Response, NextFunction } from 'express';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 
-export interface any extends Request {
+export interface AdminRequest extends Request {
   isAdmin?: boolean;
 }
 
-export function adminAuth(req: any, res: Response, next: NextFunction): void {
+export function adminAuth(req: AdminRequest, res: Response, next: NextFunction): void {
   // In development, allow admin access for testing
   if (process.env.NODE_ENV === 'development') {
     logger.info('[DevMode] Bypassing admin auth for development');

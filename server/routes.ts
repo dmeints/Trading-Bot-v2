@@ -67,11 +67,20 @@ import tradingRoutes from './routes/trading.js';
 import tradingTestRoutes from './routes/trading-tests.js';
 import { registerMarketRoutes } from './routes/marketRoutes';
 import { registerStrategyRoutes } from './routes/strategyRoutes';
-import { registerBacktestRoutes } from './routes/backtestRoutes';
+import registerBacktestRoutes from './routes/backtestRoutes';
 import externalConnectorsRouter from './routes/externalConnectors';
 import connectorsRouter from './routes/connectors';
+import comprehensiveFeaturesRouter from './routes/comprehensive-features';
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Development bypass function
+  const devBypass = (req: any, res: any, next: any) => {
+    if (isDevelopment && !req.user) {
+      req.user = { claims: { sub: 'dev-user-123' } };
+    }
+    next();
+  };
+
   // Auth middleware
   await setupAuth(app);
 
@@ -123,6 +132,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Features API for real algorithmic trading
   app.use('/api/features', featuresRouter);
+  
+  // Unified features API with comprehensive validation
+  const unifiedFeaturesRoutes = await import('./routes/unifiedFeatures');
+  app.use('/api/features', unifiedFeaturesRoutes.default);
 
   // Stevie Real Decision API
   const stevieDecisionRouter = await import('./routes/stevie-decision.js');
@@ -134,7 +147,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register comprehensive new API routes for live paper trading
   registerMarketRoutes(app, isAuthenticated);
   registerStrategyRoutes(app, isAuthenticated); 
-  registerBacktestRoutes(app, isAuthenticated);
+  // Backtest routes with deterministic validation
+  app.use('/api/backtest', registerBacktestRoutes);
+  
+  // Promotion gate routes for production readiness
+  const promotionRoutes = await import('./routes/promotionRoutes');
+  app.use('/api/promotion', promotionRoutes.default);
   
   // Stevie Super-Training routes (v1.2 advanced RL system)
   app.use('/api/stevie/supertrain', stevieSupertainRoutes);
@@ -149,6 +167,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Pillar 4: UX & Personalization routes
   app.use('/api/layouts', layoutRoutes);
   app.use('/api/experiments', experimentRoutes);
+  
+  // Simple preferences endpoint for UI compatibility
+  app.get('/api/preferences', async (req: any, res) => {
+    try {
+      res.json({
+        success: true,
+        preferences: {
+          theme: 'dark',
+          notifications: true,
+          autoRefresh: true,
+          riskTolerance: 'medium',
+          tradingMode: 'paper'
+        }
+      });
+    } catch (error) {
+      console.error('Error fetching preferences:', error);
+      res.status(500).json({ message: 'Failed to fetch preferences' });
+    }
+  });
+  
   app.use('/api/preferences', preferencesRoutes);
 
   // Pillar 5: Scale, Monitoring & Resilience routes
@@ -269,7 +307,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Auth routes
-  app.get('/api/auth/user', isDevelopment ? devBypass : isAuthenticated, async (req: any, res) => {
+  app.get('/api/auth/user', isDevelopment ? (req: any, res: any, next: any) => next() : isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -1665,6 +1703,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Health and SLO endpoint
   app.use('/api/health', health);
+  
+  // Comprehensive Features endpoint
+  app.use('/api/comprehensive', comprehensiveFeaturesRouter);
+  
+  // System Validation endpoint
+  app.use('/api/system-validation', (await import('./routes/system-validation')).default);
 
   // Temporal Omniscience routes (Phase 2)
   app.use('/', temporalRoutes);

@@ -35,7 +35,7 @@ app.use(helmet({
 app.use(requestIdMiddleware);
 
 // General rate limiting for all API routes
-app.use('/api', rateLimiters.general);
+app.use('/api', rateLimiters.default);
 
 // Metrics middleware for monitoring
 app.use(metricsMiddleware);

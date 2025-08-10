@@ -248,8 +248,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/system', systemIntegrationRouter);
 
   // Phase J: Real-Time Execution Integration
-  const executionRouter = (await import('./routes/execution.js')).default;
-  app.use('/api/execution', executionRouter);
+  const { executionRoutes } = await import('./routes/execution.js');
+  app.use('/api/execution', executionRoutes);
 
   // Phase K: Performance Attribution
   const performanceAttributionRouter = (await import('./routes/performanceAttribution.js')).default;

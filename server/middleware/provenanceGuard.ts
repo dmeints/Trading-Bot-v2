@@ -4,7 +4,7 @@
  */
 
 import { Request, Response, NextFunction } from "express";
-import logger from "./logger"; // Assuming logger is available
+import { logger } from "../utils/logger";
 
 export function requireProvenance(req: Request, res: Response, next: NextFunction) {
   const send = res.json.bind(res);
@@ -91,16 +91,21 @@ async function validateDataSources(): Promise<{ passed: boolean; failures: strin
 
   for (const source of sources) {
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      
       const response = await fetch(source.url, {
         method: 'GET',
-        timeout: 5000
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         failures.push(`${source.name}: HTTP ${response.status}`);
       }
     } catch (error) {
-      failures.push(`${source.name}: ${error.message}`);
+      failures.push(`${source.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 

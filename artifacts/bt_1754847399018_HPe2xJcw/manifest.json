@@ -1,0 +1,12 @@
+{
+  "runId": "bt_1754847399018_HPe2xJcw",
+  "datasetId": "dataset_BTCUSDT_5m",
+  "generatedAt": "2025-08-10T17:36:39.031Z",
+  "config": {
+    "symbol": "BTCUSDT",
+    "startTime": "2025-08-09T17:36:38.977Z",
+    "endTime": "2025-08-10T17:36:38.977Z",
+    "initialBalance": 10000,
+    "timeframe": "5m"
+  }
+}

@@ -24,6 +24,7 @@ const LiveTrading = lazy(() => import("@/pages/LiveTrading"));
 const PortfolioManager = lazy(() => import("@/pages/PortfolioManager"));
 const ComplianceDashboard = lazy(() => import("@/pages/ComplianceDashboard"));
 const SocialTrading = lazy(() => import("@/pages/SocialTrading"));
+const SystemDashboard = lazy(() => import("@/pages/SystemDashboard"));
 const MLOpsDashboard = lazy(() => import("@/pages/MLOpsDashboard"));
 const RLTraining = lazy(() => import("@/pages/RLTraining"));
 const PluginMarketplace = lazy(() => import("@/pages/PluginMarketplace"));
@@ -71,6 +72,7 @@ function Router() {
             <Route path="/portfolio-manager" component={PortfolioManager} />
             <Route path="/compliance" component={ComplianceDashboard} />
             <Route path="/social-trading" component={SocialTrading} />
+            <Route path="/system" component={SystemDashboard} />
             <Route path="/mlops" component={MLOpsDashboard} />
             <Route path="/rl-training" component={RLTraining} />
             <Route path="/plugins" component={PluginMarketplace} />

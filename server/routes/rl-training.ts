@@ -8,6 +8,7 @@ import { logger } from '../utils/logger';
 import { rlAlgorithmIntegration } from '../training/rlAlgorithmIntegration';
 import { stevieParameterOptimizer } from '../services/stevieParameterOptimizer';
 import { stevieDecisionEngine } from '../services/stevieDecisionEngine';
+import { advancedTrainingScenarios } from '../training/advancedTrainingScenarios';
 
 const router = Router();
 
@@ -252,6 +253,131 @@ router.post('/reset', async (req, res) => {
 
   } catch (error) {
     logger.error('[RLTraining] Failed to reset configuration', { error });
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+/**
+ * Get available training scenarios
+ * GET /api/rl-training/scenarios
+ */
+router.get('/scenarios', async (req, res) => {
+  try {
+    const scenarios = advancedTrainingScenarios.getAvailableScenarios();
+    const currentScenario = advancedTrainingScenarios.getCurrentScenario();
+    const recommendation = await advancedTrainingScenarios.recommendScenario();
+
+    res.json({
+      success: true,
+      data: {
+        availableScenarios: scenarios,
+        currentScenario,
+        recommendation,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    logger.error('[RLTraining] Failed to get scenarios', { error });
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+/**
+ * Start a predefined training scenario
+ * POST /api/rl-training/scenarios/:scenarioId/start
+ */
+router.post('/scenarios/:scenarioId/start', async (req, res) => {
+  try {
+    const { scenarioId } = req.params;
+    const userId = (req as any).user?.id || 'demo_user';
+
+    const result = await advancedTrainingScenarios.startScenario(scenarioId, userId);
+
+    if (result.success) {
+      res.json({
+        success: true,
+        data: {
+          episodeId: result.episodeId,
+          scenario: result.scenario,
+          message: `Started scenario: ${result.scenario?.name}`,
+          timestamp: new Date().toISOString()
+        }
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: result.error
+      });
+    }
+
+  } catch (error) {
+    logger.error('[RLTraining] Failed to start scenario', { scenarioId: req.params.scenarioId, error });
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+/**
+ * Stop current scenario
+ * POST /api/rl-training/scenarios/stop
+ */
+router.post('/scenarios/stop', async (req, res) => {
+  try {
+    const result = await advancedTrainingScenarios.stopCurrentScenario();
+
+    if (result.success) {
+      res.json({
+        success: true,
+        data: {
+          report: result.report,
+          message: 'Scenario stopped successfully',
+          timestamp: new Date().toISOString()
+        }
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: result.error
+      });
+    }
+
+  } catch (error) {
+    logger.error('[RLTraining] Failed to stop scenario', { error });
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+/**
+ * Get scenario results
+ * GET /api/rl-training/scenarios/results/:scenarioId?
+ */
+router.get('/scenarios/results/:scenarioId?', async (req, res) => {
+  try {
+    const { scenarioId } = req.params;
+    const results = advancedTrainingScenarios.getScenarioResults(scenarioId);
+
+    res.json({
+      success: true,
+      data: {
+        results,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    logger.error('[RLTraining] Failed to get scenario results', { error });
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'

@@ -105,6 +105,18 @@ export default function SidebarNavigation() {
             <span className="text-sm font-medium">MLOps</span>
           </button>
           <button 
+            onClick={() => setLocation('/rl-training')}
+            className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors ${
+              location === '/rl-training' 
+                ? 'bg-green-600/20 text-green-400' 
+                : 'text-gray-400 hover:bg-gray-700 hover:text-white'
+            }`}
+            data-testid="link-rl-training"
+          >
+            <Brain className="w-4 h-4" />
+            <span className="text-sm font-medium">RL Training</span>
+          </button>
+          <button 
             onClick={() => setLocation('/service-level')}
             className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors ${
               location === '/service-level' 

@@ -18,6 +18,7 @@ const Settings = lazy(() => import("@/pages/settings"));
 const Analytics = lazy(() => import("@/pages/analytics"));
 const AIInsights = lazy(() => import("@/pages/AIInsights"));
 const MLOpsDashboard = lazy(() => import("@/pages/MLOpsDashboard"));
+const RLTraining = lazy(() => import("@/pages/RLTraining"));
 const PluginMarketplace = lazy(() => import("@/pages/PluginMarketplace"));
 const StrategyBuilder = lazy(() => import("@/pages/StrategyBuilderPage"));
 const LayoutCustomization = lazy(() => import("@/pages/LayoutCustomizationPage"));
@@ -57,6 +58,7 @@ function Router() {
             <Route path="/analytics" component={Analytics} />
             <Route path="/ai-insights" component={AIInsights} />
             <Route path="/mlops" component={MLOpsDashboard} />
+            <Route path="/rl-training" component={RLTraining} />
             <Route path="/plugins" component={PluginMarketplace} />
             <Route path="/strategy-builder" component={StrategyBuilder} />
             <Route path="/customization" component={LayoutCustomization} />

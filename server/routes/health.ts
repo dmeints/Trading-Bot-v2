@@ -1,8 +1,8 @@
 import { Router } from "express";
 
-export const health = Router();
+export const healthRoutes = Router();
 
-health.get("/", async (_req, res) => {
+healthRoutes.get("/", async (_req, res) => {
   // TODO: replace placeholders with real histogram snapshots
   const slo = {
     submitAckMs: { p50: 120, p95: 280, p99: 340 },

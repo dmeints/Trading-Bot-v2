@@ -73,16 +73,19 @@ export const defaultStevieConfig: StevieConfig = {
 export function getStevieConfigWithOverrides(): StevieConfig {
   const config = { ...defaultStevieConfig };
   
-  // Apply STEVIETUNE_* environment overrides
-  const overrides = Object.entries(process.env)
-    .filter(([key]) => key.startsWith('STEVIETUNE_'))
-    .map(([key, value]) => [key.replace('STEVIETUNE_', ''), value]);
-  
-  for (const [key, value] of overrides) {
-    if (value && key in config) {
-      const numValue = parseFloat(value);
-      if (!isNaN(numValue)) {
-        (config as any)[key] = numValue;
+  // Apply STEVIETUNE_* environment overrides (only during backtests)
+  if (process.env.NO_BACKTEST_NETWORK === "1") {
+    const overrides = Object.entries(process.env)
+      .filter(([key]) => key.startsWith('STEVIETUNE_'))
+      .map(([key, value]) => [key.replace('STEVIETUNE_', ''), value]);
+    
+    for (const [key, value] of overrides) {
+      if (value && key in config) {
+        const numValue = parseFloat(value);
+        if (!isNaN(numValue)) {
+          (config as any)[key] = numValue;
+          console.log(`[Tuning] Override ${key}: ${(config as any)[key]} -> ${numValue}`);
+        }
       }
     }
   }

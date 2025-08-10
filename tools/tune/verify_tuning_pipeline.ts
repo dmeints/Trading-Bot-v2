@@ -166,3 +166,102 @@ async function main() {
 }
 
 main().catch(console.error);
+// Verification pipeline for tuning results
+import fs from "fs";
+import { spawnSync } from "node:child_process";
+
+function run(cmd: string, args: string[]): { ok: boolean; out: string } {
+  const r = spawnSync(cmd, args, { encoding: "utf8" });
+  const out = (r.stdout || "") + (r.stderr || "");
+  return { ok: r.status === 0, out };
+}
+
+function checkFile(path: string): boolean {
+  return fs.existsSync(path);
+}
+
+function loadCandidate(): any {
+  const path = "artifacts/tuning/stevie.config.candidate.json";
+  if (!checkFile(path)) throw new Error("Candidate config not found");
+  return JSON.parse(fs.readFileSync(path, "utf8"));
+}
+
+async function main() {
+  console.log("🔍 Running tuning verification pipeline...");
+  
+  const checks = [
+    { name: "Mock scan", cmd: "npm", args: ["run", "audit:mock"] },
+    { name: "Entropy test", cmd: "npm", args: ["run", "test", "tools/metrics_entropy.spec.ts"] },
+    { name: "Cross-source audit", cmd: "npm", args: ["exec", "tsx", "tools/audit_cross_source.ts"] },
+    { name: "Feature drift", cmd: "npm", args: ["exec", "tsx", "tools/feature_drift.ts"] }
+  ];
+  
+  for (const check of checks) {
+    console.log(`  Running ${check.name}...`);
+    const result = run(check.cmd, check.args);
+    if (!result.ok) {
+      console.error(`❌ ${check.name} failed:`);
+      console.error(result.out);
+      process.exit(1);
+    }
+    console.log(`  ✅ ${check.name} passed`);
+  }
+  
+  // Check required files
+  const requiredFiles = [
+    "artifacts/tuning/coarse_results.csv",
+    "artifacts/tuning/optuna_top10.csv", 
+    "artifacts/tuning/stevie.config.candidate.json",
+    "artifacts/tuning/walkforward_stress.csv"
+  ];
+  
+  for (const file of requiredFiles) {
+    if (!checkFile(file)) {
+      console.error(`❌ Required file missing: ${file}`);
+      process.exit(1);
+    }
+    console.log(`  ✅ Found ${file}`);
+  }
+  
+  // Validate candidate constraints
+  const candidate = loadCandidate();
+  const metrics = candidate.provenance?.metrics;
+  
+  if (!metrics) {
+    console.error("❌ Candidate missing metrics");
+    process.exit(1);
+  }
+  
+  const constraints = [
+    { name: "Profit Factor ≥ 1.2", value: metrics.profitFactor, min: 1.2 },
+    { name: "Max Drawdown ≤ 10%", value: metrics.maxDrawdown, max: 10 },
+    { name: "Trades/day ≥ 3", value: metrics.tradesPerDay, min: 3 },
+    { name: "Trades/day ≤ 30", value: metrics.tradesPerDay, max: 30 }
+  ];
+  
+  for (const constraint of constraints) {
+    const { name, value, min, max } = constraint;
+    let passed = true;
+    
+    if (min !== undefined && value < min) passed = false;
+    if (max !== undefined && value > max) passed = false;
+    
+    if (!passed) {
+      console.error(`❌ Constraint violation: ${name} (value: ${value})`);
+      process.exit(1);
+    }
+    console.log(`  ✅ ${name}: ${value}`);
+  }
+  
+  console.log("🎉 All verification checks passed!");
+  console.log("📊 Candidate Summary:");
+  console.log(`  Score: ${metrics.score?.toFixed(2)}`);
+  console.log(`  Sharpe: ${metrics.sharpe?.toFixed(3)}`);
+  console.log(`  Profit Factor: ${metrics.profitFactor?.toFixed(2)}`);
+  console.log(`  Max Drawdown: ${metrics.maxDrawdown?.toFixed(2)}%`);
+  console.log(`  Trades/Day: ${metrics.tradesPerDay?.toFixed(1)}`);
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch(e => { console.error(e); process.exit(1); });
+}

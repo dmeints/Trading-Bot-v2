@@ -12,7 +12,7 @@ interface ApiUsageStats {
 
 class ApiGuardrailManager {
   private usage: Map<string, ApiUsageStats> = new Map();
-  
+
   constructor() {
     // Initialize API limits based on free tier restrictions
     this.initializeApiLimits();
@@ -62,13 +62,13 @@ class ApiGuardrailManager {
     if (!stats) return;
 
     if (Date.now() >= stats.resetTime) {
-      const originalLimit = apiKey === 'reddit' ? 800 : 
+      const originalLimit = apiKey === 'reddit' ? 800 :
                            apiKey === 'etherscan' ? 50000 : 800;
-      
+
       stats.used = 0;
       stats.remaining = originalLimit;
       stats.resetTime = this.getNextMidnight();
-      
+
       logger.info(`[API Guardrails] Daily reset for ${apiKey.toUpperCase()} API`, {
         api: apiKey,
         newLimit: originalLimit,
@@ -80,7 +80,7 @@ class ApiGuardrailManager {
   // Check if API call is allowed
   canMakeRequest(apiKey: string): boolean {
     this.checkAndResetDaily(apiKey);
-    
+
     const stats = this.usage.get(apiKey);
     if (!stats) {
       logger.warn(`[API Guardrails] Unknown API key: ${apiKey}`);
@@ -165,7 +165,7 @@ class ApiGuardrailManager {
     if (!stats) return;
 
     stats.remaining = 0;
-    
+
     logger.error(`[API Guardrails] EMERGENCY DISABLE - ${apiKey.toUpperCase()} API`, {
       api: apiKey,
       reason,
@@ -184,7 +184,7 @@ export function createApiGuardMiddleware(apiKey: string) {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!apiGuardrailManager.canMakeRequest(apiKey)) {
       const stats = apiGuardrailManager.getStats(apiKey);
-      
+
       return res.status(429).json({
         error: `${apiKey.toUpperCase()} API rate limit exceeded`,
         details: {
@@ -207,23 +207,23 @@ export function createApiGuardMiddleware(apiKey: string) {
 // Middleware to record successful API usage
 export const recordApiUsage = (req: Request, res: Response, next: NextFunction) => {
   const originalJson = res.json;
-  
+
   res.json = function(body: any) {
     // Record usage if API call was successful and we have an API key
     if (res.statusCode >= 200 && res.statusCode < 300 && res.locals.apiKey) {
       apiGuardrailManager.recordUsage(res.locals.apiKey);
     }
-    
+
     return originalJson.call(this, body);
   };
-  
+
   next();
 };
 
 // Reddit API specific middleware
 export const redditApiGuard = createApiGuardMiddleware('reddit');
 
-// Etherscan API specific middleware  
+// Etherscan API specific middleware
 export const etherscanApiGuard = createApiGuardMiddleware('etherscan');
 
 // CryptoPanic API specific middleware

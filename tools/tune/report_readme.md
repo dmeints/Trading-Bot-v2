@@ -61,3 +61,50 @@ All selected configurations must pass:
 - Maximum Drawdown ≤ 10%
 - Slippage Error ≤ 5 bps  
 - Trades per day: 3-30
+# Stevie v2.1 Hyperparameter Optimization Report
+
+## Top-10 Optuna Results
+
+Best configurations from TPE sampling around the coarse grid winner:
+
+| Value | Params | Metrics |
+|-------|--------|---------|
+| (See optuna_top10.csv for full table) |
+
+## Pareto Front Summary
+
+Multi-objective optimization results (score↑, MDD↓, slipErr↓, PF↑):
+
+- **Pareto frontier size**: {paretoSize} configurations  
+- **Selected candidate**: Highest score with feasible constraints
+- **Key metrics**: Score {score}, Sharpe {sharpe}, PF {pf}, MDD {mdd}%
+
+## Best Candidate Parameters
+
+```json
+{candidateParams}
+```
+
+## Walk-Forward Validation
+
+Time series cross-validation across 3 windows with stress testing:
+
+- **Base performance**: See walkforward_stress.csv
+- **Stress scenarios**: fees+25%, slip+25%, weekend, news
+- **Stability check**: Consistent performance across time windows
+
+## Files Generated
+
+- `artifacts/tuning/coarse_results.csv` - Grid search results  
+- `artifacts/tuning/optuna_top10.csv` - Bayesian optimization winners
+- `artifacts/tuning/stevie.config.candidate.json` - Selected configuration
+- `artifacts/tuning/walkforward_stress.csv` - Validation results
+
+## Next Steps
+
+Run the verification loop:
+```bash
+npm run tune:verify
+```
+
+If all gates pass, promote candidate to production via existing promotion gate.

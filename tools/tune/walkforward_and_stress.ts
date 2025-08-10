@@ -77,3 +77,80 @@ for (const w of windows) {
 
 write("artifacts/tuning/walkforward_stress.csv", rows);
 console.log("✅ walk-forward + stress summary -> artifacts/tuning/walkforward_stress.csv");
+// Runs the tuned config over sliding windows + stress scenarios; writes a summary CSV and JSON.
+import fs from "fs";
+import path from "path";
+import { spawnSync } from "node:child_process";
+
+function run(from: string, to: string, tag: string, stress?: string) {
+  const env: any = { NO_BACKTEST_NETWORK: "1", ...(stress ? { STRESS: stress } : {}) };
+  const r = spawnSync("npm", ["exec", "tsx", "cli/bench.ts", "--strategy", "stevie", "--version", tag, "--symbols", "BTCUSDT,ETHUSDT", "--timeframe", "5m", "--from", from, "--to", to, "--rng-seed", "7"], { encoding: "utf8", env: { ...process.env, ...env } });
+  const out = (r.stdout || "") + (r.stderr || "");
+  if (r.status !== 0) throw new Error(out);
+  const p = "artifacts/latest/metrics.json";
+  if (!fs.existsSync(p)) throw new Error("metrics not found");
+  return JSON.parse(fs.readFileSync(p, "utf8"));
+}
+
+function write(pathOut: string, rows: any[]) {
+  const keys = Array.from(new Set(rows.flatMap(r => Object.keys(r))));
+  const head = keys.join(",");
+  const body = rows.map(r => keys.map(k => JSON.stringify(r[k] ?? "")).join(",")).join("\n");
+  fs.mkdirSync(path.dirname(pathOut), { recursive: true });
+  fs.writeFileSync(pathOut, head + "\n" + body);
+}
+
+const windows = [
+  { name: "W1", train: "2024-04-01..2024-04-30", valid: "2024-05-01..2024-05-31", test: "2024-06-01..2024-06-30" },
+  { name: "W2", train: "2024-05-01..2024-05-31", valid: "2024-06-01..2024-06-30", test: "2024-07-01..2024-07-31" },
+  { name: "W3", train: "2024-06-01..2024-06-30", valid: "2024-07-01..2024-07-31", test: "2024-08-01..2024-08-07" }
+];
+
+const stresses = ["fees+25", "slip+25", "weekend", "news"];
+const rows: any[] = [];
+
+async function main() {
+  console.log("🔄 Starting walk-forward validation...");
+  
+  for (const w of windows) {
+    const [tf, tt] = w.test.split("..");
+    console.log(`Testing window ${w.name}: ${tf} to ${tt}`);
+    
+    const m = run(tf, tt, "candidate");
+    rows.push({
+      phase: "test", window: w.name,
+      sharpe: m.headline?.sharpe, pf: m.headline?.profitFactor,
+      mdd: m.headline?.maxDrawdownPct, score: m.headline?.cash_growth_score,
+      slipErr: m.slippage_error_bps, tpd: m.tradesPerDay
+    });
+    
+    for (const s of stresses) {
+      console.log(`  Stress testing: ${s}`);
+      const ms = run(tf, tt, "candidate", s);
+      rows.push({
+        phase: s, window: w.name,
+        sharpe: ms.headline?.sharpe, pf: ms.headline?.profitFactor,
+        mdd: ms.headline?.maxDrawdownPct, score: ms.headline?.cash_growth_score,
+        slipErr: ms.slippage_error_bps, tpd: ms.tradesPerDay
+      });
+    }
+  }
+  
+  write("artifacts/tuning/walkforward_stress.csv", rows);
+  console.log("✅ Walk-forward + stress summary -> artifacts/tuning/walkforward_stress.csv");
+  
+  // Print summary statistics
+  const testRows = rows.filter(r => r.phase === "test");
+  const avgSharpe = testRows.reduce((sum, r) => sum + (r.sharpe || 0), 0) / testRows.length;
+  const avgPF = testRows.reduce((sum, r) => sum + (r.pf || 0), 0) / testRows.length;
+  const maxMDD = Math.max(...testRows.map(r => r.mdd || 0));
+  
+  console.log("📊 Walk-forward Summary:");
+  console.log(`  Avg Sharpe: ${avgSharpe.toFixed(3)}`);
+  console.log(`  Avg PF: ${avgPF.toFixed(3)}`);
+  console.log(`  Max MDD: ${maxMDD.toFixed(2)}%`);
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch(e => { console.error(e); process.exit(1); });
+}

@@ -176,6 +176,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Phase B: AI Chat Integration
   const { aiChatRouter } = await import('./routes/aiChat.js');
   app.use('/api/ai', aiChatRouter);
+
+  // Phase C: Advanced Trading Strategies
+  const { strategiesRouter } = await import('./routes/strategies.js');
+  app.use('/api/strategies', strategiesRouter);
   
   // Real algorithm benchmark routes (actual trading performance testing)
   const { realBenchmarkRoutes } = await import('./routes/realBenchmarkRoutes');

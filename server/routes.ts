@@ -196,6 +196,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Phase G: Institutional Compliance
   const { complianceRouter } = await import('./routes/compliance.js');
   app.use('/api/compliance', complianceRouter);
+
+  // Phase H: Social Trading Platform
+  const { socialTradingRouter } = await import('./routes/socialTrading.js');
+  app.use('/api/social', socialTradingRouter);
   
   // Real algorithm benchmark routes (actual trading performance testing)
   const { realBenchmarkRoutes } = await import('./routes/realBenchmarkRoutes');

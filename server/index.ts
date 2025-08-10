@@ -13,7 +13,7 @@ import { logger } from './utils/logger.js';
 import { errorHandler } from './utils/errorHandler.js';
 import { requestId } from './middleware/requestId.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
-import { apiGuardrails } from './middleware/apiGuardrails.js';
+import { recordApiUsage } from './middleware/apiGuardrails.js';
 
 // Route imports
 import { healthRoutes } from './routes/health.js';
@@ -56,7 +56,7 @@ app.use(compression());
 // Request middleware
 app.use(requestId);
 app.use(rateLimiter);
-app.use(apiGuardrails);
+app.use(recordApiUsage);
 
 // Body parsing
 app.use(express.json({ limit: '10mb' }));

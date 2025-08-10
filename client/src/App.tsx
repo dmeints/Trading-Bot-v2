@@ -20,6 +20,7 @@ const AIInsights = lazy(() => import("@/pages/AIInsights"));
 const AIChat = lazy(() => import("@/pages/AIChat"));
 const ExecutionDashboard = lazy(() => import("@/pages/ExecutionDashboard"));
 const PerformanceAttribution = lazy(() => import("@/pages/PerformanceAttribution"));
+const ProductionMonitoring = lazy(() => import("@/pages/ProductionMonitoring"));
 const AdvancedStrategies = lazy(() => import("@/pages/AdvancedStrategies"));
 const AlgorithmTraining = lazy(() => import("@/pages/AlgorithmTraining"));
 const LiveTrading = lazy(() => import("@/pages/LiveTrading"));
@@ -81,6 +82,7 @@ function Router() {
             <Route path="/ai-chat" component={AIChat} />
             <Route path="/execution" component={ExecutionDashboard} />
             <Route path="/performance-attribution" component={PerformanceAttribution} />
+            <Route path="/monitoring" component={ProductionMonitoring} />
             <Route path="/rl-training" component={RLTraining} />
             <Route path="/plugins" component={PluginMarketplace} />
             <Route path="/strategy-builder" component={StrategyBuilder} />

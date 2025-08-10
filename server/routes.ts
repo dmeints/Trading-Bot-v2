@@ -214,6 +214,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Phase K: Performance Attribution
   const performanceAttributionRouter = (await import('./routes/performanceAttribution.js')).default;
   app.use('/api/attribution', performanceAttributionRouter);
+
+  // Phase L: Production Monitoring
+  const productionMonitoringRouter = (await import('./routes/monitoring.js')).default;
+  app.use('/api/monitoring', productionMonitoringRouter);
   
   // Real algorithm benchmark routes (actual trading performance testing)
   const { realBenchmarkRoutes } = await import('./routes/realBenchmarkRoutes');

@@ -24,6 +24,10 @@ export function Navigation() {
         <Activity className="h-4 w-4" />
         Phase K - Attribution
       </Link>
+      <Link href="/monitoring" className="flex items-center gap-2 px-3 py-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700">
+        <Server className="h-4 w-4" />
+        Phase L - Monitoring
+      </Link>
     </nav>
   );
 }

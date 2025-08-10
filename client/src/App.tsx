@@ -21,6 +21,7 @@ const AIChat = lazy(() => import("@/pages/AIChat"));
 const AdvancedStrategies = lazy(() => import("@/pages/AdvancedStrategies"));
 const AlgorithmTraining = lazy(() => import("@/pages/AlgorithmTraining"));
 const LiveTrading = lazy(() => import("@/pages/LiveTrading"));
+const PortfolioManager = lazy(() => import("@/pages/PortfolioManager"));
 const MLOpsDashboard = lazy(() => import("@/pages/MLOpsDashboard"));
 const RLTraining = lazy(() => import("@/pages/RLTraining"));
 const PluginMarketplace = lazy(() => import("@/pages/PluginMarketplace"));
@@ -65,6 +66,7 @@ function Router() {
             <Route path="/advanced-strategies" component={AdvancedStrategies} />
             <Route path="/algorithm-training" component={AlgorithmTraining} />
             <Route path="/live-trading" component={LiveTrading} />
+            <Route path="/portfolio-manager" component={PortfolioManager} />
             <Route path="/mlops" component={MLOpsDashboard} />
             <Route path="/rl-training" component={RLTraining} />
             <Route path="/plugins" component={PluginMarketplace} />

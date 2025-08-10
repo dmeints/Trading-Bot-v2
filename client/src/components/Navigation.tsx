@@ -16,6 +16,10 @@ export function Navigation() {
         <Bot className="h-4 w-4" />
         Phase B - AI Chat
       </Link>
+      <Link href="/execution" className="flex items-center gap-2 px-3 py-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700">
+        <MessageSquare className="h-4 w-4" />
+        Phase J - Execution
+      </Link>
     </nav>
   );
 }

@@ -91,21 +91,16 @@ async function validateDataSources(): Promise<{ passed: boolean; failures: strin
 
   for (const source of sources) {
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      
       const response = await fetch(source.url, {
         method: 'GET',
-        signal: controller.signal
+        timeout: 5000
       });
-      
-      clearTimeout(timeoutId);
 
       if (!response.ok) {
         failures.push(`${source.name}: HTTP ${response.status}`);
       }
     } catch (error) {
-      failures.push(`${source.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      failures.push(`${source.name}: ${error.message}`);
     }
   }
 

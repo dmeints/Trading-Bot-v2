@@ -19,9 +19,7 @@
     "tune:verify": "tsx tools/tune/verify_tuning_pipeline.ts",
     "tune:full": "npm run tune:coarse && npm run tune:optuna && npm run tune:select && npm run tune:validate && npm run tune:verify",
     "tune:all": "npm run tune:coarse && npm run tune:optuna",
-    "tune:select": "tsx tools/tune/select_and_emit.ts",
-    "tune:stress": "tsx tools/tune/walkforward_and_stress.ts",
-    "tune:verify": "tsx tools/tune/verify_tuning_pipeline.ts"
+    "tune:stress": "tsx tools/tune/walkforward_and_stress.ts"
   },
   "dependencies": {
     "@axe-core/playwright": "^4.10.2",

@@ -120,6 +120,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Features API for real algorithmic trading
   app.use('/api/features', featuresRouter);
 
+  // Stevie Real Decision API
+  const stevieDecisionRouter = await import('./routes/stevie-decision.js');
+  app.use('/api/stevie', stevieDecisionRouter.default);
+
   // Stevie AI Companion routes
   app.use('/api/stevie', stevieRoutes);
   

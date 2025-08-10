@@ -1,4 +1,5 @@
-const fs = require("fs"), path = require("path");
+import fs from "fs";
+import path from "path";
 const ROOTS = ["server","client","shared"];
 const ALLOW = /(__tests__|fixtures|stories?|mocks?|scripts|README|\.md)$/i;
 const NEEDLES = /\b(mock|faker|dummy|stub|sampleData|lorem|json-server|msw|miragejs|nock)\b/i;

@@ -765,3 +765,40 @@ export const insertAIChatConversationSchema = createInsertSchema(aiChatConversat
 export const insertAIChatMessageSchema = createInsertSchema(aiChatMessages).omit({
   timestamp: true,
 });
+
+// Extended Database Tables for Manifest Compliance
+export const stevieMarketBars = pgTable("stevie_market_bars", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  symbol: varchar("symbol").notNull(),
+  ts: timestamp("ts").notNull(),
+  o: decimal("o", { precision: 18, scale: 8 }).notNull(),
+  h: decimal("h", { precision: 18, scale: 8 }).notNull(),
+  l: decimal("l", { precision: 18, scale: 8 }).notNull(),
+  c: decimal("c", { precision: 18, scale: 8 }).notNull(),
+  v: decimal("v", { precision: 18, scale: 8 }).notNull(),
+  provider: varchar("provider").notNull(),
+  datasetId: varchar("dataset_id"),
+  fetchedAt: timestamp("fetched_at").defaultNow(),
+});
+
+export const stevieOrderbookSnaps = pgTable("stevie_orderbook_snaps", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  symbol: varchar("symbol").notNull(),
+  ts: timestamp("ts").notNull(),
+  bid: decimal("bid", { precision: 18, scale: 8 }).notNull(),
+  ask: decimal("ask", { precision: 18, scale: 8 }).notNull(),
+  spreadBps: real("spread_bps").notNull(),
+  depth1bp: decimal("depth_1bp", { precision: 18, scale: 8 }),
+  depth5bp: decimal("depth_5bp", { precision: 18, scale: 8 }),
+  provider: varchar("provider").notNull(),
+});
+
+// Additional insert schemas for extended tables
+export const insertStevieMarketBarSchema = createInsertSchema(stevieMarketBars);
+export const insertStevieOrderbookSnapSchema = createInsertSchema(stevieOrderbookSnaps);
+
+// Additional types for extended tables
+export type StevieMarketBar = typeof stevieMarketBars.$inferSelect;
+export type InsertStevieMarketBar = z.infer<typeof insertStevieMarketBarSchema>;
+export type StevieOrderbookSnap = typeof stevieOrderbookSnaps.$inferSelect;
+export type InsertStevieOrderbookSnap = z.infer<typeof insertStevieOrderbookSnapSchema>;

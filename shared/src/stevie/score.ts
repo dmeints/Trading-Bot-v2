@@ -1,15 +1,16 @@
 /**
- * Stevie Reward/Penalty Scoring System
+ * Stevie Trade Scoring System
+ * Comprehensive trade performance evaluation
  */
 
 export type ScoreTerm = 
-  | "pnl_bps" 
-  | "fees_bps" 
-  | "slippage_bps" 
-  | "latency_penalty" 
-  | "drawdown_penalty" 
-  | "churn_penalty" 
-  | "opportunity_penalty" 
+  | "pnl_bps"
+  | "fees_bps"
+  | "slippage_bps"
+  | "latency_penalty"
+  | "drawdown_penalty"
+  | "churn_penalty"
+  | "opportunity_penalty"
   | "toxicity_penalty";
 
 export type TradeSnapshot = {
@@ -24,16 +25,19 @@ export type TradeSnapshot = {
   slippageForecastBps?: number;
   slippageRealizedBps: number;
   ackMs: number;
-  mfeBps: number;  // Maximum favorable excursion
-  maeBps: number;  // Maximum adverse excursion  
+  mfeBps: number; // Maximum Favorable Excursion
+  maeBps: number; // Maximum Adverse Excursion
   midAfter1sBps?: number;
-  tpBps?: number;  // Take profit level
-  slBps?: number;  // Stop loss level
+  tpBps?: number; // Take Profit
+  slBps?: number; // Stop Loss
 };
 
 export type TradeScore = {
   total: number;
-  terms: { name: ScoreTerm; value: number }[];
+  terms: {
+    name: ScoreTerm;
+    value: number;
+  }[];
   provenance: {
     runId?: string;
     datasetId?: string;

@@ -1,10 +1,11 @@
 /**
  * Stevie Strategy Kernel
- * Core mathematical decision engine with breakout/mean-revert detection
+ * Core algorithmic trading decision engine
  */
 
 import { defaultStevieConfig, StevieConfig } from "../../shared/src/stevie/config";
-import { UnifiedFeatures } from "../features";
+import { varianceTargetMultiplier } from "../risk/varianceTarget";
+import { temperedKellyFraction } from "../sizing/temperedKelly";
 
 type Bars = { ts: number; o: number; h: number; l: number; c: number; v?: number }[];
 
@@ -14,29 +15,58 @@ type Features = {
     spread_bps: number; 
     imbalance_1: number; 
     micro_vol_ewma: number; 
-    trade_run_len: number 
+    trade_run_len: number; 
   } | null;
   costs: { 
     expected_slippage_bps?: (s: number) => number; 
-    curve?: { sizePct: number; bps: number }[] 
+    curve?: { sizePct: number; bps: number }[]; 
   } | null;
-  social: { z: number; delta: number; spike?: boolean } | null;
-  onchain: { gas_spike_flag?: boolean; bias?: number } | null;
-  macro: { blackout?: boolean } | null;
-  regime: { vol_pct: number; trend_strength: number; liquidity_tier: 1 | 2 | 3 } | null;
-  provenance: { datasetId?: string; commit: string; generatedAt: string };
+  social: { 
+    z: number; 
+    delta: number; 
+    spike?: boolean; 
+  } | null;
+  onchain: { 
+    gas_spike_flag?: boolean; 
+    bias?: number; 
+  } | null;
+  macro: { 
+    blackout?: boolean; 
+  } | null;
+  regime: { 
+    vol_pct: number; 
+    trend_strength: number; 
+    liquidity_tier: 1 | 2 | 3; 
+  } | null;
+  provenance: { 
+    datasetId?: string; 
+    commit: string; 
+    generatedAt: string; 
+  };
 };
 
 type Position = { symbol: string; qty: number; avgPrice: number } | null;
 
 type Action =
   | { type: "HOLD"; reason: string }
-  | { type: "ENTER_MARKET" | "ENTER_IOC"; sizePct: number; tag: string; tp_bps: number; sl_bps: number; reduceOnly?: boolean }
-  | { type: "ENTER_LIMIT_MAKER"; sizePct: number; price: number; tag: string; tp_bps: number; sl_bps: number; reduceOnly?: boolean };
+  | { 
+      type: "ENTER_MARKET" | "ENTER_IOC"; 
+      sizePct: number; 
+      tag: string; 
+      tp_bps: number; 
+      sl_bps: number; 
+      reduceOnly?: boolean; 
+    }
+  | { 
+      type: "ENTER_LIMIT_MAKER"; 
+      sizePct: number; 
+      price: number; 
+      tag: string; 
+      tp_bps: number; 
+      sl_bps: number; 
+      reduceOnly?: boolean; 
+    };
 
-/**
- * Calculate expected cost for a given position size
- */
 function costAt(f: Features, sizePct: number): number {
   if (!f.costs) return Infinity;
   
@@ -52,9 +82,6 @@ function costAt(f: Features, sizePct: number): number {
   ).bps;
 }
 
-/**
- * Detect mean reversion snapback conditions
- */
 function snapback(f: Features): boolean {
   if (!f.micro || f.bars.length < 2) return false;
   
@@ -63,35 +90,28 @@ function snapback(f: Features): boolean {
   const delta = last.c - prev.c;
   const run = f.micro.trade_run_len;
   
-  // Snapback: price moved against established trend with low imbalance
-  return (run > 2 && Math.sign(delta) !== Math.sign(run) && Math.abs(f.micro.imbalance_1) < 0.1);
+  return (
+    run > 2 && 
+    Math.sign(delta) !== Math.sign(run) && 
+    Math.abs(f.micro.imbalance_1) < 0.1
+  );
 }
 
-/**
- * Core Stevie decision function
- */
 export function decide(
-  f: Features, 
-  pos: Position, 
-  cfg: StevieConfig = defaultStevieConfig
+  f: Features,
+  pos: Position,
+  cfg: StevieConfig = defaultStevieConfig,
+  score7d: number = 0
 ): Action {
+  // Mandatory blackout conditions
+  if (f.macro?.blackout) return { type: "HOLD", reason: "macro_blackout" };
+  if (f.onchain?.gas_spike_flag) return { type: "HOLD", reason: "onchain_gas_spike" };
   
-  // Hard stops - always hold during these conditions
-  if (f.macro?.blackout) {
-    return { type: "HOLD", reason: "macro_blackout" };
-  }
-  
-  if (f.onchain?.gas_spike_flag) {
-    return { type: "HOLD", reason: "onchain_gas_spike" };
-  }
-  
-  // Cost protection - don't trade if slippage too high
+  // Cost protection
   const expSlip = costAt(f, cfg.baseRiskPct);
-  if (expSlip > cfg.costCapBps) {
-    return { type: "HOLD", reason: "slippage_cap" };
-  }
+  if (expSlip > cfg.costCapBps) return { type: "HOLD", reason: "slippage_cap" };
   
-  // Extract key metrics with defaults
+  // Extract feature values with defaults
   const vol = f.regime?.vol_pct ?? 50;
   const spread = f.micro?.spread_bps ?? 999;
   const soc = f.social?.delta ?? 0;
@@ -100,46 +120,65 @@ export function decide(
   
   // Symbol-specific position cap
   const cap = (sym: string) => cfg.perSymbolCapPct[sym] ?? 2.0;
-  const sym = "BTCUSDT"; // Default symbol
+  const sym = "BTCUSDT"; // Primary symbol for now
   
-  // Risk scaling function based on liquidity tier and on-chain bias
-  const scale = (base: number): number => {
+  // Liquidity and bias scaling
+  const scale = (base: number) => {
     const tierMultiplier = tier === 1 ? 1 : tier === 2 ? 0.7 : 0.5;
-    const biasMultiplier = bias != null ? (1 + Math.max(-0.5, Math.min(0.5, bias))) : 1;
+    const biasMultiplier = bias != null 
+      ? (1 + Math.max(-0.5, Math.min(0.5, bias)))
+      : 1;
     return Math.max(0, base * tierMultiplier * (bias && bias < 0 ? 0.75 : 1));
   };
-
-  // Strategy 1: Volatility Breakout
-  // High volatility + tight spreads + positive social momentum = breakout entry
+  
+  // Calculate position size with advanced sizing
+  const calculateSize = (baseSize: number) => {
+    // Variance targeting
+    const volMultiplier = varianceTargetMultiplier(vol);
+    
+    // Tempered Kelly sizing (simplified for MVP)
+    const edgeBps = vol > cfg.volPctBreakout ? 15 : vol < cfg.volPctMeanRevert ? 10 : 5;
+    const varBps2 = Math.pow(vol * 10, 2); // Rough variance estimate
+    const kellyMultiplier = temperedKellyFraction({
+      edgeBps,
+      varBps2,
+      temper: 0.25,
+      min: 0.1,
+      max: 1.0,
+      score7d
+    });
+    
+    const adjustedSize = baseSize * volMultiplier * kellyMultiplier;
+    return Math.min(scale(adjustedSize), cap(sym));
+  };
+  
+  // STRATEGY 1: Breakout (High volatility + Social momentum)
   if (vol > cfg.volPctBreakout && spread <= cfg.takerBps + 2 && soc > cfg.socialGo) {
     return {
       type: "ENTER_IOC",
-      sizePct: Math.min(scale(cfg.baseRiskPct), cap(sym)),
+      sizePct: calculateSize(cfg.baseRiskPct),
       tag: "breakout",
       tp_bps: cfg.tpBreakout,
       sl_bps: cfg.slBreakout
     };
   }
-
-  // Strategy 2: Mean Reversion
-  // Low volatility + snapback pattern = mean reversion entry
+  
+  // STRATEGY 2: Mean Reversion (Low volatility + Snapback signal)
   if (vol < cfg.volPctMeanRevert && snapback(f)) {
     const last = f.bars.at(-1)!.c;
-    // Place limit order slightly inside the spread
     const price = last * (f.micro!.imbalance_1 < 0 ? 0.999 : 1.001);
     
     return {
       type: "ENTER_LIMIT_MAKER",
-      sizePct: Math.min(scale(cfg.baseRiskPct * 0.7), cap(sym)),
+      sizePct: calculateSize(cfg.baseRiskPct * 0.7),
       price,
       tag: "mean_revert",
       tp_bps: cfg.tpRevert,
       sl_bps: cfg.slRevert
     };
   }
-
-  // Strategy 3: News/Social Spike
-  // Social sentiment spike + tight spreads = news-driven entry
+  
+  // STRATEGY 3: News Momentum (Social spike + Good spread)
   if (f.social?.spike && spread <= cfg.takerBps) {
     return {
       type: "ENTER_IOC",
@@ -149,30 +188,6 @@ export function decide(
       sl_bps: cfg.slNews
     };
   }
-
-  // Default: No edge detected
+  
   return { type: "HOLD", reason: "no_edge" };
-}
-
-/**
- * Enhanced decision function with features from UnifiedFeatures
- */
-export function decideWithUnifiedFeatures(
-  unifiedFeatures: UnifiedFeatures,
-  position: Position,
-  config: StevieConfig = defaultStevieConfig
-): Action {
-  // Convert UnifiedFeatures to legacy Features format for compatibility
-  const features: Features = {
-    bars: unifiedFeatures.bars,
-    micro: unifiedFeatures.micro,
-    costs: unifiedFeatures.costs,
-    social: unifiedFeatures.social,
-    onchain: unifiedFeatures.onchain,
-    macro: unifiedFeatures.macro,
-    regime: unifiedFeatures.regime,
-    provenance: unifiedFeatures.provenance
-  };
-
-  return decide(features, position, config);
 }

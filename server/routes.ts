@@ -1709,6 +1709,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // System Validation endpoint
   app.use('/api/system-validation', (await import('./routes/system-validation')).default);
+  
+  // Stevie Strategy endpoint
+  app.use('/api/stevie-strategy', (await import('./routes/stevie-strategy')).default);
 
   // Temporal Omniscience routes (Phase 2)
   app.use('/', temporalRoutes);

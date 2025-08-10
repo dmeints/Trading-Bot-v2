@@ -1,11 +1,11 @@
 /**
- * Variance Targeting for Position Sizing
- * Adjusts position sizes based on current market volatility
+ * Variance Targeting System
+ * Dynamic position sizing based on volatility
  */
 
 export type TF = "1m" | "5m" | "15m" | "1h" | "4h" | "1d";
 
-const TIMEFRAME_MINUTES: Record<TF, number> = {
+const M: Record<TF, number> = {
   "1m": 1,
   "5m": 5,
   "15m": 15,
@@ -14,16 +14,10 @@ const TIMEFRAME_MINUTES: Record<TF, number> = {
   "1d": 1440
 };
 
-/**
- * Calculate annualization factor for volatility
- */
 export function annualizationFactor(tf: TF): number {
-  return Math.sqrt(525_600 / TIMEFRAME_MINUTES[tf]);
+  return Math.sqrt(525_600 / M[tf]);
 }
 
-/**
- * Calculate rolling annualized volatility percentiles
- */
 export function rollingAnnualizedVolPct(
   closes: number[], 
   tf: TF, 
@@ -40,24 +34,20 @@ export function rollingAnnualizedVolPct(
     logs.push(Math.log(closes[i] / closes[i - 1]));
   }
   
-  // Rolling window volatility calculation
+  // Calculate rolling volatility
   for (let i = window; i <= logs.length; i++) {
-    const windowReturns = logs.slice(i - window, i);
-    const mean = windowReturns.reduce((sum, r) => sum + r, 0) / windowReturns.length;
-    const variance = windowReturns.reduce((sum, r) => sum + (r - mean) * (r - mean), 0) / (windowReturns.length - 1);
-    const vol = Math.sqrt(variance) * af * 100; // Annualized % volatility
-    vols.push(vol);
+    const segment = logs.slice(i - window, i);
+    const mean = segment.reduce((a, b) => a + b, 0) / segment.length;
+    const variance = segment.reduce((a, b) => a + (b - mean) * (b - mean), 0) / (segment.length - 1);
+    vols.push(Math.sqrt(variance) * af * 100);
   }
   
   return vols;
 }
 
-/**
- * Calculate variance targeting multiplier
- */
 export function varianceTargetMultiplier(
-  volPct: number | undefined, 
-  target: number = 10, 
+  volPct: number | undefined,
+  target: number = 10,
   bounds: { min: number; max: number } = { min: 0.25, max: 2.0 }
 ): number {
   if (!volPct || volPct <= 0) return bounds.min;

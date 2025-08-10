@@ -37,7 +37,11 @@ router.post('/run', async (req, res) => {
     
     console.log(`[Backtest] Completed ${result.runId}: ${result.totalTrades} trades, ${(result.totalReturn * 100).toFixed(2)}% return`);
     
-    res.json(addProvenance(result, 'deterministic_backtest'));
+    res.json(addProvenance(result, { 
+      runId: result.runId,
+      datasetId: result.datasetId,
+      commit: 'deterministic_backtest' 
+    }));
     
   } catch (error: any) {
     console.error('[Backtest] Error:', error);

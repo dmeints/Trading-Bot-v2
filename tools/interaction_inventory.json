@@ -1,22 +1,56 @@
 [
-  { "route": "/", "component": "Dashboard", "selector": "[data-testid='text-portfolio-value']", "type": "display", "intendedAction": "show portfolio value", "handler": "n/a", "wired": true },
-  { "route": "/", "component": "TopNavigation", "selector": "[data-testid='button-trading-mode']", "type": "button", "intendedAction": "toggle trading mode", "handler": "onClick", "wired": true },
-  { "route": "/", "component": "TopNavigation", "selector": "[data-testid='button-logout']", "type": "button", "intendedAction": "logout user", "handler": "onClick", "wired": true },
-  { "route": "/trading", "component": "Trading", "selector": "[data-testid='submit-order']", "type": "button", "intendedAction": "place order", "handler": "onSubmit", "wired": true },
-  { "route": "/trading", "component": "AdvancedChart", "selector": "[data-testid='chart-container']", "type": "display", "intendedAction": "show market chart", "handler": "n/a", "wired": true },
-  { "route": "/portfolio", "component": "Portfolio", "selector": "[data-testid='portfolio-balance']", "type": "display", "intendedAction": "show portfolio balance", "handler": "n/a", "wired": true },
-  { "route": "/ai-chat", "component": "StevieChat", "selector": "[data-testid='chat-input']", "type": "input", "intendedAction": "send message to Stevie", "handler": "onSubmit", "wired": true },
-  { "route": "/ai-chat", "component": "StevieFeedback", "selector": "[data-testid='button-feedback-open']", "type": "button", "intendedAction": "open feedback form", "handler": "onClick", "wired": true },
-  { "route": "/ai-chat", "component": "StevieFeedback", "selector": "[data-testid='button-submit-feedback']", "type": "button", "intendedAction": "submit feedback", "handler": "onSubmit", "wired": true },
-  { "route": "/strategy-builder", "component": "StrategyBuilder", "selector": "[data-testid='strategy-save']", "type": "button", "intendedAction": "save strategy", "handler": "onClick", "wired": true },
-  { "route": "/live-trading", "component": "LiveTrading", "selector": "[data-testid='start-trading']", "type": "button", "intendedAction": "start live trading", "handler": "onClick", "wired": true },
-  { "route": "/compliance", "component": "ComplianceDashboard", "selector": "[data-testid='compliance-status']", "type": "display", "intendedAction": "show compliance status", "handler": "n/a", "wired": true },
-  { "route": "/system", "component": "SystemDashboard", "selector": "[data-testid='system-health']", "type": "display", "intendedAction": "show system health", "handler": "n/a", "wired": true },
-  { "route": "/mlops", "component": "MLOpsDashboard", "selector": "[data-testid='model-status']", "type": "display", "intendedAction": "show model status", "handler": "n/a", "wired": true },
-  { "route": "/rl-training", "component": "RLTraining", "selector": "[data-testid='start-training']", "type": "button", "intendedAction": "start RL training", "handler": "onClick", "wired": true },
-  { "route": "/", "component": "MobileBottomNav", "selector": "[data-testid='mobile-nav-dashboard']", "type": "link", "intendedAction": "navigate to dashboard", "handler": "href", "wired": true },
-  { "route": "/", "component": "MobileBottomNav", "selector": "[data-testid='mobile-nav-trading']", "type": "link", "intendedAction": "navigate to trading", "handler": "href", "wired": true },
-  { "route": "/", "component": "SidebarNavigation", "selector": "[data-testid='side-rail']", "type": "navigation", "intendedAction": "main navigation", "handler": "n/a", "wired": true },
-  { "route": "/settings", "component": "Settings", "selector": "[data-testid='save-settings']", "type": "button", "intendedAction": "save user settings", "handler": "onSubmit", "wired": true },
-  { "route": "/social-trading", "component": "SocialTrading", "selector": "[data-testid='follow-trader']", "type": "button", "intendedAction": "follow trader", "handler": "onClick", "wired": true }
+  {
+    "route": "/",
+    "component": "App",
+    "selector": "[data-testid='navigation-menu']",
+    "type": "navigation",
+    "intendedAction": "navigate between pages",
+    "handler": "wouter navigation",
+    "wired": true
+  },
+  {
+    "route": "/trading",
+    "component": "TradingPage",
+    "selector": "[data-testid='order-entry-form']",
+    "type": "form",
+    "intendedAction": "place trading order",
+    "handler": "onSubmit",
+    "wired": true
+  },
+  {
+    "route": "/trading",
+    "component": "OrderTicket",
+    "selector": "[data-testid='submit-order']",
+    "type": "button",
+    "intendedAction": "place order",
+    "handler": "onSubmit",
+    "wired": true
+  },
+  {
+    "route": "/portfolio",
+    "component": "PositionsTable",
+    "selector": "[data-testid='close-position-button']",
+    "type": "button", 
+    "intendedAction": "close trading position",
+    "handler": "closePosition",
+    "wired": true
+  },
+  {
+    "route": "/ai-chat",
+    "component": "AIChat",
+    "selector": "[data-testid='send-message']",
+    "type": "button",
+    "intendedAction": "send AI message",
+    "handler": "sendMessage", 
+    "wired": true
+  },
+  {
+    "route": "/settings",
+    "component": "SettingsPage",
+    "selector": "[data-testid='risk-tolerance-slider']",
+    "type": "input",
+    "intendedAction": "adjust risk settings",
+    "handler": "onRiskChange",
+    "wired": true
+  }
 ]

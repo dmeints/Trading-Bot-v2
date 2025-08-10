@@ -13,6 +13,7 @@ import { transcendenceCommand } from './commands/transcendence';
 import { advancedCommand } from './commands/advancedFeatures';
 import { temporalCommand } from './commands/temporal';
 import { universalCommand } from './commands/universal';
+import { addOptunaCommands } from './commands/optuna';
 
 const program = new Command();
 
@@ -29,6 +30,7 @@ program.addCommand(transcendenceCommand);
 program.addCommand(advancedCommand);
 program.addCommand(temporalCommand);
 program.addCommand(universalCommand);
+addOptunaCommands(program);
 
 // Parse command line arguments
 program.parse();

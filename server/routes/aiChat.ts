@@ -51,7 +51,7 @@ interface ChatConversation {
  */
 class AIChatService {
   private conversations: Map<string, ChatConversation> = new Map();
-  
+
   constructor() {
     logger.info('[AIChatService] Initializing AI chat capabilities');
   }
@@ -143,7 +143,7 @@ class AIChatService {
     entities: any[];
   } {
     const messageLower = message.toLowerCase();
-    
+
     // Trading-related intents
     if (messageLower.includes('buy') || messageLower.includes('sell') || messageLower.includes('trade')) {
       return {
@@ -152,7 +152,7 @@ class AIChatService {
         entities: this.extractTradingEntities(message),
       };
     }
-    
+
     // Market analysis requests
     if (messageLower.includes('analyze') || messageLower.includes('analysis') || messageLower.includes('sentiment')) {
       return {
@@ -161,7 +161,7 @@ class AIChatService {
         entities: this.extractMarketEntities(message),
       };
     }
-    
+
     // Price/portfolio inquiries
     if (messageLower.includes('price') || messageLower.includes('portfolio') || messageLower.includes('position')) {
       return {
@@ -170,7 +170,7 @@ class AIChatService {
         entities: this.extractAssetEntities(message),
       };
     }
-    
+
     // Strategy questions
     if (messageLower.includes('strategy') || messageLower.includes('recommend') || messageLower.includes('suggest')) {
       return {
@@ -202,20 +202,20 @@ class AIChatService {
     recommendations?: any[];
   }> {
     const currentTime = new Date().toLocaleString();
-    
+
     switch (intent.type) {
       case 'trading_action':
         return this.generateTradingResponse(message, intent, marketContext);
-        
+
       case 'market_analysis':
         return this.generateAnalysisResponse(message, intent, marketContext, ingestionStats);
-        
+
       case 'information_request':
         return this.generateInformationResponse(message, intent, marketContext);
-        
+
       case 'strategy_consultation':
         return this.generateStrategyResponse(message, intent, marketContext);
-        
+
       default:
         return {
           content: `Hi! I'm Stevie, your AI trading companion. I can help you with market analysis, trading strategies, portfolio insights, and real-time market data. 
@@ -242,7 +242,7 @@ What would you like to know about the markets today?`,
   }> {
     const symbols = intent.entities.filter((e: any) => e.type === 'symbol');
     const actions = intent.entities.filter((e: any) => e.type === 'action');
-    
+
     let analysis = {
       sentiment: Math.random() > 0.5 ? 'bullish' : 'bearish',
       confidence: Math.random() * 0.4 + 0.6, // 0.6-1.0
@@ -334,14 +334,14 @@ ${recommendations[0].action.toUpperCase()} ${recommendations[0].symbol} - ${reco
   }> {
     const entities = intent.entities;
     const symbols = entities.filter((e: any) => e.type === 'symbol');
-    
+
     let content = '';
-    
+
     if (symbols.length > 0) {
       const symbol = symbols[0].value.toUpperCase();
       const mockPrice = Math.random() * 100000 + 1000;
       const change = (Math.random() - 0.5) * 10;
-      
+
       content = `💰 **${symbol} Market Information**
 
 **Current Status:**
@@ -450,7 +450,7 @@ ${strategies.map(s => `• ${s.name} (${s.riskLevel} risk)`).join('\n')}
   private extractTradingEntities(message: string): any[] {
     const entities = [];
     const messageLower = message.toLowerCase();
-    
+
     // Extract symbols (simple pattern matching)
     const symbols = ['btc', 'eth', 'sol', 'ada', 'dot', 'bitcoin', 'ethereum'];
     symbols.forEach(symbol => {
@@ -458,7 +458,7 @@ ${strategies.map(s => `• ${s.name} (${s.riskLevel} risk)`).join('\n')}
         entities.push({ type: 'symbol', value: symbol === 'bitcoin' ? 'BTC' : symbol === 'ethereum' ? 'ETH' : symbol.toUpperCase() });
       }
     });
-    
+
     // Extract actions
     const actions = ['buy', 'sell', 'hold', 'long', 'short'];
     actions.forEach(action => {
@@ -466,7 +466,7 @@ ${strategies.map(s => `• ${s.name} (${s.riskLevel} risk)`).join('\n')}
         entities.push({ type: 'action', value: action });
       }
     });
-    
+
     return entities;
   }
 
@@ -476,14 +476,14 @@ ${strategies.map(s => `• ${s.name} (${s.riskLevel} risk)`).join('\n')}
   private extractMarketEntities(message: string): any[] {
     const entities = [];
     const messageLower = message.toLowerCase();
-    
+
     const analysisTypes = ['technical', 'fundamental', 'sentiment', 'trend'];
     analysisTypes.forEach(type => {
       if (messageLower.includes(type)) {
         entities.push({ type: 'analysis_type', value: type });
       }
     });
-    
+
     return entities;
   }
 
@@ -493,14 +493,14 @@ ${strategies.map(s => `• ${s.name} (${s.riskLevel} risk)`).join('\n')}
   private extractAssetEntities(message: string): any[] {
     const entities = [];
     const messageLower = message.toLowerCase();
-    
+
     const assets = ['btc', 'eth', 'sol', 'ada', 'dot', 'portfolio', 'position'];
     assets.forEach(asset => {
       if (messageLower.includes(asset)) {
         entities.push({ type: 'asset', value: asset.toUpperCase() });
       }
     });
-    
+
     return entities;
   }
 
@@ -511,7 +511,7 @@ ${strategies.map(s => `• ${s.name} (${s.riskLevel} risk)`).join('\n')}
     try {
       const stats = connectorManager.getIngestionStats();
       const health = await connectorManager.getConnectorsHealth();
-      
+
       return {
         symbol,
         stats,
@@ -541,7 +541,7 @@ ${strategies.map(s => `• ${s.name} (${s.riskLevel} risk)`).join('\n')}
       createdAt: new Date(),
       updatedAt: new Date(),
     };
-    
+
     this.conversations.set(conversation.id, conversation);
     return conversation;
   }
@@ -716,5 +716,4 @@ router.post('/conversations', async (req, res) => {
   }
 });
 
-export const aiChatRouter = router;
-export default router;
+export { router as default, router as aiChatRoutes };

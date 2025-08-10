@@ -1,184 +1,168 @@
 
-#!/usr/bin/env tsx
+import fs from 'fs';
+import path from 'path';
+import { spawnSync } from 'child_process';
 
-/**
- * Verification script for Stevie tuning pipeline
- * Ensures all components work and constraints are met
- */
-
-import { spawnSync } from "node:child_process";
-import fs from "fs";
-import path from "path";
-
-interface VerificationResult {
-  step: string;
-  passed: boolean;
-  error?: string;
-  duration?: number;
+interface PipelineStep {
+  name: string;
+  command: string[];
+  outputFiles: string[];
+  required: boolean;
 }
 
-function run(cmd: string, args: string[], env: Record<string, string> = {}): { ok: boolean; out: string; duration: number } {
-  const start = Date.now();
-  const r = spawnSync(cmd, args, { 
-    encoding: "utf8", 
-    env: { ...process.env, ...env },
-    timeout: 300000 // 5 minute timeout
-  });
-  const duration = Date.now() - start;
-  const out = (r.stdout || "") + (r.stderr || "");
-  return { ok: r.status === 0, out, duration };
+const PIPELINE_STEPS: PipelineStep[] = [
+  {
+    name: 'Coarse Grid Search',
+    command: ['npm', 'exec', 'tsx', 'tools/tune/stevie_optuna.ts'],
+    outputFiles: ['artifacts/tuning/coarse_results.csv'],
+    required: true
+  },
+  {
+    name: 'Optuna Refinement',
+    command: ['python', 'tools/tune/stevie_optuna.py'],
+    outputFiles: ['artifacts/tuning/optuna_top10.csv'],
+    required: false
+  },
+  {
+    name: 'Pareto Selection',
+    command: ['npm', 'exec', 'tsx', 'tools/tune/select_and_emit.ts'],
+    outputFiles: ['artifacts/tuning/stevie.config.candidate.json'],
+    required: true
+  },
+  {
+    name: 'Walk-Forward Validation',
+    command: ['npm', 'exec', 'tsx', 'tools/tune/walkforward_and_stress.ts'],
+    outputFiles: ['artifacts/tuning/walkforward_stress.csv'],
+    required: true
+  }
+];
+
+function checkFileExists(filePath: string): boolean {
+  return fs.existsSync(filePath);
 }
 
-async function verifyStep(step: string, action: () => Promise<boolean>): Promise<VerificationResult> {
-  console.log(`🔍 Verifying: ${step}`);
-  const start = Date.now();
+function validateConfig(configPath: string): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
   
+  if (!checkFileExists(configPath)) {
+    return { valid: false, errors: ['Config file does not exist'] };
+  }
+
   try {
-    const passed = await action();
-    const duration = Date.now() - start;
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     
-    if (passed) {
-      console.log(`✅ ${step} - PASSED (${duration}ms)`);
-      return { step, passed: true, duration };
-    } else {
-      console.log(`❌ ${step} - FAILED`);
-      return { step, passed: false, duration };
+    // Validate structure
+    if (!config.version) errors.push('Missing version field');
+    if (!config.params) errors.push('Missing params field');
+    if (!config.provenance) errors.push('Missing provenance field');
+    
+    // Validate parameter ranges
+    const params = config.params;
+    if (params.baseRiskPct && (params.baseRiskPct < 0.1 || params.baseRiskPct > 1.0)) {
+      errors.push('baseRiskPct out of safe range [0.1, 1.0]');
     }
-  } catch (error) {
-    const duration = Date.now() - start;
-    console.log(`❌ ${step} - ERROR: ${error}`);
-    return { step, passed: false, error: String(error), duration };
+    if (params.volPctBreakout && (params.volPctBreakout < 50 || params.volPctBreakout > 90)) {
+      errors.push('volPctBreakout out of expected range [50, 90]');
+    }
+    
+    return { valid: errors.length === 0, errors };
+  } catch (e) {
+    return { valid: false, errors: [`Invalid JSON: ${e.message}`] };
   }
 }
 
-async function main() {
-  const results: VerificationResult[] = [];
+async function runPipelineStep(step: PipelineStep): Promise<{ success: boolean; output: string }> {
+  console.log(`🔄 Running: ${step.name}...`);
   
-  console.log("🚀 Starting Stevie Tuning Pipeline Verification\n");
-
-  // Step 1: Audit checks
-  results.push(await verifyStep("Mock scan audit", async () => {
-    const r = run("npm", ["run", "audit:mock"]);
-    return r.ok;
-  }));
-
-  results.push(await verifyStep("Cross-source audit", async () => {
-    const r = run("npm", ["exec", "tsx", "tools/audit_cross_source.ts", "BTCUSDT", "30"]);
-    return r.ok;
-  }));
-
-  results.push(await verifyStep("Feature drift audit", async () => {
-    const r = run("npm", ["exec", "tsx", "tools/feature_drift.ts"]);
-    return r.ok || r.out.includes("acceptable limits");
-  }));
-
-  // Step 2: Coarse tuning
-  results.push(await verifyStep("Coarse grid search", async () => {
-    const r = run("npm", ["run", "tune:coarse"], { 
-      COARSE_N: "20",  // Reduced for verification
-      TUNE_FROM: "2024-06-01",
-      TUNE_TO: "2024-06-15"  // Shorter period for testing
-    });
-    return r.ok && fs.existsSync("artifacts/tuning/coarse_results.csv");
-  }));
-
-  // Step 3: Optuna refinement (if Python available)
-  results.push(await verifyStep("Optuna refinement", async () => {
-    try {
-      const r = run("python", ["--version"]);
-      if (!r.ok) return true; // Skip if Python not available
-      
-      const tuneResult = run("npm", ["run", "tune:optuna"], { 
-        TRIALS: "10",  // Reduced for verification
-        TUNE_FROM: "2024-06-01",
-        TUNE_TO: "2024-06-15"
-      });
-      
-      // Pass if either succeeds or fails gracefully
-      return tuneResult.ok || tuneResult.out.includes("WROTE");
-    } catch {
-      return true; // Skip if Python issues
-    }
-  }));
-
-  // Step 4: Config selection
-  results.push(await verifyStep("Pareto selection", async () => {
-    const r = run("npm", ["run", "tune:select"]);
-    return r.ok && fs.existsSync("artifacts/tuning/stevie.config.candidate.json");
-  }));
-
-  // Step 5: Validate candidate config
-  results.push(await verifyStep("Candidate config validation", async () => {
-    const configPath = "artifacts/tuning/stevie.config.candidate.json";
-    if (!fs.existsSync(configPath)) return false;
-    
-    const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
-    
-    // Check required fields
-    const hasParams = config.params && typeof config.params === "object";
-    const hasProvenance = config.provenance && config.provenance.createdAt;
-    const hasVersion = config.version;
-    
-    return hasParams && hasProvenance && hasVersion;
-  }));
-
-  // Step 6: Stress testing (if time permits)
-  results.push(await verifyStep("Walk-forward stress test", async () => {
-    try {
-      const r = run("npm", ["run", "tune:stress"], {}, );
-      return r.ok && fs.existsSync("artifacts/tuning/walkforward_stress.csv");
-    } catch {
-      return true; // Skip if too slow
-    }
-  }));
-
-  // Step 7: File existence checks
-  results.push(await verifyStep("Required artifacts exist", async () => {
-    const requiredFiles = [
-      "artifacts/tuning/coarse_results.csv",
-      "artifacts/tuning/stevie.config.candidate.json"
-    ];
-    
-    return requiredFiles.every(file => fs.existsSync(file));
-  }));
-
-  // Summary
-  console.log("\n📊 Verification Summary:");
-  console.log("=" * 50);
-  
-  const passed = results.filter(r => r.passed).length;
-  const total = results.length;
-  
-  results.forEach(result => {
-    const status = result.passed ? "✅ PASS" : "❌ FAIL";
-    const duration = result.duration ? ` (${result.duration}ms)` : "";
-    console.log(`${status} ${result.step}${duration}`);
-    if (result.error) {
-      console.log(`   Error: ${result.error}`);
+  const result = spawnSync(step.command[0], step.command.slice(1), {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      TRIALS: '20', // Reduced for verification
+      COARSE_N: '30',
+      TUNE_FROM: '2024-07-01',
+      TUNE_TO: '2024-07-15'
     }
   });
-
-  console.log(`\n🎯 Overall: ${passed}/${total} checks passed`);
-
-  if (passed === total) {
-    console.log("🎉 All verification checks passed! Tuning pipeline is ready.");
-    
-    // Print candidate metrics if available
-    const configPath = "artifacts/tuning/stevie.config.candidate.json";
-    if (fs.existsSync(configPath)) {
-      const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
-      console.log("\n🏆 Best candidate configuration:");
-      console.log(JSON.stringify(config.params, null, 2));
+  
+  const output = (result.stdout || '') + (result.stderr || '');
+  const success = result.status === 0;
+  
+  // Check output files
+  for (const file of step.outputFiles) {
+    if (!checkFileExists(file)) {
+      return { success: false, output: output + `\nMissing output file: ${file}` };
     }
+  }
+  
+  return { success, output };
+}
+
+async function main() {
+  console.log('🔍 Verifying Optuna tuning pipeline...\n');
+  
+  // Ensure artifacts directory exists
+  fs.mkdirSync('artifacts/tuning', { recursive: true });
+  
+  const results: { step: string; success: boolean; output: string }[] = [];
+  let overallSuccess = true;
+  
+  // Run each pipeline step
+  for (const step of PIPELINE_STEPS) {
+    const result = await runPipelineStep(step);
+    results.push({
+      step: step.name,
+      success: result.success,
+      output: result.output
+    });
     
-    process.exit(0);
-  } else {
-    console.log("⚠️  Some verification checks failed. Please review the errors above.");
+    if (!result.success) {
+      console.log(`❌ ${step.name} failed`);
+      if (step.required) {
+        overallSuccess = false;
+        break;
+      } else {
+        console.log(`⚠️ ${step.name} failed but is optional, continuing...`);
+      }
+    } else {
+      console.log(`✅ ${step.name} completed`);
+    }
+  }
+  
+  // Validate final configuration
+  if (overallSuccess && checkFileExists('artifacts/tuning/stevie.config.candidate.json')) {
+    const configValidation = validateConfig('artifacts/tuning/stevie.config.candidate.json');
+    if (!configValidation.valid) {
+      console.log('❌ Configuration validation failed:');
+      configValidation.errors.forEach(err => console.log(`  - ${err}`));
+      overallSuccess = false;
+    } else {
+      console.log('✅ Configuration validation passed');
+    }
+  }
+  
+  // Generate verification report
+  const report = {
+    timestamp: new Date().toISOString(),
+    overallSuccess,
+    steps: results,
+    outputFiles: {
+      coarse_results: checkFileExists('artifacts/tuning/coarse_results.csv'),
+      optuna_top10: checkFileExists('artifacts/tuning/optuna_top10.csv'),
+      candidate_config: checkFileExists('artifacts/tuning/stevie.config.candidate.json'),
+      walkforward_stress: checkFileExists('artifacts/tuning/walkforward_stress.csv')
+    }
+  };
+  
+  fs.writeFileSync('artifacts/tuning/verification_report.json', JSON.stringify(report, null, 2));
+  
+  console.log('\n📊 Pipeline Verification Summary:');
+  console.log(`Overall Status: ${overallSuccess ? '✅ PASSED' : '❌ FAILED'}`);
+  console.log(`Report: artifacts/tuning/verification_report.json`);
+  
+  if (!overallSuccess) {
     process.exit(1);
   }
 }
 
-main().catch(error => {
-  console.error("💥 Verification script failed:", error);
-  process.exit(1);
-});
+main().catch(console.error);

@@ -19,34 +19,17 @@ export const externalConnectorsRouter = Router();
 externalConnectorsRouter.get('/health', async (req, res) => {
   try {
     const healthSummaries = await connectorManager.getAllConnectorHealth();
-    
-    // Also get latest health data from database
-    const dbHealth = await db
-      .select()
-      .from(connectorHealth)
-      .orderBy(desc(connectorHealth.updatedAt));
-
-    const combinedHealth = healthSummaries.map(summary => {
-      const dbRecord = dbHealth.find(h => h.provider === summary.provider);
-      return {
-        ...summary,
-        lastSuccessfulFetch: dbRecord?.lastSuccessfulFetch,
-        quotaUsed: dbRecord?.quotaUsed || summary.requestCount,
-        quotaLimit: dbRecord?.quotaLimit,
-        lastError: dbRecord?.lastError,
-      };
-    });
 
     res.json({
       success: true,
       data: {
-        connectors: combinedHealth,
+        connectors: healthSummaries,
         summary: {
-          total: combinedHealth.length,
-          healthy: combinedHealth.filter(c => c.status === 'healthy').length,
-          degraded: combinedHealth.filter(c => c.status === 'degraded').length,
-          down: combinedHealth.filter(c => c.status === 'down').length,
-          configured: combinedHealth.filter(c => c.configured).length,
+          total: healthSummaries.length,
+          healthy: healthSummaries.filter(c => c.status === 'healthy').length,
+          degraded: healthSummaries.filter(c => c.status === 'degraded').length,
+          down: healthSummaries.filter(c => c.status === 'down').length,
+          configured: healthSummaries.filter(c => c.configured).length,
         },
       },
     });

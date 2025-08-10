@@ -172,6 +172,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // External connectors API (Phase A - Compliance Mode)
   app.use('/api/connectors', externalConnectorsRouter);
+
+  // Phase B: AI Chat Integration
+  const { aiChatRouter } = await import('./routes/aiChat.js');
+  app.use('/api/ai', aiChatRouter);
   
   // Real algorithm benchmark routes (actual trading performance testing)
   const { realBenchmarkRoutes } = await import('./routes/realBenchmarkRoutes');

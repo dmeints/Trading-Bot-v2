@@ -1,6 +1,6 @@
 import { useTradingStore } from '@/stores/tradingStore';
 import { Card } from '@/components/ui/card';
-import { BarChart3, TrendingUp, Wallet, Settings, Activity, Zap, Brain } from 'lucide-react';
+import { BarChart3, TrendingUp, Wallet, Settings, Activity, Zap, Brain, MessageCircle } from 'lucide-react';
 import { useLocation } from 'wouter';
 
 export default function SidebarNavigation() {
@@ -115,6 +115,18 @@ export default function SidebarNavigation() {
           >
             <Brain className="w-4 h-4" />
             <span className="text-sm font-medium">RL Training</span>
+          </button>
+          <button 
+            onClick={() => setLocation('/ai-chat')}
+            className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors ${
+              location === '/ai-chat' 
+                ? 'bg-purple-600/20 text-purple-400' 
+                : 'text-gray-400 hover:bg-gray-700 hover:text-white'
+            }`}
+            data-testid="link-ai-chat"
+          >
+            <MessageCircle className="w-4 h-4" />
+            <span className="text-sm font-medium">AI Chat</span>
           </button>
           <button 
             onClick={() => setLocation('/service-level')}

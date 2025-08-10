@@ -4,7 +4,7 @@
  * Ensures system is ready for live trading deployment
  */
 
-import { PaperTradeBridge } from './paperTradeBridge';
+import { paperTradeBridge, PaperTradeBridge } from './paperTradeBridge';
 import { logger } from '../utils/logger';
 
 export class LiveDeploymentValidator {
@@ -12,7 +12,7 @@ export class LiveDeploymentValidator {
   private validationResults: Map<string, boolean> = new Map();
 
   constructor() {
-    this.paperTradeBridge = PaperTradeBridge.getInstance();
+    this.paperTradeBridge = paperTradeBridge;
   }
 
   async validateLiveReadiness(): Promise<{

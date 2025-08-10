@@ -42,8 +42,8 @@ import { ensembleOrchestrator } from "./services/ensembleAI";
 import { env } from "./config/env";
 import { logger } from "./utils/logger";
 import type { RequestWithId } from "./middleware/requestId";
-import { healthRoutes } from "./routes/healthRoutes";
-import { health } from "./routes/health";
+// import { healthRoutes } from "./routes/healthRoutes"; // Fixed: will use dynamic import
+// import { health } from "./routes/health"; // Fixed: health route now imported dynamically
 import { bench } from "./routes/bench";
 import { mlopsRoutes } from "./routes/mlopsRoutes";
 // import vectorRoutes from './routes/vectorRoutes';
@@ -157,8 +157,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Stevie Super-Training routes (v1.2 advanced RL system)
   app.use('/api/stevie/supertrain', stevieSupertainRoutes);
 
-  // Health & monitoring routes
-  app.use('/api', healthRoutes);
+  // Health & monitoring routes  
+  const { healthRoutes: healthCheckRoutes } = await import('./routes/healthRoutes');
+  app.use('/api', healthCheckRoutes);
   app.use('/api/bench', bench);
 
   // MLOps routes
@@ -216,8 +217,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/connectors-phase-a', connectorsRouter);
 
   // Phase B: AI Chat Integration
-  const { aiChatRouter } = await import('./routes/aiChat.js');
-  app.use('/api/ai', aiChatRouter);
+  const { aiChatRoutes } = await import('./routes/aiChat.js');
+  app.use('/api/ai', aiChatRoutes);
 
   // Phase C: Advanced Trading Strategies
   const { strategiesRouter } = await import('./routes/strategies.js');
@@ -272,8 +273,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/real-benchmark', realBenchmarkRoutes);
 
   // Health routes (SLO monitoring)
-  const { health } = await import('./routes/health');
-  app.use('/api/health', health);
+  const { healthRoutes } = await import('./routes/health');
+  app.use('/api/health', healthRoutes);
 
   // Plugin system routes
   app.use('/api/plugins', pluginRoutes);
@@ -1701,8 +1702,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Health and SLO endpoint
-  app.use('/api/health', health);
+  // Health and SLO endpoint (already registered above)
 
   // Comprehensive Features endpoint
   app.use('/api/comprehensive', comprehensiveFeaturesRouter);
@@ -1718,6 +1718,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/universal', universalRoutes);
 
   // Paper trade bridge routes
+  const { paperTradeBridgeRoutes } = await import('./routes/paperTradeBridge');
   app.use('/api/paper-trade', paperTradeBridgeRoutes);
 
   // Live deployment routes

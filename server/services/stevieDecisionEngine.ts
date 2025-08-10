@@ -24,6 +24,7 @@ export interface TradingDecision {
 export class StevieDecisionEngine {
   private lastDecisionTime: Map<string, number> = new Map();
   private recentDecisions: Map<string, TradingDecision[]> = new Map();
+  private currentConfig = defaultStevieConfig;
 
   constructor() {
     logger.info('[StevieDecisionEngine] Initialized with real algorithmic trading logic');
@@ -37,7 +38,7 @@ export class StevieDecisionEngine {
       // Enforce cooldown period
       const lastTime = this.lastDecisionTime.get(symbol) || 0;
       const now = Date.now();
-      const cooldownMs = defaultStevieConfig.minInterTradeSec * 1000;
+      const cooldownMs = this.currentConfig.minInterTradeSec * 1000;
       
       if (now - lastTime < cooldownMs) {
         return {
@@ -60,8 +61,8 @@ export class StevieDecisionEngine {
         avgPrice: currentPosition.avgPrice
       } : null;
 
-      // Run the REAL algorithm
-      const decision = decide(features, position, defaultStevieConfig);
+      // Run the REAL algorithm with current optimized configuration
+      const decision = decide(features, position, this.currentConfig);
       
       this.lastDecisionTime.set(symbol, now);
 
@@ -237,6 +238,62 @@ export class StevieDecisionEngine {
       avgConfidence: Math.round(avgConfidence),
       avgPositionSize: avgSize.toFixed(3),
       activeDecisions: totalDecisions - (actionCounts.HOLD || 0)
+    };
+  }
+
+  /**
+   * Update algorithm configuration (called by RL parameter optimizer)
+   */
+  updateConfiguration(newConfig: any): void {
+    this.currentConfig = { ...this.currentConfig, ...newConfig };
+    logger.info('[StevieDecisionEngine] Updated configuration', {
+      updatedParams: Object.keys(newConfig),
+      newConfig: JSON.stringify(newConfig, null, 2)
+    });
+  }
+
+  /**
+   * Get current configuration
+   */
+  getCurrentConfiguration(): any {
+    return { ...this.currentConfig };
+  }
+
+  /**
+   * Get recent performance metrics for RL optimization
+   */
+  getRecentPerformanceMetrics(symbol: string): {
+    decisionCount: number;
+    averageConfidence: number;
+    actionDistribution: { [key: string]: number };
+    recentTags: string[];
+  } {
+    const decisions = this.recentDecisions.get(symbol) || [];
+    
+    if (decisions.length === 0) {
+      return {
+        decisionCount: 0,
+        averageConfidence: 0,
+        actionDistribution: {},
+        recentTags: []
+      };
+    }
+
+    const actionDistribution: { [key: string]: number } = {};
+    const tags: string[] = [];
+    let totalConfidence = 0;
+
+    decisions.forEach(decision => {
+      actionDistribution[decision.action] = (actionDistribution[decision.action] || 0) + 1;
+      totalConfidence += decision.confidence;
+      if (decision.tag) tags.push(decision.tag);
+    });
+
+    return {
+      decisionCount: decisions.length,
+      averageConfidence: totalConfidence / decisions.length,
+      actionDistribution,
+      recentTags: tags
     };
   }
 }

@@ -1556,6 +1556,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Revolutionary Enhancements Routes
   app.use('/api/revolutionary-enhancements', (await import('./routes/revolutionaryEnhancements')).revolutionaryEnhancementsRouter);
+
+  // RL Training Routes
+  app.use('/api/rl-training', (await import('./routes/rl-training')).default);
   
   // Revolutionary Systems Routes (Quantum Consciousness, Collective Superintelligence, etc.)
   app.use('/api/revolutionary', (await import('./routes/revolutionary')).default);

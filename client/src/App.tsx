@@ -76,6 +76,7 @@ function Router() {
             <Route path="/system" component={SystemDashboard} />
             <Route path="/mlops" component={MLOpsDashboard} />
             <Route path="/connectors-demo" component={ConnectorsDemo} />
+            <Route path="/ai-chat" component={AIChat} />
             <Route path="/rl-training" component={RLTraining} />
             <Route path="/plugins" component={PluginMarketplace} />
             <Route path="/strategy-builder" component={StrategyBuilder} />

@@ -1,342 +1,462 @@
-import React, { useState, useRef, useEffect } from 'react';
+/**
+ * Phase B - AI Chat Integration Frontend
+ * Comprehensive conversational interface for Stevie's AI trading companion
+ */
+
+import { useState, useEffect, useRef } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Card } from '@/components/ui/card';
-import { Send, Bot, User, TrendingUp, AlertCircle, CheckCircle } from 'lucide-react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiRequest, queryClient as defaultQueryClient } from '@/lib/queryClient';
-import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Skeleton } from '@/components/ui/skeleton';
+import { 
+  Send, 
+  Bot, 
+  User, 
+  MessageSquare, 
+  TrendingUp, 
+  BarChart3, 
+  Target, 
+  Lightbulb,
+  Clock,
+  CheckCircle,
+  AlertTriangle,
+  Sparkles,
+  Brain,
+  Zap,
+  Activity,
+  Plus,
+  History,
+  RefreshCw
+} from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import { cn } from '@/lib/utils';
 
-interface Message {
+interface ChatMessage {
   id: string;
-  type: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: Date;
-  metadata?: {
-    confidence?: number;
-    tradingSignal?: 'BUY' | 'SELL' | 'HOLD';
-    marketData?: any;
-  };
+  context?: any;
+  metadata?: any;
+}
+
+interface Conversation {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+  lastMessage?: string;
 }
 
 interface ChatResponse {
-  message: string;
-  confidence?: number;
-  tradingSignal?: 'BUY' | 'SELL' | 'HOLD';
-  marketData?: any;
+  response: string;
+  conversationId: string;
+  analysis?: any;
+  recommendations?: any[];
+  marketInsights?: any;
 }
 
 export default function AIChat() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      type: 'assistant',
-      content: "Hey there! I'm Stevie, your AI trading companion! 🚀 I'm here to help you analyze markets, understand trading opportunities, and make data-driven decisions. What would you like to know about the crypto markets today?",
-      timestamp: new Date(),
-      metadata: { confidence: 0.95 }
-    }
-  ]);
-  const [input, setInput] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
+  const [activeConversation, setActiveConversation] = useState<string>('');
+  const [messageInput, setMessageInput] = useState('');
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const queryClientInstance = useQueryClient();
-  const { toast } = useToast();
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const queryClient = useQueryClient();
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  // Get current market context for Stevie
-  const { data: marketData } = useQuery({
-    queryKey: ['/api/market/price'],
-    refetchInterval: 30000, // Refresh every 30 seconds
-  });
-
-  const { data: portfolioData } = useQuery({
-    queryKey: ['/api/portfolio/summary'],
-    refetchInterval: 10000, // Refresh every 10 seconds
-  });
-
-  const { data: recommendations } = useQuery({
-    queryKey: ['/api/ai/recommendations'],
-    refetchInterval: 60000, // Refresh every minute
-  });
-
-  const sendMessage = useMutation({
-    mutationFn: async (message: string): Promise<ChatResponse> => {
-      const response = await fetch('/api/ai/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          message,
-          context: {
-            marketData: marketData?.data,
-            portfolioData: portfolioData?.data,
-            recommendations: recommendations || []
-          }
-        }),
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      return {
-        message: data.message,
-        confidence: data.confidence,
-        tradingSignal: data.tradingSignal,
-        marketData: data.marketData,
-      };
+  // Predefined message suggestions
+  const messageSuggestions = [
+    { 
+      text: "Analyze Bitcoin's current market sentiment", 
+      icon: TrendingUp, 
+      category: "analysis" 
     },
-    onSuccess: (response) => {
-      const assistantMessage: Message = {
+    { 
+      text: "What's your trading recommendation for ETH?", 
+      icon: Target, 
+      category: "trading" 
+    },
+    { 
+      text: "Show me my portfolio performance", 
+      icon: BarChart3, 
+      category: "portfolio" 
+    },
+    { 
+      text: "Suggest a trading strategy for current conditions", 
+      icon: Lightbulb, 
+      category: "strategy" 
+    },
+    { 
+      text: "What are the latest market trends?", 
+      icon: Activity, 
+      category: "market" 
+    },
+    { 
+      text: "Explain the current market volatility", 
+      icon: Brain, 
+      category: "education" 
+    },
+  ];
+
+  // Fetch conversations list
+  const { data: conversationsData, isLoading: conversationsLoading } = useQuery({
+    queryKey: ['/api/ai/conversations'],
+    refetchInterval: 30000,
+  });
+
+  // Send message mutation
+  const sendMessageMutation = useMutation({
+    mutationFn: (data: { message: string; context?: any; conversationId?: string }) => 
+      apiRequest('/api/ai/chat', 'POST', data),
+    onSuccess: (data: ChatResponse) => {
+      // Add assistant response to messages
+      const assistantMessage: ChatMessage = {
         id: Date.now().toString(),
-        type: 'assistant',
-        content: response.message,
+        role: 'assistant',
+        content: data.response,
         timestamp: new Date(),
         metadata: {
-          confidence: response.confidence,
-          tradingSignal: response.tradingSignal,
-          marketData: response.marketData,
-        }
+          analysis: data.analysis,
+          recommendations: data.recommendations,
+          marketInsights: data.marketInsights,
+        },
       };
+
       setMessages(prev => [...prev, assistantMessage]);
-      setIsTyping(false);
-    },
-    onError: (error: any) => {
-      console.error('Chat error:', error);
-      toast({
-        title: "Chat Error",
-        description: "Failed to get response from Stevie. Please try again.",
-        variant: "destructive",
-      });
-      setIsTyping(false);
+      setActiveConversation(data.conversationId);
+      setShowSuggestions(false);
+      
+      // Refresh conversations list
+      queryClient.invalidateQueries({ queryKey: ['/api/ai/conversations'] });
     },
   });
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || sendMessage.isPending) return;
+  // Create new conversation mutation
+  const newConversationMutation = useMutation({
+    mutationFn: () => apiRequest('/api/ai/conversations', 'POST', {}),
+    onSuccess: () => {
+      setMessages([]);
+      setActiveConversation('');
+      setShowSuggestions(true);
+      queryClient.invalidateQueries({ queryKey: ['/api/ai/conversations'] });
+    },
+  });
 
-    const userMessage: Message = {
+  // Handle send message
+  const handleSendMessage = async (messageText?: string) => {
+    const message = messageText || messageInput.trim();
+    if (!message) return;
+
+    // Add user message to chat
+    const userMessage: ChatMessage = {
       id: Date.now().toString(),
-      type: 'user',
-      content: input.trim(),
+      role: 'user',
+      content: message,
       timestamp: new Date(),
     };
 
     setMessages(prev => [...prev, userMessage]);
-    setInput('');
-    setIsTyping(true);
-
-    sendMessage.mutate(input.trim());
-  };
-
-  const getSignalBadge = (signal?: string) => {
-    if (!signal) return null;
+    setMessageInput('');
     
-    const config = {
-      BUY: { color: 'bg-green-600', icon: TrendingUp },
-      SELL: { color: 'bg-red-600', icon: AlertCircle },
-      HOLD: { color: 'bg-blue-600', icon: CheckCircle },
-    }[signal];
-
-    if (!config) return null;
-
-    const Icon = config.icon;
-    return (
-      <Badge className={`${config.color} text-white ml-2`}>
-        <Icon className="w-3 h-3 mr-1" />
-        {signal}
-      </Badge>
-    );
+    // Send to API
+    sendMessageMutation.mutate({
+      message,
+      conversationId: activeConversation || undefined,
+      context: {
+        timestamp: new Date().toISOString(),
+        source: 'web_chat',
+      },
+    });
   };
 
-  const getConfidenceBadge = (confidence?: number) => {
-    if (!confidence) return null;
-    
-    const percentage = Math.round(confidence * 100);
-    const color = confidence > 0.8 ? 'bg-green-100 text-green-800' : 
-                  confidence > 0.6 ? 'bg-yellow-100 text-yellow-800' : 
-                  'bg-red-100 text-red-800';
-
-    return (
-      <Badge className={`${color} text-xs ml-2`}>
-        {percentage}% confidence
-      </Badge>
-    );
+  // Handle suggestion click
+  const handleSuggestionClick = (suggestion: string) => {
+    handleSendMessage(suggestion);
   };
+
+  // Handle key press
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
+
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // Focus input on mount
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
 
   return (
-    <div className="flex flex-col h-full max-w-4xl mx-auto p-4 space-y-4">
+    <div className="h-screen flex flex-col bg-background" data-testid="ai-chat">
       {/* Header */}
-      <Card className="p-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white">
-        <div className="flex items-center space-x-3">
-          <Bot className="w-8 h-8" />
-          <div>
-            <h1 className="text-xl font-bold">Stevie AI Chat</h1>
-            <p className="text-sm opacity-90">Your intelligent trading companion with real-time market analysis</p>
+      <div className="border-b bg-card p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="relative">
+              <Bot className="h-8 w-8 text-primary" />
+              <div className="absolute -bottom-1 -right-1 h-3 w-3 bg-green-500 rounded-full border-2 border-background"></div>
+            </div>
+            <div>
+              <h1 className="text-xl font-semibold" data-testid="chat-title">
+                Stevie AI Assistant
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Your intelligent trading companion
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Badge variant="secondary" className="bg-green-100 text-green-800">
+              <Sparkles className="h-3 w-3 mr-1" />
+              Online
+            </Badge>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => newConversationMutation.mutate()}
+              disabled={newConversationMutation.isPending}
+              data-testid="button-new-chat"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              New Chat
+            </Button>
           </div>
         </div>
-      </Card>
+      </div>
 
-      {/* Market Context Panel */}
-      <Card className="p-4">
-        <div className="flex flex-wrap gap-4 text-sm">
-          {marketData?.data?.price && (
-            <div className="flex items-center space-x-2">
-              <span className="text-muted-foreground">BTC:</span>
-              <span className="font-medium">${(marketData.data.price as number)?.toLocaleString()}</span>
+      <div className="flex flex-1 overflow-hidden">
+        {/* Conversations Sidebar */}
+        <div className="w-80 border-r bg-card/50">
+          <div className="p-4 border-b">
+            <h2 className="font-semibold flex items-center">
+              <History className="h-4 w-4 mr-2" />
+              Recent Conversations
+            </h2>
+          </div>
+          <ScrollArea className="h-full">
+            <div className="p-4 space-y-2">
+              {conversationsLoading ? (
+                [...Array(5)].map((_, i) => (
+                  <Skeleton key={i} className="h-16 w-full" />
+                ))
+              ) : (
+                conversationsData?.conversations?.map((conv: Conversation) => (
+                  <Card 
+                    key={conv.id} 
+                    className={cn(
+                      "cursor-pointer transition-colors hover:bg-accent",
+                      activeConversation === conv.id && "bg-accent"
+                    )}
+                    onClick={() => setActiveConversation(conv.id)}
+                    data-testid={`conversation-${conv.id}`}
+                  >
+                    <CardContent className="p-3">
+                      <div className="font-medium text-sm line-clamp-1">
+                        {conv.title}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                        {conv.lastMessage}
+                      </div>
+                      <div className="flex items-center justify-between mt-2">
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(conv.updatedAt).toLocaleDateString()}
+                        </span>
+                        <Badge variant="secondary" className="text-xs">
+                          {conv.messageCount} msgs
+                        </Badge>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
+              )}
             </div>
-          )}
-          {portfolioData?.data && (
-            <div className="flex items-center space-x-2">
-              <span className="text-muted-foreground">Portfolio:</span>
-              <span className="font-medium">${(portfolioData.data as any).totalValue?.toLocaleString()}</span>
-            </div>
-          )}
-          {recommendations && Array.isArray(recommendations) && recommendations.length > 0 && (
-            <div className="flex items-center space-x-2">
-              <span className="text-muted-foreground">Active Signals:</span>
-              <span className="font-medium">{recommendations.length}</span>
-            </div>
-          )}
+          </ScrollArea>
         </div>
-      </Card>
 
-      {/* Messages */}
-      <Card className="flex-1 p-4">
-        <ScrollArea className="h-96">
-          <div className="space-y-4">
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex items-start space-x-3 ${
-                  message.type === 'user' ? 'justify-end' : 'justify-start'
-                }`}
-              >
-                {message.type === 'assistant' && (
-                  <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
-                    <Bot className="w-4 h-4 text-white" />
+        {/* Main Chat Area */}
+        <div className="flex-1 flex flex-col">
+          {/* Messages */}
+          <ScrollArea className="flex-1 p-4">
+            <div className="space-y-4 max-w-4xl mx-auto">
+              {messages.length === 0 && showSuggestions && (
+                <div className="text-center py-8">
+                  <Bot className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">Welcome to Stevie AI</h3>
+                  <p className="text-muted-foreground mb-6">
+                    I'm your AI trading companion. Ask me about market analysis, trading strategies, or portfolio insights.
+                  </p>
+                  
+                  {/* Suggestions Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-2xl mx-auto">
+                    {messageSuggestions.map((suggestion, index) => {
+                      const Icon = suggestion.icon;
+                      return (
+                        <Card 
+                          key={index}
+                          className="cursor-pointer transition-all hover:shadow-md hover:scale-105"
+                          onClick={() => handleSuggestionClick(suggestion.text)}
+                          data-testid={`suggestion-${index}`}
+                        >
+                          <CardContent className="p-4 text-left">
+                            <div className="flex items-start space-x-3">
+                              <Icon className="h-5 w-5 text-primary mt-1" />
+                              <div>
+                                <p className="font-medium text-sm">{suggestion.text}</p>
+                                <Badge variant="outline" className="mt-2 text-xs">
+                                  {suggestion.category}
+                                </Badge>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
                   </div>
-                )}
-                
+                </div>
+              )}
+
+              {/* Chat Messages */}
+              {messages.map((message, index) => (
                 <div
-                  className={`max-w-md p-3 rounded-lg ${
-                    message.type === 'user'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-muted text-foreground'
-                  }`}
-                >
-                  <p className="text-sm">{message.content}</p>
-                  
-                  {message.metadata && (
-                    <div className="flex flex-wrap items-center mt-2">
-                      {getSignalBadge(message.metadata.tradingSignal)}
-                      {getConfidenceBadge(message.metadata.confidence)}
-                    </div>
+                  key={message.id}
+                  className={cn(
+                    "flex gap-3 p-4 rounded-lg",
+                    message.role === 'user' 
+                      ? "bg-primary/10 ml-auto max-w-3xl" 
+                      : "bg-secondary/50 mr-auto max-w-4xl"
                   )}
-                  
-                  <div className="text-xs opacity-70 mt-1">
-                    {message.timestamp.toLocaleTimeString()}
+                  data-testid={`message-${index}`}
+                >
+                  <div className="flex-shrink-0">
+                    {message.role === 'user' ? (
+                      <User className="h-6 w-6 text-primary" />
+                    ) : (
+                      <Bot className="h-6 w-6 text-secondary-foreground" />
+                    )}
                   </div>
-                </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="font-medium text-sm">
+                        {message.role === 'user' ? 'You' : 'Stevie'}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {message.timestamp.toLocaleTimeString()}
+                      </span>
+                    </div>
+                    <div className="prose prose-sm max-w-none text-sm">
+                      {message.content.split('\n').map((line, i) => {
+                        if (line.startsWith('**') && line.endsWith('**')) {
+                          return (
+                            <div key={i} className="font-semibold text-base mb-2">
+                              {line.replace(/\*\*/g, '')}
+                            </div>
+                          );
+                        } else if (line.startsWith('•')) {
+                          return (
+                            <div key={i} className="ml-4 mb-1">
+                              {line}
+                            </div>
+                          );
+                        } else {
+                          return line && <p key={i} className="mb-2">{line}</p>;
+                        }
+                      })}
+                    </div>
 
-                {message.type === 'user' && (
-                  <div className="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center flex-shrink-0">
-                    <User className="w-4 h-4 text-white" />
+                    {/* Show analysis and recommendations for assistant messages */}
+                    {message.role === 'assistant' && message.metadata && (
+                      <div className="mt-4 space-y-3">
+                        {message.metadata.recommendations && (
+                          <div className="bg-card p-3 rounded-lg border">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Target className="h-4 w-4 text-primary" />
+                              <span className="font-medium text-sm">AI Recommendations</span>
+                            </div>
+                            {message.metadata.recommendations.map((rec: any, i: number) => (
+                              <div key={i} className="text-sm">
+                                <span className="font-medium">{rec.action?.toUpperCase()}</span> {rec.symbol} 
+                                - {(rec.confidence * 100).toFixed(0)}% confidence
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            ))}
-            
-            {isTyping && (
-              <div className="flex items-start space-x-3">
-                <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
-                  <Bot className="w-4 h-4 text-white" />
                 </div>
-                <div className="max-w-md p-3 rounded-lg bg-muted">
-                  <div className="flex space-x-1">
-                    <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"></div>
-                    <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                    <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+              ))}
+
+              {/* Typing indicator */}
+              {sendMessageMutation.isPending && (
+                <div className="flex gap-3 p-4 rounded-lg bg-secondary/50 mr-auto max-w-4xl">
+                  <Bot className="h-6 w-6 text-secondary-foreground" />
+                  <div className="flex items-center space-x-2">
+                    <div className="flex space-x-1">
+                      <div className="h-2 w-2 bg-primary rounded-full animate-bounce"></div>
+                      <div className="h-2 w-2 bg-primary rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                      <div className="h-2 w-2 bg-primary rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                    </div>
+                    <span className="text-sm text-muted-foreground">Stevie is thinking...</span>
                   </div>
                 </div>
+              )}
+
+              <div ref={messagesEndRef} />
+            </div>
+          </ScrollArea>
+
+          {/* Input Area */}
+          <div className="border-t bg-card p-4">
+            <div className="max-w-4xl mx-auto">
+              <div className="flex gap-2">
+                <Textarea
+                  ref={inputRef}
+                  value={messageInput}
+                  onChange={(e) => setMessageInput(e.target.value)}
+                  onKeyDown={handleKeyPress}
+                  placeholder="Ask Stevie about markets, strategies, or portfolio analysis..."
+                  className="resize-none min-h-[50px] max-h-32"
+                  disabled={sendMessageMutation.isPending}
+                  data-testid="input-message"
+                />
+                <Button
+                  onClick={() => handleSendMessage()}
+                  disabled={!messageInput.trim() || sendMessageMutation.isPending}
+                  size="lg"
+                  data-testid="button-send"
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
               </div>
-            )}
-            
-            <div ref={messagesEndRef} />
+              
+              {/* Quick Actions */}
+              <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
+                <div className="flex items-center gap-4">
+                  <span>Press Enter to send, Shift+Enter for new line</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-3 w-3 text-green-500" />
+                  <span>Connected to Stevie AI</span>
+                </div>
+              </div>
+            </div>
           </div>
-        </ScrollArea>
-      </Card>
-
-      {/* Input */}
-      <Card className="p-4">
-        <form onSubmit={handleSendMessage} className="flex space-x-2">
-          <Input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask Stevie about markets, trading strategies, or get portfolio analysis..."
-            className="flex-1"
-            disabled={sendMessage.isPending}
-            data-testid="input-chat-message"
-          />
-          <Button 
-            type="submit" 
-            disabled={!input.trim() || sendMessage.isPending}
-            data-testid="button-send-message"
-          >
-            <Send className="w-4 h-4" />
-          </Button>
-        </form>
-      </Card>
-
-      {/* Quick Actions */}
-      <Card className="p-4">
-        <div className="flex flex-wrap gap-2">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => setInput("What's the current market sentiment for Bitcoin?")}
-            data-testid="button-market-sentiment"
-          >
-            Market Sentiment
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => setInput("Analyze my portfolio performance")}
-            data-testid="button-portfolio-analysis"
-          >
-            Portfolio Analysis
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => setInput("What trading opportunities do you see right now?")}
-            data-testid="button-trading-opportunities"
-          >
-            Trading Opportunities
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => setInput("Explain your latest recommendation")}
-            data-testid="button-explain-recommendation"
-          >
-            Explain Recommendations
-          </Button>
         </div>
-      </Card>
+      </div>
     </div>
   );
 }

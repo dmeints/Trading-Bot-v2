@@ -16,6 +16,8 @@ import {
   riskMetrics,
   backtestResults,
   feedbackSubmissions,
+  aiChatConversations,
+  aiChatMessages,
   type User,
   type UpsertUser,
   type Position,
@@ -578,6 +580,38 @@ export class DatabaseStorage implements IStorage {
       logger.error('Failed to get connector health', error);
       throw error;
     }
+  }
+
+  // Phase B - AI Chat Integration Storage Methods
+  async storeAIChatConversation(conversation: any): Promise<void> {
+    await db.insert(aiChatConversations).values(conversation)
+      .onConflictDoUpdate({
+        target: aiChatConversations.id,
+        set: {
+          messageCount: conversation.messageCount,
+          lastMessage: conversation.lastMessage,
+          updatedAt: new Date(),
+        },
+      });
+  }
+
+  async getAIChatConversations(userId: string): Promise<any[]> {
+    return await db.select()
+      .from(aiChatConversations)
+      .where(eq(aiChatConversations.userId, userId))
+      .orderBy(desc(aiChatConversations.updatedAt))
+      .limit(20);
+  }
+
+  async storeAIChatMessage(message: any): Promise<void> {
+    await db.insert(aiChatMessages).values(message);
+  }
+
+  async getAIChatMessages(conversationId: string): Promise<any[]> {
+    return await db.select()
+      .from(aiChatMessages)
+      .where(eq(aiChatMessages.conversationId, conversationId))
+      .orderBy(asc(aiChatMessages.timestamp));
   }
 }
 

@@ -722,3 +722,34 @@ export const insertFeedbackSubmissionSchema = createInsertSchema(feedbackSubmiss
   id: true,
   submittedAt: true,
 });
+
+// Phase B - AI Chat Integration Tables
+export const aiChatConversations = pgTable('ai_chat_conversations', {
+  id: varchar('id', { length: 50 }).primaryKey(),
+  userId: varchar('user_id', { length: 50 }).notNull(),
+  title: varchar('title', { length: 200 }).notNull(),
+  messageCount: integer('message_count').default(0).notNull(),
+  lastMessage: text('last_message'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  metadata: jsonb('metadata'),
+});
+
+export const aiChatMessages = pgTable('ai_chat_messages', {
+  id: varchar('id', { length: 50 }).primaryKey(),
+  conversationId: varchar('conversation_id', { length: 50 }).notNull(),
+  role: varchar('role', { length: 20 }).notNull(), // 'user', 'assistant', 'system'
+  content: text('content').notNull(),
+  timestamp: timestamp('timestamp').defaultNow().notNull(),
+  context: jsonb('context'),
+  metadata: jsonb('metadata'),
+});
+
+export const insertAIChatConversationSchema = createInsertSchema(aiChatConversations).omit({
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertAIChatMessageSchema = createInsertSchema(aiChatMessages).omit({
+  timestamp: true,
+});

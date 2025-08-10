@@ -89,13 +89,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Development bypass middleware - fix authentication
   const isDevelopment = process.env.NODE_ENV === 'development';
-  
+
   if (isDevelopment) {
     // Apply early bypass for development
     app.use('*', async (req: any, res: any, next: any) => {
       req.user = { claims: { sub: 'dev-user-123' } };
       req.isAuthenticated = () => true;
-      
+
       // Ensure dev user exists in storage once
       if (!req.session?.devUserCreated) {
         try {
@@ -119,7 +119,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       next();
     });
   }
-  
+
   // Auth middleware
   if (!isDevelopment) {
     await setupAuth(app);
@@ -132,7 +132,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Features API for real algorithmic trading
   app.use('/api/features', featuresRouter);
-  
+
   // Unified features API with comprehensive validation
   const unifiedFeaturesRoutes = await import('./routes/unifiedFeatures');
   app.use('/api/features', unifiedFeaturesRoutes.default);
@@ -143,31 +143,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Stevie AI Companion routes
   app.use('/api/stevie', stevieRoutes);
-  
+
   // Register comprehensive new API routes for live paper trading
   registerMarketRoutes(app, isAuthenticated);
   registerStrategyRoutes(app, isAuthenticated); 
   // Backtest routes with deterministic validation
   app.use('/api/backtest', registerBacktestRoutes);
-  
+
   // Promotion gate routes for production readiness
   const promotionRoutes = await import('./routes/promotionRoutes');
   app.use('/api/promotion', promotionRoutes.default);
-  
+
   // Stevie Super-Training routes (v1.2 advanced RL system)
   app.use('/api/stevie/supertrain', stevieSupertainRoutes);
 
   // Health & monitoring routes
   app.use('/api', healthRoutes);
   app.use('/api/bench', bench);
-  
+
   // MLOps routes
   app.use('/api/mlops', mlopsRoutes);
 
   // Pillar 4: UX & Personalization routes
   app.use('/api/layouts', layoutRoutes);
   app.use('/api/experiments', experimentRoutes);
-  
+
   // Simple preferences endpoint for UI compatibility
   app.get('/api/preferences', async (req: any, res) => {
     try {
@@ -186,28 +186,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: 'Failed to fetch preferences' });
     }
   });
-  
+
   app.use('/api/preferences', preferencesRoutes);
 
   // Pillar 5: Scale, Monitoring & Resilience routes
   app.use('/api/monitoring', monitoringRoutes);
-  
+
   // Vector routes (temporarily disabled)
   // app.use('/api/vector', vectorRoutes);
-  
+
   // Feature routes (Stevie v1.3 data ingestion)
   app.use(featureRoutes);
-  
+
   // Stevie explanation routes (v1.4 LLM integration)
   app.use('/api/stevie', stevieRoutes);
-  
+
   // PHASE 6 & 7: Paper Run Implementation - TA and Exchange Routes
   app.use('/api/ta', taRoutes);
   app.use('/api/exchange', exchangeRoutes);
-  
+
   // Register all 6 exceptional enhancement services
   registerEnhancementRoutes(app);
-  
+
   // Data fusion routes (on-chain + sentiment)
   app.use('/api/fusion', dataFusionRoutes);
 
@@ -266,21 +266,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Stevie Core Algorithm API (comprehensive trading engine)
   const stevieCoreRouter = (await import('./routes/stevieCore.js')).default;
   app.use('/api/stevie-core', stevieCoreRouter);
-  
+
   // Real algorithm benchmark routes (actual trading performance testing)
   const { realBenchmarkRoutes } = await import('./routes/realBenchmarkRoutes');
   app.use('/api/real-benchmark', realBenchmarkRoutes);
-  
+
   // Health routes (SLO monitoring)
   const { health } = await import('./routes/health');
   app.use('/api/health', health);
-  
+
   // Plugin system routes
   app.use('/api/plugins', pluginRoutes);
-  
+
   // API documentation routes
   app.use('/api', docsRoutes);
-  
+
   // Admin routes
   const { adminRoutes } = await import('./routes/adminRoutes.js');
   app.use('/api/admin', adminRoutes);
@@ -291,7 +291,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!req.user) {
         return res.status(401).json({ authenticated: false });
       }
-      
+
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
       res.json({ 
@@ -320,13 +320,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ===== X API EMERGENCY PROTECTION SYSTEM =====
-  
+
   // X API usage monitoring endpoint (admin only)
   app.get('/api/admin/x-api/usage', rateLimiters.admin, adminAuth, (req: any, res: any) => {
     try {
       const stats = getXApiUsageStats();
       const cacheStats = xApiCache.getStats();
-      
+
       res.json({
         usage: stats,
         cache: cacheStats,
@@ -348,13 +348,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { symbol } = req.params;
       const analyzer = new SentimentAnalyzer();
-      
+
       // Add volatility header for smart triggering
       const volatility = parseFloat(req.query.volatility as string) || 0;
       req.headers['x-market-volatility'] = volatility.toString();
-      
+
       const sentiment = await analyzer.getAggregatedSentiment(symbol);
-      
+
       res.json({
         ...sentiment,
         metadata: {
@@ -376,15 +376,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { symbol } = req.params;
       const analyzer = new SentimentAnalyzer();
-      
+
       logger.warn('Manual X API override triggered by admin', { 
         symbol, 
         admin: req.user?.claims?.sub,
         warning: 'This consumes precious X API quota!'
       });
-      
+
       const sentiment = await analyzer.getAggregatedSentiment(symbol);
-      
+
       res.json({
         ...sentiment,
         metadata: {
@@ -402,13 +402,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ===== COMPREHENSIVE API GUARDRAILS SYSTEM =====
-  
+
   // All API usage monitoring endpoint (admin only)
   app.get('/api/admin/api-usage/all', rateLimiters.admin, adminAuth, (req: any, res: any) => {
     try {
       const allStats = getAllApiStats();
       const xStats = getXApiUsageStats();
-      
+
       res.json({
         apis: {
           x: {
@@ -441,15 +441,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { symbol } = req.params;
       const analyzer = new EnhancedSentimentAnalyzer();
-      
+
       logger.info('[Enhanced Sentiment] Request received with guardrails active', { 
         symbol,
         userAgent: req.headers['user-agent'],
         ip: req.ip
       });
-      
+
       const sentiment = await analyzer.getComprehensiveSentiment(symbol);
-      
+
       res.json({
         ...sentiment,
         metadata: {
@@ -470,9 +470,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { symbol } = req.params;
       const analyzer = new EnhancedSentimentAnalyzer();
-      
+
       const sentiment = await analyzer.getRedditSentiment(symbol);
-      
+
       res.json({
         ...sentiment,
         metadata: {
@@ -493,9 +493,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { symbol } = req.params;
       const analyzer = new EnhancedSentimentAnalyzer();
-      
+
       const sentiment = await analyzer.getCryptoPanicSentiment(symbol);
-      
+
       res.json({
         ...sentiment,
         metadata: {
@@ -516,9 +516,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { symbol } = req.params;
       const analyzer = new EnhancedSentimentAnalyzer();
-      
+
       const sentiment = await analyzer.getEtherscanOnChainSentiment(symbol);
-      
+
       res.json({
         ...sentiment,
         metadata: {
@@ -539,20 +539,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { apiName } = req.params;
       const { reason } = req.body;
-      
+
       if (!['reddit', 'etherscan', 'cryptopanic'].includes(apiName)) {
         return res.status(400).json({ error: 'Invalid API name' });
       }
-      
+
       emergencyDisableApi(apiName, reason || 'Manual admin disable');
-      
+
       logger.warn(`[Admin] Emergency disable triggered for ${apiName.toUpperCase()} API`, {
         api: apiName,
         reason: reason || 'Manual admin disable',
         admin: req.user?.claims?.sub,
         timestamp: new Date().toISOString()
       });
-      
+
       res.json({
         success: true,
         message: `${apiName.toUpperCase()} API disabled`,
@@ -660,7 +660,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { id } = req.params;
       const updates = req.body;
       const success = modelManager.updateModel(id, updates);
-      
+
       if (success) {
         res.json({ success: true });
       } else {
@@ -676,7 +676,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const success = modelManager.deleteModel(id);
-      
+
       if (success) {
         res.json({ success: true });
       } else {
@@ -692,7 +692,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const backupPath = modelManager.backupModel(id);
-      
+
       if (backupPath) {
         res.download(backupPath);
       } else {
@@ -718,7 +718,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/webhooks/trading', captureRawBody, tradingWebhookVerifier, (req: WebhookRequest, res) => {
     try {
       const { type, data } = req.body;
-      
+
       // Log webhook receipt
       analyticsLogger.logAnalyticsEvent({
         timestamp: new Date().toISOString(),
@@ -759,7 +759,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/webhooks/market', captureRawBody, marketDataWebhookVerifier, (req: WebhookRequest, res) => {
     try {
       const { symbol, price, timestamp } = req.body;
-      
+
       // Log market data webhook
       analyticsLogger.logAnalyticsEvent({
         timestamp: new Date().toISOString(),
@@ -778,7 +778,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Update market data
       marketDataService.updatePrice(symbol, price);
-      
+
       res.json({ received: true, updated: true });
     } catch (error) {
       console.error('Market webhook error:', error);
@@ -789,7 +789,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/webhooks/generic', captureRawBody, genericWebhookVerifier, (req: WebhookRequest, res) => {
     try {
       const { source, event, data } = req.body;
-      
+
       // Log generic webhook
       analyticsLogger.logAnalyticsEvent({
         timestamp: new Date().toISOString(),
@@ -873,7 +873,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.claims.sub;
       const tradeRequest = tradeRequestSchema.parse(req.body);
-      
+
       const result = await tradingEngine.executeTrade({
         userId,
         ...tradeRequest,
@@ -922,12 +922,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           message: 'Not authenticated'
         });
       }
-      
+
       const positions = await storage.getUserPositions(userId);
       const trades = await storage.getUserTrades(userId, 10);
-      
+
       const totalPnL = trades.reduce((sum, trade) => sum + parseFloat(trade.pnl || '0'), 0);
-      
+
       res.json({
         enabled: positions.length > 0,
         openPositions: positions.length,
@@ -968,7 +968,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       // Initialize AI orchestrator if not already initialized
       await lazyInitService.initializeAIOrchestrator();
-      
+
       const status = aiOrchestrator.getAgentStatus();
       const recentActivities = await storage.getRecentAgentActivities(20);
       res.json({ agents: status, recentActivities });
@@ -982,10 +982,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { agentType } = req.params;
       const data = req.body;
-      
+
       // Initialize AI orchestrator if not already initialized
       await lazyInitService.initializeAIOrchestrator();
-      
+
       const result = await aiOrchestrator.runAgent(agentType, data);
       res.json(result);
     } catch (error) {
@@ -1010,7 +1010,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.claims.sub;
       const { symbol } = req.body;
-      
+
       if (!symbol) {
         return res.status(400).json({ message: "Symbol is required" });
       }
@@ -1092,7 +1092,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       // Initialize RL engine if not already initialized
       await lazyInitService.initializeRLEngine();
-      
+
       const info = rlEngine.getModelInfo();
       res.json(info);
     } catch (error) {
@@ -1172,7 +1172,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const csvData = await backtestEngine.exportBacktestCSV(id);
-      
+
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', `attachment; filename="backtest_${id}_results.csv"`);
       res.send(csvData);
@@ -1190,7 +1190,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const config = req.body;
       // Import ExchangeService dynamically to avoid initialization issues
       const { default: ExchangeService } = await import('./services/exchangeService');
-      
+
       const defaultConfig = {
         mode: 'paper' as const,
         exchange: 'mock' as const,
@@ -1204,11 +1204,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           minWinRate: 40
         }
       };
-      
+
       const exchangeService = new ExchangeService(defaultConfig);
       await exchangeService.initialize();
       const runId = await exchangeService.startPaperRun(config);
-      
+
       res.json({ 
         success: true,
         runId,
@@ -1225,7 +1225,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/paperrun/current', rateLimiters.general, isAuthenticated, async (req: any, res) => {
     try {
       const { default: ExchangeService } = await import('./services/exchangeService');
-      
+
       const defaultConfig = {
         mode: 'paper' as const,
         exchange: 'mock' as const,
@@ -1239,10 +1239,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           minWinRate: 40
         }
       };
-      
+
       const exchangeService = new ExchangeService(defaultConfig);
       const currentRun = await exchangeService.getCurrentRun();
-      
+
       res.json(currentRun || { message: 'No active paper run' });
     } catch (error) {
       console.error('Get current paper run error:', error);
@@ -1256,7 +1256,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { reason = 'Manual stop via API' } = req.body;
       const { default: ExchangeService } = await import('./services/exchangeService');
-      
+
       const defaultConfig = {
         mode: 'paper' as const,
         exchange: 'mock' as const,
@@ -1270,10 +1270,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           minWinRate: 40
         }
       };
-      
+
       const exchangeService = new ExchangeService(defaultConfig);
       await exchangeService.stopCurrentRun(reason);
-      
+
       res.json({ 
         success: true,
         message: 'Paper run stopped successfully'
@@ -1289,7 +1289,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/paperrun/history', rateLimiters.general, isAuthenticated, async (req: any, res) => {
     try {
       const { default: ExchangeService } = await import('./services/exchangeService');
-      
+
       const defaultConfig = {
         mode: 'paper' as const,
         exchange: 'mock' as const,
@@ -1303,10 +1303,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           minWinRate: 40
         }
       };
-      
+
       const exchangeService = new ExchangeService(defaultConfig);
       const history = await exchangeService.getRunHistory();
-      
+
       res.json(history);
     } catch (error) {
       console.error('Get paper run history error:', error);
@@ -1319,7 +1319,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/paperrun/positions', rateLimiters.general, isAuthenticated, async (req: any, res) => {
     try {
       const { default: ExchangeService } = await import('./services/exchangeService');
-      
+
       const defaultConfig = {
         mode: 'paper' as const,
         exchange: 'mock' as const,
@@ -1333,11 +1333,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           minWinRate: 40
         }
       };
-      
+
       const exchangeService = new ExchangeService(defaultConfig);
       const positions = await exchangeService.getPositions();
       const positionsArray = Array.from(positions.values());
-      
+
       res.json(positionsArray);
     } catch (error) {
       console.error('Get paper run positions error:', error);
@@ -1352,13 +1352,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.claims.sub;
       const { from, to } = req.query;
-      
+
       // Get actual trades for analysis
       const trades = await storage.getUserTrades(userId, 100);
       const winningTrades = trades.filter(t => parseFloat(t.pnl) > 0);
       const winRate = trades.length > 0 ? (winningTrades.length / trades.length) * 100 : 0;
-      const avgReturn = trades.length > 0 ? trades.reduce((sum, t) => sum + parseFloat(t.pnl), 0) / trades.length : 0;
-      
+      const avgReturn = trades.length > 0 ? trades.reduce((sum, trade) => sum + parseFloat(trade.pnl), 0) / trades.length : 0;
+
       const analysis = {
         winRate,
         avgReturn,
@@ -1367,7 +1367,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         emotionalBias: ['overconfidence', 'fomo'],
         improvementAreas: ['risk_management', 'patience']
       };
-      
+
       res.json(analysis);
     } catch (error) {
       console.error('Journal analysis error:', error);
@@ -1381,7 +1381,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.claims.sub;
       const trades = await storage.getUserTrades(userId, 50);
-      
+
       // Generate cumulative P&L data
       let cumulativePnl = 0;
       const performanceData = trades.reverse().map(trade => {
@@ -1391,7 +1391,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           cumulative_pnl: cumulativePnl
         };
       });
-      
+
       res.json(performanceData);
     } catch (error) {
       console.error('Journal performance error:', error);
@@ -1426,7 +1426,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const rlEngineStatus = lazyInitStatus.rlEngine ? 
         (rlEngine.getModelInfo().loaded ? 'ready' : 'loaded_not_ready') : 
         'not_initialized';
-      
+
       res.json({
         status: 'ok',
         timestamp: new Date().toISOString(),
@@ -1450,7 +1450,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   const httpServer = createServer(app);
-  
+
   // Setup WebSocket server
   createWebSocketServer(httpServer);
 
@@ -1505,7 +1505,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.claims.sub;
       const riskMetrics = await storage.getUserRiskMetrics(userId);
-      
+
       if (!riskMetrics) {
         return res.json({
           overallRisk: 0.3, varDaily: 0.05, varWeekly: 0.12, maxDrawdown: 0.15,
@@ -1657,28 +1657,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // RL Training Routes
   app.use('/api/rl-training', (await import('./routes/rl-training')).default);
-  
+
   // Revolutionary Systems Routes (Quantum Consciousness, Collective Superintelligence, etc.)
   app.use('/api/revolutionary', (await import('./routes/revolutionary')).default);
-  
+
   // AI Copilot Routes
   app.use('/api/copilot', (await import('./routes/copilot')).default);
-  
+
   // Metrics and Monitoring Routes
   app.use('/api/metrics', (await import('./routes/metrics')).default);
-  
+
   // Feature Flags Routes
   app.use('/api/feature-flags', (await import('./routes/featureFlags')).default);
-  
+
   // Ultra-Adaptive Intelligence Routes
   app.use('/api/ultra-adaptive', (await import('./routes/ultraAdaptive')).default);
-  
+
   // Real Training Day Routes (replaces marketing fluff with actual ML training)
   app.use('/api/training', realTrainingRoutes);
-  
+
   // Async Training Job Routes
   app.use('/api/training-jobs', trainingJobsRouter);
-  
+
   // Trading system routes
   app.use('/api/trading', tradingRoutes);
   app.use('/api/trading', tradingTestRoutes);
@@ -1688,11 +1688,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.claims.sub;
       const { rating, category, message, page } = req.body;
-      
+
       if (!rating || !category || !message) {
         return res.status(400).json({ message: "Missing required fields" });
       }
-      
+
       console.log('[Feedback] Received feedback:', { rating, category, page });
       res.json({ success: true, id: 'feedback-' + Date.now() });
     } catch (error) {
@@ -1703,19 +1703,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Health and SLO endpoint
   app.use('/api/health', health);
-  
+
   // Comprehensive Features endpoint
   app.use('/api/comprehensive', comprehensiveFeaturesRouter);
-  
+
   // System Validation endpoint
   app.use('/api/system-validation', (await import('./routes/system-validation')).default);
-  
+
   // Stevie Strategy endpoint
   app.use('/api/stevie-strategy', (await import('./routes/stevie-strategy')).default);
 
   // Temporal Omniscience routes (Phase 2)
   app.use('/', temporalRoutes);
   app.use('/api/universal', universalRoutes);
+
+  // Paper trade bridge routes
+  app.use('/api/paper-trade', paperTradeBridgeRoutes);
+
+  // Live deployment routes
+  const liveDeploymentRoutes = await import('./routes/liveDeployment');
+  app.use('/api/live-deployment', liveDeploymentRoutes.default);
 
   // Start MLOps cron jobs
   if (process.env.NODE_ENV === 'production' || process.env.ENABLE_MLOPS_JOBS === 'true') {
@@ -1724,6 +1731,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   } else {
     logger.info('MLOps cron jobs disabled in development mode');
   }
-  
+
   return httpServer;
 }

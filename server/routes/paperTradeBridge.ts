@@ -1,4 +1,3 @@
-
 /**
  * PHASE 4: PAPER TRADE BURN-IN API ROUTES
  * RESTful API for managing paper trade burn-in sessions
@@ -214,14 +213,14 @@ router.get('/sessions/:sessionId/report', isAuthenticated, async (req, res) => {
 
     if (format === 'text') {
       const textReport = await paperTradeBridge.generateCliReport(sessionId);
-      
+
       res.setHeader('Content-Type', 'text/plain');
       res.setHeader('Content-Disposition', `attachment; filename="burn-in-report-${sessionId}.txt"`);
       res.send(textReport);
-      
+
     } else if (format === 'csv') {
       const metrics = paperTradeBridge.getTradeMetrics(sessionId);
-      
+
       if (metrics.length === 0) {
         return res.status(404).json({
           success: false,
@@ -255,7 +254,7 @@ router.get('/sessions/:sessionId/report', isAuthenticated, async (req, res) => {
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', `attachment; filename="burn-in-trades-${sessionId}.csv"`);
       res.send(csvContent);
-      
+
     } else {
       // JSON format (default)
       const report = paperTradeBridge.getBurnInReport(sessionId);
@@ -428,5 +427,18 @@ router.get('/health', async (req, res) => {
     });
   }
 });
+
+// Add daily aggregates endpoint
+router.get('/daily-aggregates', isAuthenticated, async (req: Request, res: Response) => {
+  try {
+    await paperTradeBridge.initialize();
+    const aggregates = paperTradeBridge.getDailyAggregates();
+    res.json({ success: true, data: aggregates });
+  } catch (error) {
+    logger.error('[PaperTradeBridgeAPI] Error getting daily aggregates', error);
+    res.status(500).json({ success: false, error: 'Failed to get daily aggregates' });
+  }
+});
+
 
 export { router as paperTradeBridgeRoutes };

@@ -1,4 +1,3 @@
-
 #!/usr/bin/env tsx
 
 /**
@@ -10,6 +9,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { paperTradeBridge, type BurnInReport } from '../server/services/paperTradeBridge.js';
 import { logger } from '../server/utils/logger.js';
+import fs from 'fs/promises'; // Import fs/promises
 
 const program = new Command();
 
@@ -45,18 +45,18 @@ program
       });
 
       const sessionId = await paperTradeBridge.startBurnIn(sessionConfig);
-      
+
       console.log(chalk.green.bold('✅ Burn-in session started successfully!'));
       console.log(chalk.yellow(`📊 Session ID: ${sessionId}`));
       console.log(chalk.cyan(`⏱️  Duration: ${options.duration} days`));
       console.log(chalk.cyan(`💰 Initial Capital: $${parseFloat(options.capital).toLocaleString()}`));
       console.log(chalk.cyan(`📈 Symbols: ${sessionConfig.symbols.join(', ')}`));
-      
+
       if (options.verbose) {
         console.log(chalk.gray('\nMonitoring metrics aggregation every minute...'));
         console.log(chalk.gray('Use "paperrun-cli status <sessionId>" to check progress'));
       }
-      
+
     } catch (error) {
       console.log(chalk.red.bold('❌ Failed to start burn-in session'));
       console.log(chalk.red((error as Error).message));
@@ -76,7 +76,7 @@ program
       await paperTradeBridge.initialize();
 
       let report: BurnInReport | null = null;
-      
+
       if (sessionId) {
         report = paperTradeBridge.getBurnInReport(sessionId);
       } else {
@@ -100,15 +100,15 @@ program
       }
 
       console.log(chalk.blue.bold('\n📊 Paper Trade Burn-In Status\n'));
-      
+
       // Status overview
       const statusColor = report.status === 'active' ? chalk.green : 
                          report.status === 'completed' ? chalk.blue : chalk.red;
-      
+
       console.log(chalk.cyan(`Session ID: ${report.sessionId}`));
       console.log(`Status: ${statusColor(report.status.toUpperCase())}`);
       console.log(chalk.cyan(`Duration: ${report.duration} days`));
-      
+
       if (report.status === 'active') {
         const elapsed = Math.floor((Date.now() - new Date(report.startDate).getTime()) / (24 * 60 * 60 * 1000));
         const remaining = Math.max(0, report.duration - elapsed);
@@ -145,7 +145,7 @@ program
         report.liveParityCheck.logicMatch && 
         report.liveParityCheck.riskMatch && 
         report.liveParityCheck.executionMatch;
-      
+
       const parityColor = parityStatus ? chalk.green : chalk.red;
       console.log(chalk.blue(`\n🔍 Live Parity Check:`));
       console.log(`  Status: ${parityColor(parityStatus ? 'PASS' : 'FAIL')}`);
@@ -167,7 +167,7 @@ program
       if (options.verbose && report.dailyAggregates.length > 0) {
         console.log(chalk.cyan(`\n📅 Recent Daily Performance:`));
         const recentAggregates = report.dailyAggregates.slice(-3);
-        
+
         for (const aggregate of recentAggregates) {
           console.log(`\n  ${aggregate.date}:`);
           console.log(`    Trades: ${aggregate.metrics.totalTrades}`);
@@ -214,15 +214,15 @@ program
       }
 
       const finalReport = await paperTradeBridge.stopBurnIn(sessionId);
-      
+
       console.log(chalk.green.bold('✅ Burn-in session stopped successfully'));
       console.log(chalk.yellow(`📊 Session ID: ${sessionId}`));
       console.log(chalk.cyan(`📋 Final Report Generated`));
-      console.log(chalk.cyan(`💰 Final P&L: $${finalReport.summary.totalPnL.toFixed(2)}`));
+      console.log(chalk.cyan(`💰 Final P&L: $${finalReport.summary.totalPnL.toFixed(2)}`);
       console.log(chalk.cyan(`📈 Total Trades: ${finalReport.summary.totalTrades}`));
-      
+
       console.log(chalk.gray(`\nReason: ${options.reason}`));
-      
+
     } catch (error) {
       console.log(chalk.red.bold('❌ Failed to stop burn-in session'));
       console.log(chalk.red((error as Error).message));
@@ -243,45 +243,43 @@ program
 
       if (options.format === 'text') {
         const report = await paperTradeBridge.generateCliReport(sessionId);
-        
+
         if (options.output) {
-          const fs = await import('fs/promises');
           await fs.writeFile(options.output, report);
           console.log(chalk.green(`Report saved to ${options.output}`));
         } else {
           console.log(report);
         }
-        
+
       } else if (options.format === 'json') {
         const report = paperTradeBridge.getBurnInReport(sessionId);
         if (!report) {
           console.log(chalk.red('Session not found'));
           return;
         }
-        
+
         const jsonReport = JSON.stringify(report, null, 2);
-        
+
         if (options.output) {
-          const fs = await import('fs/promises');
           await fs.writeFile(options.output, jsonReport);
           console.log(chalk.green(`JSON report saved to ${options.output}`));
         } else {
           console.log(jsonReport);
         }
-        
+
       } else if (options.format === 'csv') {
         const metrics = paperTradeBridge.getTradeMetrics(sessionId);
         if (metrics.length === 0) {
           console.log(chalk.yellow('No trade metrics found'));
           return;
         }
-        
+
         // Generate CSV header
         const csvHeader = [
           'timestamp', 'symbol', 'side', 'quantity', 'price', 'fillPrice', 
           'slippage', 'latency', 'pnl', 'fees', 'positionSize', 'riskScore'
         ].join(',');
-        
+
         // Generate CSV rows
         const csvRows = metrics.map(m => [
           new Date(m.timestamp).toISOString(),
@@ -297,18 +295,17 @@ program
           m.risk.positionSize,
           m.risk.riskScore
         ].join(','));
-        
+
         const csvContent = [csvHeader, ...csvRows].join('\n');
-        
+
         if (options.output) {
-          const fs = await import('fs/promises');
           await fs.writeFile(options.output, csvContent);
           console.log(chalk.green(`CSV report saved to ${options.output}`));
         } else {
           console.log(csvContent);
         }
       }
-      
+
     } catch (error) {
       console.log(chalk.red.bold('❌ Failed to generate report'));
       console.log(chalk.red((error as Error).message));
@@ -344,7 +341,7 @@ program
       reports.forEach((report, index) => {
         const statusColor = report.status === 'active' ? chalk.green : 
                            report.status === 'completed' ? chalk.blue : chalk.red;
-        
+
         console.log(`${index + 1}. ${chalk.cyan(report.sessionId)}`);
         console.log(`   Status: ${statusColor(report.status.toUpperCase())}`);
         console.log(`   Duration: ${report.duration} days`);
@@ -353,7 +350,7 @@ program
         console.log(`   Win Rate: ${(report.summary.winRate * 100).toFixed(1)}% | Sharpe: ${report.summary.sharpeRatio.toFixed(2)}`);
         console.log();
       });
-      
+
     } catch (error) {
       console.log(chalk.red.bold('❌ Failed to list burn-in sessions'));
       console.log(chalk.red((error as Error).message));

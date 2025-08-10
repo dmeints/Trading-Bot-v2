@@ -1,4 +1,3 @@
-
 /**
  * PHASE 4: LIVE-PAPER TRADE BURN-IN
  * Production-ready paper trading bridge with real-time persistence
@@ -170,21 +169,21 @@ export class PaperTradeBridge extends EventEmitter {
   async initialize(): Promise<void> {
     try {
       logger.info('[PaperTradeBridge] Initializing paper trade bridge');
-      
+
       // Initialize paper trading engine
       await paperTradingEngine.initialize();
-      
+
       // Set up event listeners
       this.setupEventHandlers();
-      
+
       // Create directories for persistence
       await this.createDirectories();
-      
+
       // Load existing data
       await this.loadPersistedData();
-      
+
       logger.info('[PaperTradeBridge] Paper trade bridge initialized');
-      
+
     } catch (error) {
       logger.error('[PaperTradeBridge] Initialization failed:', error);
       throw error;
@@ -227,7 +226,7 @@ export class PaperTradeBridge extends EventEmitter {
 
     const sessionId = await paperTradingEngine.startTrading(sessionConfig);
     const session = paperTradingEngine.getCurrentSession();
-    
+
     if (!session) {
       throw new Error('Failed to start trading session');
     }
@@ -303,7 +302,7 @@ export class PaperTradeBridge extends EventEmitter {
 
     // Finalize burn-in report
     const report = await this.finalizeBurnInReport(sessionId);
-    
+
     // Clean up
     this.activeSessions.delete(sessionId);
 
@@ -381,9 +380,9 @@ export class PaperTradeBridge extends EventEmitter {
     // Simplified slippage calculation
     const expectedPrice = result.expectedPrice || result.averagePrice || 0;
     const actualPrice = result.averagePrice || 0;
-    
+
     if (expectedPrice === 0) return 0;
-    
+
     return Math.abs((actualPrice - expectedPrice) / expectedPrice);
   }
 
@@ -391,7 +390,7 @@ export class PaperTradeBridge extends EventEmitter {
     try {
       // Get portfolio risk
       const portfolioRisk = riskManagementService.getPortfolioRisk();
-      
+
       metric.risk.portfolioExposure = portfolioRisk.totalExposure || 0;
       metric.risk.riskScore = portfolioRisk.riskScore || 0;
       metric.risk.marginUsed = portfolioRisk.marginUsed || 0;
@@ -440,7 +439,7 @@ export class PaperTradeBridge extends EventEmitter {
   private updateUnrealizedPnL(symbol: string, currentPrice: number): void {
     for (const [sessionId, metrics] of this.tradeMetrics) {
       const symbolMetrics = metrics.filter(m => m.symbol === symbol);
-      
+
       for (const metric of symbolMetrics) {
         const priceDiff = currentPrice - metric.price;
         const multiplier = metric.side === 'buy' ? 1 : -1;
@@ -488,17 +487,17 @@ export class PaperTradeBridge extends EventEmitter {
         if (todayMetrics.length === 0) continue;
 
         const aggregate = this.calculateDailyAggregate(sessionId, today, todayMetrics);
-        
+
         // Update or add daily aggregate
         let aggregates = this.dailyAggregates.get(sessionId) || [];
         const existingIndex = aggregates.findIndex(a => a.date === today);
-        
+
         if (existingIndex >= 0) {
           aggregates[existingIndex] = aggregate;
         } else {
           aggregates.push(aggregate);
         }
-        
+
         this.dailyAggregates.set(sessionId, aggregates);
 
         // Update burn-in report
@@ -516,28 +515,28 @@ export class PaperTradeBridge extends EventEmitter {
     const wins = metrics.filter(m => m.pnl.total > 0).length;
     const losses = metrics.filter(m => m.pnl.total < 0).length;
     const winRate = totalTrades > 0 ? wins / totalTrades : 0;
-    
+
     const pnls = metrics.map(m => m.pnl.total);
     const totalPnL = pnls.reduce((sum, pnl) => sum + pnl, 0);
     const avgTrade = totalTrades > 0 ? totalPnL / totalTrades : 0;
-    
+
     const maxWin = Math.max(0, ...pnls);
     const maxLoss = Math.min(0, ...pnls);
-    
+
     const grossProfit = pnls.filter(p => p > 0).reduce((sum, p) => sum + p, 0);
     const grossLoss = Math.abs(pnls.filter(p => p < 0).reduce((sum, p) => sum + p, 0));
     const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : 0;
-    
+
     // Calculate performance metrics
     const returns = this.calculateReturns(metrics);
     const sharpeRatio = this.calculateSharpeRatio(returns);
     const sortino = this.calculateSortinoRatio(returns);
     const maxDrawdown = this.calculateMaxDrawdown(returns);
     const calmar = sharpeRatio; // Simplified
-    
+
     const slippages = metrics.map(m => m.execution.slippage);
     const latencies = metrics.map(m => m.execution.latencyMs);
-    
+
     return {
       date,
       sessionId,
@@ -589,25 +588,25 @@ export class PaperTradeBridge extends EventEmitter {
 
   private calculateSharpeRatio(returns: number[]): number {
     if (returns.length === 0) return 0;
-    
+
     const avgReturn = returns.reduce((sum, r) => sum + r, 0) / returns.length;
     const variance = returns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / returns.length;
     const volatility = Math.sqrt(variance);
-    
+
     return volatility > 0 ? avgReturn / volatility : 0;
   }
 
   private calculateSortinoRatio(returns: number[]): number {
     if (returns.length === 0) return 0;
-    
+
     const avgReturn = returns.reduce((sum, r) => sum + r, 0) / returns.length;
     const negativeReturns = returns.filter(r => r < 0);
-    
+
     if (negativeReturns.length === 0) return Infinity;
-    
+
     const downsideVariance = negativeReturns.reduce((sum, r) => sum + Math.pow(r, 2), 0) / negativeReturns.length;
     const downsideDeviation = Math.sqrt(downsideVariance);
-    
+
     return downsideDeviation > 0 ? avgReturn / downsideDeviation : 0;
   }
 
@@ -615,35 +614,35 @@ export class PaperTradeBridge extends EventEmitter {
     let peak = 0;
     let maxDD = 0;
     let current = 0;
-    
+
     for (const ret of returns) {
       current += ret;
       if (current > peak) peak = current;
-      
+
       const drawdown = peak - current;
       if (drawdown > maxDD) maxDD = drawdown;
     }
-    
+
     return -maxDD;
   }
 
   private calculateVolatility(returns: number[]): number {
     if (returns.length === 0) return 0;
-    
+
     const avgReturn = returns.reduce((sum, r) => sum + r, 0) / returns.length;
     const variance = returns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / returns.length;
-    
+
     return Math.sqrt(variance);
   }
 
   private aggregateOrderTypes(metrics: TradeMetrics[]): Record<string, number> {
     const orderTypes: Record<string, number> = {};
-    
+
     for (const metric of metrics) {
       const type = metric.execution.type;
       orderTypes[type] = (orderTypes[type] || 0) + 1;
     }
-    
+
     return orderTypes;
   }
 
@@ -662,7 +661,7 @@ export class PaperTradeBridge extends EventEmitter {
     // Update summary metrics
     const allMetrics = this.tradeMetrics.get(sessionId) || [];
     const totalPnL = allMetrics.reduce((sum, m) => sum + m.pnl.total, 0);
-    
+
     report.summary.totalTrades = allMetrics.length;
     report.summary.totalPnL = totalPnL;
     report.summary.finalBalance = (this.activeSessions.get(sessionId)?.initialCapital || 0) + totalPnL;
@@ -678,16 +677,16 @@ export class PaperTradeBridge extends EventEmitter {
   private performLiveParityCheck(sessionId: string, report: BurnInReport): void {
     // Simplified parity check - in production this would compare with live trading logic
     const metrics = this.tradeMetrics.get(sessionId) || [];
-    
+
     // Check execution quality
     const avgSlippage = metrics.reduce((sum, m) => sum + m.execution.slippage, 0) / metrics.length;
     const avgLatency = metrics.reduce((sum, m) => sum + m.execution.latencyMs, 0) / metrics.length;
-    
+
     if (avgSlippage > 0.01) { // 1% slippage threshold
       report.liveParityCheck.executionMatch = false;
       report.liveParityCheck.deviations.push(`High average slippage: ${(avgSlippage * 100).toFixed(2)}%`);
     }
-    
+
     if (avgLatency > 1000) { // 1 second latency threshold
       report.liveParityCheck.executionMatch = false;
       report.liveParityCheck.deviations.push(`High average latency: ${avgLatency.toFixed(0)}ms`);
@@ -713,7 +712,7 @@ export class PaperTradeBridge extends EventEmitter {
     // Calculate final risk metrics
     const allMetrics = this.tradeMetrics.get(sessionId) || [];
     const returns = allMetrics.map(m => m.pnl.total);
-    
+
     report.riskMetrics = {
       var95: this.calculateVaR(returns, 0.95),
       var99: this.calculateVaR(returns, 0.99),
@@ -733,17 +732,17 @@ export class PaperTradeBridge extends EventEmitter {
 
   private calculateVaR(returns: number[], confidence: number): number {
     if (returns.length === 0) return 0;
-    
+
     const sortedReturns = [...returns].sort((a, b) => a - b);
     const index = Math.floor((1 - confidence) * sortedReturns.length);
-    
+
     return sortedReturns[index] || 0;
   }
 
   private calculateExpectedShortfall(returns: number[], confidence: number): number {
     const var95 = this.calculateVaR(returns, confidence);
     const tailReturns = returns.filter(r => r <= var95);
-    
+
     return tailReturns.length > 0 
       ? tailReturns.reduce((sum, r) => sum + r, 0) / tailReturns.length 
       : 0;
@@ -796,7 +795,7 @@ export class PaperTradeBridge extends EventEmitter {
     try {
       // Load existing burn-in reports
       const reportFiles = await fs.readdir('./paper-trade-data/reports');
-      
+
       for (const file of reportFiles.filter(f => f.endsWith('.json'))) {
         const data = await fs.readFile(`./paper-trade-data/reports/${file}`, 'utf8');
         const report: BurnInReport = JSON.parse(data);
@@ -804,7 +803,7 @@ export class PaperTradeBridge extends EventEmitter {
       }
 
       logger.info(`[PaperTradeBridge] Loaded ${this.burnInReports.size} persisted burn-in reports`);
-      
+
     } catch (error) {
       logger.warn('[PaperTradeBridge] Failed to load persisted data:', error);
     }
@@ -840,7 +839,7 @@ export class PaperTradeBridge extends EventEmitter {
   }
 
   // Public API methods
-  
+
   getBurnInReport(sessionId: string): BurnInReport | null {
     return this.burnInReports.get(sessionId) || null;
   }

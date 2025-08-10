@@ -1,6 +1,6 @@
 import { useTradingStore } from '@/stores/tradingStore';
 import { Card } from '@/components/ui/card';
-import { BarChart3, TrendingUp, Wallet, Settings, Activity, Zap, Brain, MessageCircle, Target, Timer, Play, PieChart } from 'lucide-react';
+import { BarChart3, TrendingUp, Wallet, Settings, Activity, Zap, Brain, MessageCircle, Target, Timer, Play, PieChart, Shield } from 'lucide-react';
 import { useLocation } from 'wouter';
 
 export default function SidebarNavigation() {
@@ -175,6 +175,18 @@ export default function SidebarNavigation() {
           >
             <PieChart className="w-4 h-4" />
             <span className="text-sm font-medium">Portfolio Manager</span>
+          </button>
+          <button 
+            onClick={() => setLocation('/compliance')}
+            className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors ${
+              location === '/compliance' 
+                ? 'bg-indigo-600/20 text-indigo-400' 
+                : 'text-gray-400 hover:bg-gray-700 hover:text-white'
+            }`}
+            data-testid="link-compliance"
+          >
+            <Shield className="w-4 h-4" />
+            <span className="text-sm font-medium">Compliance</span>
           </button>
           <button 
             onClick={() => setLocation('/service-level')}

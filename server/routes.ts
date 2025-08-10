@@ -192,6 +192,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Phase F: Advanced Portfolio Management
   const { portfolioRouter } = await import('./routes/portfolio.js');
   app.use('/api/portfolio', portfolioRouter);
+
+  // Phase G: Institutional Compliance
+  const { complianceRouter } = await import('./routes/compliance.js');
+  app.use('/api/compliance', complianceRouter);
   
   // Real algorithm benchmark routes (actual trading performance testing)
   const { realBenchmarkRoutes } = await import('./routes/realBenchmarkRoutes');

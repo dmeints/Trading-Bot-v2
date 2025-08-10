@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Activity } from "lucide-react";
+import { Activity, Database } from "lucide-react";
 
 export function Navigation() {
   return (
@@ -7,6 +7,10 @@ export function Navigation() {
       <Link href="/health" className="flex items-center gap-2 px-3 py-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700">
         <Activity className="h-4 w-4" />
         Health
+      </Link>
+      <Link href="/connectors-demo" className="flex items-center gap-2 px-3 py-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700">
+        <Database className="h-4 w-4" />
+        Phase A - Connectors
       </Link>
     </nav>
   );

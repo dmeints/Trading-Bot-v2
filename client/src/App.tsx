@@ -35,6 +35,7 @@ const StevieHome = lazy(() => import("@/pages/StevieHome"));
 const SimulationStudio = lazy(() => import("@/pages/SimulationStudio"));
 const TradeJournal = lazy(() => import("@/pages/TradeJournal"));
 const RevolutionaryDashboard = lazy(() => import("@/pages/RevolutionaryDashboard"));
+const ConnectorsDemo = lazy(() => import("@/pages/ConnectorsDemo"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 
 function Router() {
@@ -74,6 +75,7 @@ function Router() {
             <Route path="/social-trading" component={SocialTrading} />
             <Route path="/system" component={SystemDashboard} />
             <Route path="/mlops" component={MLOpsDashboard} />
+            <Route path="/connectors-demo" component={ConnectorsDemo} />
             <Route path="/rl-training" component={RLTraining} />
             <Route path="/plugins" component={PluginMarketplace} />
             <Route path="/strategy-builder" component={StrategyBuilder} />

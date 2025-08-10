@@ -1,56 +1,31 @@
 /**
- * Etherscan API Connector - Phase A Implementation
- * Fetches Ethereum on-chain analytics (gas, whale transfers) with rate limiting and provenance tracking
+ * Etherscan API Connector for Ethereum On-chain Analytics
+ * Fetches Ethereum blockchain metrics for algorithmic trading
  */
 
 import axios, { AxiosResponse } from 'axios';
-import { db } from '../db';
-import { onchainTicks, connectorHealth, type InsertOnchainTick, type InsertConnectorHealth } from '@shared/schema';
-import { logger } from '../utils/logger';
 import { RateLimiter } from 'limiter';
+import { logger } from '../utils/logger';
+import { db } from '../db';
+import { onchainTicks, connectorHealth } from '@shared/schema';
+import type { InsertOnchainTick, InsertConnectorHealth } from '@shared/schema';
 
-export interface EtherscanGasOracleResponse {
+interface EtherscanResponse {
+  status: string;
+  message: string;
+  result: any;
+}
+
+interface GasOracleResponse {
   status: string;
   message: string;
   result: {
-    LastBlock: string;
     SafeGasPrice: string;
-    ProposeGasPrice: string;
+    StandardGasPrice: string;
     FastGasPrice: string;
     suggestBaseFee: string;
     gasUsedRatio: string;
   };
-}
-
-export interface EtherscanBalanceResponse {
-  status: string;
-  message: string;
-  result: string;
-}
-
-export interface EtherscanTransactionListResponse {
-  status: string;
-  message: string;
-  result: Array<{
-    blockNumber: string;
-    timeStamp: string;
-    hash: string;
-    nonce: string;
-    blockHash: string;
-    transactionIndex: string;
-    from: string;
-    to: string;
-    value: string;
-    gas: string;
-    gasPrice: string;
-    isError: string;
-    txreceipt_status: string;
-    input: string;
-    contractAddress: string;
-    cumulativeGasUsed: string;
-    gasUsed: string;
-    confirmations: string;
-  }>;
 }
 
 export class EtherscanConnector {
@@ -59,21 +34,11 @@ export class EtherscanConnector {
   private limiter: RateLimiter;
   private requestCount = 0;
   private errorCount = 0;
-  private whaleAddresses: Set<string>;
 
   constructor() {
     this.apiKey = process.env.ETHERSCAN_API_KEY;
     // Rate limit: 5 requests per second for free plan
     this.limiter = new RateLimiter({ tokensPerInterval: 5, interval: 1000 });
-    
-    // Known whale addresses for monitoring
-    this.whaleAddresses = new Set([
-      '0x8315177ab297ba92a06054ce80a67ed4dbd7ed3a', // Binance wallet
-      '0x3f5ce5fbfe3e9af3971dd833d26ba9b5c936f0be', // Binance wallet
-      '0xdfd5293d8e347dfe59e90efd55b2956a1343963d', // Binance wallet
-      '0x46705dfff24256421a05d056c29e81bdc09723b8', // Whale wallet
-      '0x00000000219ab540356cbb839cbe05303d7705fa', // Eth2 deposit contract
-    ]);
   }
 
   private async makeRequest<T>(params: Record<string, any>): Promise<T> {
@@ -87,10 +52,10 @@ export class EtherscanConnector {
     const config = {
       baseURL: this.baseUrl,
       params: {
-        apikey: this.apiKey,
         ...params,
+        apikey: this.apiKey,
       },
-      timeout: 15000,
+      timeout: 10000,
     };
 
     try {
@@ -99,10 +64,11 @@ export class EtherscanConnector {
       return response.data;
     } catch (error: any) {
       this.errorCount++;
-      const errorMessage = error.response?.data?.result || error.message || 'Unknown error';
+      const errorMessage = error.response?.data?.message || error.message || 'Unknown error';
       await this.updateHealthStatus('degraded', errorMessage);
       
       logger.error('Etherscan API error', {
+        params,
         error: errorMessage,
         status: error.response?.status,
       });
@@ -115,174 +81,201 @@ export class EtherscanConnector {
     }
   }
 
-  async fetchGasMetrics(): Promise<InsertOnchainTick[]> {
+  async fetchOnchainMetrics(): Promise<InsertOnchainTick[]> {
+    const metrics: InsertOnchainTick[] = [];
+    const timestamp = new Date();
+
+    try {
+      // Fetch gas prices
+      const gasData = await this.fetchGasPrices();
+      if (gasData) {
+        metrics.push({
+          timestamp,
+          chain: 'ethereum',
+          metric: 'gas_price_safe',
+          value: gasData.SafeGasPrice,
+          provider: 'etherscan',
+          provenance: {
+            provider: 'etherscan',
+            fetchedAt: timestamp.toISOString(),
+            quotaCost: 1,
+            module: 'gastracker',
+            action: 'gasoracle',
+          } as Record<string, any>,
+        });
+
+        metrics.push({
+          timestamp,
+          chain: 'ethereum',
+          metric: 'gas_price_standard',
+          value: gasData.StandardGasPrice,
+          provider: 'etherscan',
+          provenance: {
+            provider: 'etherscan',
+            fetchedAt: timestamp.toISOString(),
+            quotaCost: 0, // Same request
+          } as Record<string, any>,
+        });
+
+        metrics.push({
+          timestamp,
+          chain: 'ethereum',
+          metric: 'gas_price_fast',
+          value: gasData.FastGasPrice,
+          provider: 'etherscan',
+          provenance: {
+            provider: 'etherscan',
+            fetchedAt: timestamp.toISOString(),
+            quotaCost: 0, // Same request
+          } as Record<string, any>,
+        });
+      }
+
+      // Fetch latest block data
+      const blockData = await this.fetchLatestBlock();
+      if (blockData) {
+        metrics.push({
+          timestamp,
+          chain: 'ethereum',
+          metric: 'latest_block',
+          value: blockData.number.toString(),
+          provider: 'etherscan',
+          provenance: {
+            provider: 'etherscan',
+            fetchedAt: timestamp.toISOString(),
+            quotaCost: 1,
+            module: 'proxy',
+            action: 'eth_blockNumber',
+          } as Record<string, any>,
+        });
+
+        metrics.push({
+          timestamp,
+          chain: 'ethereum',
+          metric: 'block_gas_used',
+          value: blockData.gasUsed.toString(),
+          provider: 'etherscan',
+          provenance: {
+            provider: 'etherscan',
+            fetchedAt: timestamp.toISOString(),
+            quotaCost: 1,
+            blockNumber: blockData.number,
+          } as Record<string, any>,
+        });
+      }
+
+      // Fetch ETH supply data
+      const supplyData = await this.fetchEthSupply();
+      if (supplyData) {
+        metrics.push({
+          timestamp,
+          chain: 'ethereum',
+          metric: 'total_supply',
+          value: supplyData.toString(),
+          provider: 'etherscan',
+          provenance: {
+            provider: 'etherscan',
+            fetchedAt: timestamp.toISOString(),
+            quotaCost: 1,
+            module: 'stats',
+            action: 'ethsupply',
+          } as Record<string, any>,
+        });
+      }
+
+      logger.info(`Fetched ${metrics.length} Ethereum on-chain metrics`);
+      return metrics;
+      
+    } catch (error) {
+      logger.error('Failed to fetch Ethereum on-chain metrics', error);
+      throw error;
+    }
+  }
+
+  private async fetchGasPrices(): Promise<any> {
     const params = {
       module: 'gastracker',
       action: 'gasoracle',
     };
 
     try {
-      const data = await this.makeRequest<EtherscanGasOracleResponse>(params);
+      const response = await this.makeRequest<GasOracleResponse>(params);
       
-      if (data.status !== '1') {
-        logger.warn(`Etherscan gas oracle error: ${data.message}`);
-        return [];
+      if (response.status !== '1') {
+        logger.warn('Etherscan gas oracle error', { message: response.message });
+        return null;
       }
 
-      const result = data.result;
-      const timestamp = new Date();
-      const onchainTicks: InsertOnchainTick[] = [];
-
-      // Create ticks for different gas price types
-      const gasMetrics = [
-        { metric: 'safe_gas_price', value: result.SafeGasPrice },
-        { metric: 'propose_gas_price', value: result.ProposeGasPrice },
-        { metric: 'fast_gas_price', value: result.FastGasPrice },
-        { metric: 'base_fee', value: result.suggestBaseFee },
-        { metric: 'gas_used_ratio', value: result.gasUsedRatio },
-      ];
-
-      for (const { metric, value } of gasMetrics) {
-        onchainTicks.push({
-          timestamp,
-          chain: 'ethereum',
-          metric,
-          value: parseFloat(value).toString(),
-          provider: 'etherscan',
-          provenance: {
-            provider: 'etherscan',
-            endpoint: 'gasoracle',
-            fetchedAt: new Date().toISOString(),
-            quotaCost: 1,
-            module: 'gastracker',
-            action: 'gasoracle',
-            lastBlock: result.LastBlock,
-          },
-        });
-      }
-
-      logger.info(`Fetched ${onchainTicks.length} gas metrics from Etherscan`);
-      return onchainTicks;
-      
+      return response.result;
     } catch (error) {
-      logger.error('Failed to fetch gas metrics from Etherscan', error);
-      if (error.message === 'Etherscan API key not configured') {
-        return []; // Return empty array instead of throwing for missing config
-      }
-      throw error;
+      logger.error('Failed to fetch gas prices', error);
+      return null;
     }
   }
 
-  async fetchWhaleTransactions(): Promise<InsertOnchainTick[]> {
-    const onchainTicks: InsertOnchainTick[] = [];
-    
-    for (const address of this.whaleAddresses) {
-      try {
-        const params = {
-          module: 'account',
-          action: 'txlist',
-          address,
-          startblock: 0,
-          endblock: 99999999,
-          page: 1,
-          offset: 10, // Last 10 transactions
-          sort: 'desc',
-        };
+  private async fetchLatestBlock(): Promise<any> {
+    // Get latest block number
+    const blockNumberParams = {
+      module: 'proxy',
+      action: 'eth_blockNumber',
+    };
 
-        const data = await this.makeRequest<EtherscanTransactionListResponse>(params);
-        
-        if (data.status !== '1') {
-          logger.warn(`Etherscan txlist error for ${address}: ${data.message}`);
-          continue;
-        }
-
-        // Process recent transactions
-        const recentTxs = data.result.slice(0, 5); // Last 5 transactions
-        let totalValue = 0;
-        let txCount = 0;
-
-        for (const tx of recentTxs) {
-          const valueEth = parseFloat(tx.value) / 1e18; // Convert wei to ETH
-          if (valueEth > 100) { // Only count significant transactions
-            totalValue += valueEth;
-            txCount++;
-          }
-        }
-
-        if (txCount > 0) {
-          onchainTicks.push({
-            timestamp: new Date(),
-            chain: 'ethereum',
-            metric: 'whale_activity',
-            value: totalValue.toString(),
-            provider: 'etherscan',
-            provenance: {
-              provider: 'etherscan',
-              endpoint: 'txlist',
-              fetchedAt: new Date().toISOString(),
-              quotaCost: 1,
-              module: 'account',
-              action: 'txlist',
-              address,
-              transaction_count: txCount,
-              total_value_eth: totalValue,
-            },
-          });
-        }
-
-        // Small delay between whale address requests
-        await new Promise(resolve => setTimeout(resolve, 200));
-        
-      } catch (error) {
-        logger.error(`Failed to fetch transactions for whale ${address}`, error);
-        continue; // Continue with other addresses
+    try {
+      const blockNumberResponse = await this.makeRequest<EtherscanResponse>(blockNumberParams);
+      
+      if (blockNumberResponse.status !== '1') {
+        logger.warn('Failed to get latest block number', { message: blockNumberResponse.message });
+        return null;
       }
-    }
 
-    logger.info(`Fetched ${onchainTicks.length} whale activity metrics from Etherscan`);
-    return onchainTicks;
+      const blockNumber = parseInt(blockNumberResponse.result, 16);
+
+      // Get block details
+      const blockParams = {
+        module: 'proxy',
+        action: 'eth_getBlockByNumber',
+        tag: `0x${blockNumber.toString(16)}`,
+        boolean: 'true',
+      };
+
+      const blockResponse = await this.makeRequest<EtherscanResponse>(blockParams);
+      
+      if (blockResponse.status !== '1') {
+        logger.warn('Failed to get block details', { message: blockResponse.message });
+        return null;
+      }
+
+      return {
+        number: blockNumber,
+        gasUsed: parseInt(blockResponse.result.gasUsed, 16),
+        gasLimit: parseInt(blockResponse.result.gasLimit, 16),
+        timestamp: parseInt(blockResponse.result.timestamp, 16),
+      };
+    } catch (error) {
+      logger.error('Failed to fetch latest block', error);
+      return null;
+    }
   }
 
-  async fetchEthSupplyMetrics(): Promise<InsertOnchainTick[]> {
+  private async fetchEthSupply(): Promise<number | null> {
     const params = {
       module: 'stats',
       action: 'ethsupply',
     };
 
     try {
-      const data = await this.makeRequest<EtherscanBalanceResponse>(params);
+      const response = await this.makeRequest<EtherscanResponse>(params);
       
-      if (data.status !== '1') {
-        logger.warn(`Etherscan ETH supply error: ${data.message}`);
-        return [];
+      if (response.status !== '1') {
+        logger.warn('Failed to get ETH supply', { message: response.message });
+        return null;
       }
 
-      const supplyWei = data.result;
-      const supplyEth = parseFloat(supplyWei) / 1e18;
-
-      const onchainTick: InsertOnchainTick = {
-        timestamp: new Date(),
-        chain: 'ethereum',
-        metric: 'total_supply',
-        value: supplyEth.toString(),
-        provider: 'etherscan',
-        provenance: {
-          provider: 'etherscan',
-          endpoint: 'ethsupply',
-          fetchedAt: new Date().toISOString(),
-          quotaCost: 1,
-          module: 'stats',
-          action: 'ethsupply',
-          supply_wei: supplyWei,
-        },
-      };
-
-      logger.info('Fetched ETH supply metric from Etherscan');
-      return [onchainTick];
-      
+      // Convert from wei to ETH
+      return parseInt(response.result) / 1e18;
     } catch (error) {
-      logger.error('Failed to fetch ETH supply from Etherscan', error);
-      throw error;
+      logger.error('Failed to fetch ETH supply', error);
+      return null;
     }
   }
 
@@ -290,55 +283,56 @@ export class EtherscanConnector {
     if (ticks.length === 0) return;
 
     try {
-      // Insert onchain ticks (allowing duplicates with different timestamps)
-      await db.insert(onchainTicks).values(ticks);
-      logger.info(`Stored ${ticks.length} Etherscan onchain ticks to database`);
+      await db.insert(onchainTicks)
+        .values(ticks)
+        .onConflictDoUpdate({
+          target: [onchainTicks.chain, onchainTicks.metric, onchainTicks.timestamp],
+          set: {
+            value: onchainTicks.value,
+            provenance: onchainTicks.provenance,
+            fetchedAt: new Date(),
+          },
+        });
+
+      logger.info(`Stored ${ticks.length} Ethereum on-chain ticks`);
     } catch (error) {
-      logger.error('Failed to store Etherscan onchain ticks', error);
+      logger.error('Failed to store Ethereum on-chain ticks', error);
       throw error;
     }
   }
 
-  private async updateHealthStatus(status: 'healthy' | 'degraded' | 'down', error: string | null): Promise<void> {
-    const healthData: InsertConnectorHealth = {
-      provider: 'etherscan',
-      status,
-      lastSuccessfulFetch: status === 'healthy' ? new Date() : undefined,
-      lastError: error,
-      requestCount24h: this.requestCount,
-      errorCount24h: this.errorCount,
-      quotaUsed: this.requestCount,
-      quotaLimit: 432000, // 5 requests per second * 24 hours
-    };
-
+  private async updateHealthStatus(status: 'healthy' | 'degraded' | 'down', lastError: string | null): Promise<void> {
     try {
-      await db.insert(connectorHealth)
-        .values(healthData)
-        .onConflictDoUpdate({
-          target: connectorHealth.provider,
-          set: healthData,
-        });
+      await db.insert(connectorHealth).values({
+        provider: 'etherscan',
+        status,
+        requestCount: this.requestCount,
+        errorCount: this.errorCount,
+        lastError,
+        quotaCost: this.requestCount,
+      } as InsertConnectorHealth).onConflictDoUpdate({
+        target: connectorHealth.provider,
+        set: {
+          status,
+          requestCount: this.requestCount,
+          errorCount: this.errorCount,
+          lastError,
+          quotaCost: this.requestCount,
+          lastChecked: new Date(),
+        },
+      });
     } catch (error) {
       logger.error('Failed to update Etherscan connector health', error);
     }
   }
 
-  async getHealthStatus(): Promise<{ status: string; requestCount: number; errorCount: number; configured: boolean }> {
-    const configured = !!this.apiKey;
+  async getHealthStatus(): Promise<any> {
     return {
-      status: !configured ? 'down' : 
-              this.errorCount / Math.max(this.requestCount, 1) > 0.1 ? 'degraded' : 'healthy',
+      provider: 'etherscan',
+      status: this.errorCount > 10 ? 'degraded' : 'healthy',
       requestCount: this.requestCount,
       errorCount: this.errorCount,
-      configured,
+      hasCredentials: !!this.apiKey,
     };
   }
-
-  resetDailyCounters(): void {
-    this.requestCount = 0;
-    this.errorCount = 0;
-  }
 }
-
-// Export singleton instance
-export const etherscanConnector = new EtherscanConnector();

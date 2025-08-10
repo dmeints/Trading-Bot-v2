@@ -69,6 +69,7 @@ import { registerMarketRoutes } from './routes/marketRoutes';
 import { registerStrategyRoutes } from './routes/strategyRoutes';
 import { registerBacktestRoutes } from './routes/backtestRoutes';
 import externalConnectorsRouter from './routes/externalConnectors';
+import connectorsRouter from './routes/connectors';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -172,6 +173,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // External connectors API (Phase A - Compliance Mode)
   app.use('/api/connectors', externalConnectorsRouter);
+  app.use('/api/connectors-phase-a', connectorsRouter);
 
   // Phase B: AI Chat Integration
   const { aiChatRouter } = await import('./routes/aiChat.js');

@@ -1,15 +1,16 @@
 /**
- * Trading Economics API Connector - Phase A Implementation
- * Fetches macro economic calendar events with rate limiting and provenance tracking
+ * Trading Economics API Connector for Macro Economic Events
+ * Fetches economic calendar events that impact cryptocurrency markets
  */
 
 import axios, { AxiosResponse } from 'axios';
-import { db } from '../db';
-import { macroEvents, connectorHealth, type InsertMacroEvent, type InsertConnectorHealth } from '@shared/schema';
-import { logger } from '../utils/logger';
 import { RateLimiter } from 'limiter';
+import { logger } from '../utils/logger';
+import { db } from '../db';
+import { macroEvents, connectorHealth } from '@shared/schema';
+import type { InsertMacroEvent, InsertConnectorHealth } from '@shared/schema';
 
-export interface TradingEconomicsCalendarEvent {
+interface TradingEconomicsEvent {
   CalendarId: string;
   Date: string;
   Country: string;
@@ -17,11 +18,13 @@ export interface TradingEconomicsCalendarEvent {
   Event: string;
   Reference: string;
   Source: string;
+  SourceURL: string;
   Actual: string | null;
   Previous: string | null;
   Forecast: string | null;
   TEForecast: string | null;
-  Importance: number; // 1-3
+  URL: string;
+  Importance: number; // 1 = Low, 2 = Medium, 3 = High
   LastUpdate: string;
   Revised: string | null;
   Currency: string;
@@ -30,14 +33,11 @@ export interface TradingEconomicsCalendarEvent {
   Symbol: string;
 }
 
-export interface TradingEconomicsCountryResponse {
-  Country: string;
-  Category: string;
-  DateTime: string;
-  Value: number;
-  Frequency: string;
-  HistoricalDataSymbol: string;
-  LastUpdate: string;
+interface TradingEconomicsResponse {
+  success: boolean;
+  data?: TradingEconomicsEvent[];
+  error?: string;
+  message?: string;
 }
 
 export class TradingEconomicsConnector {
@@ -46,39 +46,11 @@ export class TradingEconomicsConnector {
   private limiter: RateLimiter;
   private requestCount = 0;
   private errorCount = 0;
-  private cryptoRelevantCountries: string[];
-  private cryptoRelevantCategories: string[];
 
   constructor() {
-    this.apiKey = process.env.TRADINGECONOMICS_API_KEY;
-    // Rate limit: Varies by plan, conservative 60 requests per minute
-    this.limiter = new RateLimiter({ tokensPerInterval: 60, interval: 60000 });
-    
-    // Countries with significant crypto markets/regulations
-    this.cryptoRelevantCountries = [
-      'United States',
-      'China', 
-      'European Union',
-      'Japan',
-      'South Korea',
-      'Singapore',
-      'United Kingdom',
-      'Germany',
-      'Switzerland',
-      'Canada',
-    ];
-
-    // Economic categories that affect crypto markets
-    this.cryptoRelevantCategories = [
-      'Interest Rate',
-      'Inflation Rate',
-      'GDP Growth Rate', 
-      'Central Bank Balance Sheet',
-      'Currency',
-      'Government Bond 10Y',
-      'Stock Market',
-      'Money Supply M2',
-    ];
+    this.apiKey = process.env.TRADING_ECONOMICS_API_KEY;
+    // Rate limit: 100 requests per hour for free plan
+    this.limiter = new RateLimiter({ tokensPerInterval: 100, interval: 60 * 60 * 1000 });
   }
 
   private async makeRequest<T>(endpoint: string, params?: Record<string, any>): Promise<T> {
@@ -91,10 +63,11 @@ export class TradingEconomicsConnector {
 
     const config = {
       baseURL: this.baseUrl,
-      params: {
-        c: this.apiKey,
-        ...params,
+      headers: {
+        'Authorization': `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/json',
       },
+      params,
       timeout: 15000,
     };
 
@@ -121,238 +94,180 @@ export class TradingEconomicsConnector {
     }
   }
 
-  async fetchCalendarEvents(days: number = 7): Promise<InsertMacroEvent[]> {
-    const endpoint = '/calendar';
-    const today = new Date();
-    const futureDate = new Date(today.getTime() + days * 24 * 60 * 60 * 1000);
-    
-    const params = {
-      d1: today.toISOString().split('T')[0], // YYYY-MM-DD format
-      d2: futureDate.toISOString().split('T')[0],
-      importance: '2,3', // Medium and high importance only
-    };
-
+  async fetchEconomicCalendar(): Promise<InsertMacroEvent[]> {
     try {
-      const data = await this.makeRequest<TradingEconomicsCalendarEvent[]>(endpoint, params);
+      // Fetch events for the next 7 days
+      const today = new Date();
+      const nextWeek = new Date(today);
+      nextWeek.setDate(today.getDate() + 7);
+
+      const startDate = today.toISOString().split('T')[0];
+      const endDate = nextWeek.toISOString().split('T')[0];
+
+      const endpoint = '/calendar';
+      const params = {
+        c: 'united states,china,european union,japan,united kingdom', // Major economies
+        i: '3,2', // High and Medium importance only
+        f: startDate,
+        t: endDate,
+      };
+
+      // Note: Trading Economics free tier might have limitations
+      // This is a mock implementation for demonstration
+      const data = await this.makeRequest<TradingEconomicsEvent[]>(endpoint, params);
       
       if (!Array.isArray(data) || data.length === 0) {
-        logger.info('No calendar events returned from Trading Economics');
+        logger.warn('No economic events returned from Trading Economics');
         return [];
       }
 
-      const macroEventsList: InsertMacroEvent[] = [];
-      
+      const events: InsertMacroEvent[] = [];
+
       for (const event of data) {
-        // Filter for crypto-relevant events
-        if (!this.isCryptoRelevant(event)) {
+        // Skip events without proper data
+        if (!event.Date || !event.Event || !event.Importance) {
           continue;
         }
 
-        const importance = this.mapImportanceLevel(event.Importance);
-        const timestamp = new Date(event.Date);
+        // Parse event date
+        const eventDate = new Date(event.Date);
+        if (isNaN(eventDate.getTime())) {
+          logger.warn('Invalid event date', { event: event.Event, date: event.Date });
+          continue;
+        }
 
-        macroEventsList.push({
-          timestamp,
-          name: `${event.Country}: ${event.Event}`,
+        // Map importance level
+        const importanceMap: Record<number, string> = {
+          1: 'low',
+          2: 'medium',
+          3: 'high',
+        };
+
+        const importance = importanceMap[event.Importance] || 'low';
+
+        // Calculate impact windows for crypto markets
+        const impactWindows = this.calculateImpactWindows(event.Category, importance);
+
+        events.push({
+          timestamp: eventDate,
+          name: event.Event,
           importance,
-          windowBeforeMs: this.getWindowBeforeMs(importance),
-          windowAfterMs: this.getWindowAfterMs(importance),
-          provider: 'tradingeconomics',
+          windowBeforeMs: impactWindows.beforeMs,
+          windowAfterMs: impactWindows.afterMs,
+          provider: 'trading_economics',
           provenance: {
-            provider: 'tradingeconomics',
-            endpoint,
+            provider: 'trading_economics',
             fetchedAt: new Date().toISOString(),
             quotaCost: 1,
-            calendar_id: event.CalendarId,
+            calendarId: event.CalendarId,
             country: event.Country,
             category: event.Category,
-            importance_score: event.Importance,
             currency: event.Currency,
             unit: event.Unit,
-            ticker: event.Ticker,
+            source: event.Source,
             actual: event.Actual,
             previous: event.Previous,
             forecast: event.Forecast,
-            te_forecast: event.TEForecast,
-          },
+            lastUpdate: event.LastUpdate,
+          } as Record<string, any>,
         });
       }
 
-      logger.info(`Fetched ${macroEventsList.length} relevant calendar events from Trading Economics`);
-      return macroEventsList;
+      logger.info(`Fetched ${events.length} macro economic events from Trading Economics`);
+      return events;
       
     } catch (error) {
-      logger.error('Failed to fetch calendar events from Trading Economics', error);
-      if (error.message === 'Trading Economics API key not configured') {
-        return []; // Return empty array instead of throwing for missing config
-      }
+      logger.error('Failed to fetch economic calendar', error);
       throw error;
     }
   }
 
-  async fetchFedRateDecisions(): Promise<InsertMacroEvent[]> {
-    const endpoint = '/calendar';
-    const today = new Date();
-    const futureDate = new Date(today.getTime() + 365 * 24 * 60 * 60 * 1000); // Next year
-    
-    const params = {
-      c: 'united states',
-      e: 'Interest Rate Decision',
-      d1: today.toISOString().split('T')[0],
-      d2: futureDate.toISOString().split('T')[0],
+  private calculateImpactWindows(category: string, importance: string): { beforeMs: number; afterMs: number } {
+    // Define impact windows based on event category and importance
+    const baseWindows = {
+      high: { beforeMs: 2 * 60 * 60 * 1000, afterMs: 4 * 60 * 60 * 1000 }, // 2h before, 4h after
+      medium: { beforeMs: 1 * 60 * 60 * 1000, afterMs: 2 * 60 * 60 * 1000 }, // 1h before, 2h after
+      low: { beforeMs: 30 * 60 * 1000, afterMs: 1 * 60 * 60 * 1000 }, // 30m before, 1h after
     };
 
-    try {
-      const data = await this.makeRequest<TradingEconomicsCalendarEvent[]>(endpoint, params);
-      
-      if (!Array.isArray(data)) {
-        return [];
-      }
+    // Category-specific adjustments
+    const categoryMultipliers: Record<string, number> = {
+      'Interest Rate': 2.0, // Fed meetings have extended impact
+      'Inflation': 1.5, // CPI, PPI data important for crypto
+      'Employment': 1.5, // Jobs data moves markets
+      'GDP': 1.5, // Economic growth indicators
+      'Central Banking': 2.0, // Fed speeches, policy decisions
+      'Consumer': 1.2, // Consumer confidence, spending
+      'Manufacturing': 1.0, // Manufacturing data
+      'Housing': 0.8, // Housing market data
+    };
 
-      const macroEventsList: InsertMacroEvent[] = [];
-      
-      for (const event of data) {
-        const timestamp = new Date(event.Date);
-        
-        macroEventsList.push({
-          timestamp,
-          name: `Fed Interest Rate Decision`,
-          importance: 'high', // Fed decisions are always high importance
-          windowBeforeMs: 4 * 60 * 60 * 1000, // 4 hours before
-          windowAfterMs: 2 * 60 * 60 * 1000, // 2 hours after
-          provider: 'tradingeconomics',
-          provenance: {
-            provider: 'tradingeconomics',
-            endpoint,
-            fetchedAt: new Date().toISOString(),
-            quotaCost: 1,
-            calendar_id: event.CalendarId,
-            event_type: 'fed_rate_decision',
-            country: event.Country,
-            category: event.Category,
-            actual: event.Actual,
-            previous: event.Previous,
-            forecast: event.Forecast,
-          },
-        });
-      }
+    const multiplier = categoryMultipliers[category] || 1.0;
+    const windows = baseWindows[importance as keyof typeof baseWindows] || baseWindows.low;
 
-      logger.info(`Fetched ${macroEventsList.length} Fed rate decisions from Trading Economics`);
-      return macroEventsList;
-      
-    } catch (error) {
-      logger.error('Failed to fetch Fed rate decisions from Trading Economics', error);
-      throw error;
-    }
-  }
-
-  private isCryptoRelevant(event: TradingEconomicsCalendarEvent): boolean {
-    // Check if country is crypto-relevant
-    const isRelevantCountry = this.cryptoRelevantCountries.some(country => 
-      event.Country.toLowerCase().includes(country.toLowerCase())
-    );
-    
-    // Check if category is crypto-relevant
-    const isRelevantCategory = this.cryptoRelevantCategories.some(category =>
-      event.Category.toLowerCase().includes(category.toLowerCase()) ||
-      event.Event.toLowerCase().includes(category.toLowerCase())
-    );
-    
-    // Special keywords in event names
-    const cryptoKeywords = ['inflation', 'rate', 'gdp', 'employment', 'cpi', 'ppi', 'fomc', 'ecb'];
-    const hasRelevantKeyword = cryptoKeywords.some(keyword =>
-      event.Event.toLowerCase().includes(keyword)
-    );
-    
-    return (isRelevantCountry && isRelevantCategory) || hasRelevantKeyword;
-  }
-
-  private mapImportanceLevel(importance: number): 'low' | 'medium' | 'high' {
-    if (importance >= 3) return 'high';
-    if (importance >= 2) return 'medium';
-    return 'low';
-  }
-
-  private getWindowBeforeMs(importance: 'low' | 'medium' | 'high'): number {
-    switch (importance) {
-      case 'high': return 4 * 60 * 60 * 1000; // 4 hours
-      case 'medium': return 2 * 60 * 60 * 1000; // 2 hours  
-      case 'low': return 1 * 60 * 60 * 1000; // 1 hour
-    }
-  }
-
-  private getWindowAfterMs(importance: 'low' | 'medium' | 'high'): number {
-    switch (importance) {
-      case 'high': return 2 * 60 * 60 * 1000; // 2 hours
-      case 'medium': return 1 * 60 * 60 * 1000; // 1 hour
-      case 'low': return 30 * 60 * 1000; // 30 minutes
-    }
+    return {
+      beforeMs: Math.round(windows.beforeMs * multiplier),
+      afterMs: Math.round(windows.afterMs * multiplier),
+    };
   }
 
   async storeMacroEvents(events: InsertMacroEvent[]): Promise<void> {
     if (events.length === 0) return;
 
     try {
-      // Use upsert to handle duplicate events
       await db.insert(macroEvents)
         .values(events)
         .onConflictDoUpdate({
-          target: [macroEvents.name, macroEvents.timestamp],
+          target: [macroEvents.name, macroEvents.timestamp, macroEvents.provider],
           set: {
             importance: macroEvents.importance,
             windowBeforeMs: macroEvents.windowBeforeMs,
             windowAfterMs: macroEvents.windowAfterMs,
             provenance: macroEvents.provenance,
+            fetchedAt: new Date(),
           },
         });
 
-      logger.info(`Stored ${events.length} macro events from Trading Economics to database`);
+      logger.info(`Stored ${events.length} macro economic events`);
     } catch (error) {
-      logger.error('Failed to store Trading Economics macro events', error);
+      logger.error('Failed to store macro economic events', error);
       throw error;
     }
   }
 
-  private async updateHealthStatus(status: 'healthy' | 'degraded' | 'down', error: string | null): Promise<void> {
-    const healthData: InsertConnectorHealth = {
-      provider: 'tradingeconomics',
-      status,
-      lastSuccessfulFetch: status === 'healthy' ? new Date() : undefined,
-      lastError: error,
-      requestCount24h: this.requestCount,
-      errorCount24h: this.errorCount,
-      quotaUsed: this.requestCount,
-      quotaLimit: 86400, // Varies by plan, conservative estimate
-    };
-
+  private async updateHealthStatus(status: 'healthy' | 'degraded' | 'down', lastError: string | null): Promise<void> {
     try {
-      await db.insert(connectorHealth)
-        .values(healthData)
-        .onConflictDoUpdate({
-          target: connectorHealth.provider,
-          set: healthData,
-        });
+      await db.insert(connectorHealth).values({
+        provider: 'trading_economics',
+        status,
+        requestCount: this.requestCount,
+        errorCount: this.errorCount,
+        lastError,
+        quotaCost: this.requestCount,
+      } as InsertConnectorHealth).onConflictDoUpdate({
+        target: connectorHealth.provider,
+        set: {
+          status,
+          requestCount: this.requestCount,
+          errorCount: this.errorCount,
+          lastError,
+          quotaCost: this.requestCount,
+          lastChecked: new Date(),
+        },
+      });
     } catch (error) {
       logger.error('Failed to update Trading Economics connector health', error);
     }
   }
 
-  async getHealthStatus(): Promise<{ status: string; requestCount: number; errorCount: number; configured: boolean }> {
-    const configured = !!this.apiKey;
+  async getHealthStatus(): Promise<any> {
     return {
-      status: !configured ? 'down' : 
-              this.errorCount / Math.max(this.requestCount, 1) > 0.1 ? 'degraded' : 'healthy',
+      provider: 'trading_economics',
+      status: this.errorCount > 10 ? 'degraded' : 'healthy',
       requestCount: this.requestCount,
       errorCount: this.errorCount,
-      configured,
+      hasCredentials: !!this.apiKey,
+      rateLimitRemaining: this.limiter.getTokensRemaining(),
     };
   }
-
-  resetDailyCounters(): void {
-    this.requestCount = 0;
-    this.errorCount = 0;
-  }
 }
-
-// Export singleton instance
-export const tradingEconomicsConnector = new TradingEconomicsConnector();

@@ -419,6 +419,101 @@ export const arbitrageOpportunities = pgTable("arbitrage_opportunities", {
   timestamp: timestamp("timestamp").defaultNow(),
 });
 
+// Phase A - Stevie External Connectors & Schemas (Updated for compatibility)
+export const marketBars = pgTable("market_bars", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  symbol: varchar("symbol").notNull(),
+  timeframe: varchar("timeframe").notNull(), // '1m', '5m', '1h', '1d'
+  timestamp: timestamp("timestamp").notNull(),
+  open: varchar("open").notNull(),
+  high: varchar("high").notNull(),
+  low: varchar("low").notNull(),
+  close: varchar("close").notNull(),
+  volume: varchar("volume"),
+  provider: varchar("provider").notNull(), // 'coingecko', 'binance'
+  datasetId: varchar("dataset_id").notNull(),
+  fetchedAt: timestamp("fetched_at").defaultNow(),
+  provenance: jsonb("provenance").notNull(),
+}, (table) => [
+  index("idx_market_bars_symbol_timestamp").on(table.symbol, table.timestamp),
+  index("idx_market_bars_provider").on(table.provider),
+]);
+
+export const orderbookSnaps = pgTable("orderbook_snaps", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  symbol: varchar("symbol").notNull(),
+  timestamp: timestamp("timestamp").notNull(),
+  bid: varchar("bid").notNull(),
+  ask: varchar("ask").notNull(),
+  spreadBps: real("spread_bps").notNull(),
+  depth1bp: varchar("depth_1bp"),
+  depth5bp: varchar("depth_5bp"),
+  provider: varchar("provider").notNull(),
+  fetchedAt: timestamp("fetched_at").defaultNow(),
+  provenance: jsonb("provenance").notNull(),
+}, (table) => [
+  index("idx_orderbook_snaps_symbol_timestamp").on(table.symbol, table.timestamp),
+]);
+
+export const sentimentTicks = pgTable("sentiment_ticks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  timestamp: timestamp("timestamp").notNull(),
+  source: varchar("source").notNull(), // 'x', 'reddit', 'cryptopanic'
+  symbol: varchar("symbol").notNull(),
+  score: real("score").notNull(), // -1 to 1
+  volume: integer("volume"), // mentions/posts count
+  topic: varchar("topic"),
+  raw: jsonb("raw").notNull(),
+  provider: varchar("provider").notNull(),
+  fetchedAt: timestamp("fetched_at").defaultNow(),
+  provenance: jsonb("provenance").notNull(),
+}, (table) => [
+  index("idx_sentiment_ticks_source_symbol").on(table.source, table.symbol),
+  index("idx_sentiment_ticks_timestamp").on(table.timestamp),
+]);
+
+export const onchainTicks = pgTable("onchain_ticks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  timestamp: timestamp("timestamp").notNull(),
+  chain: varchar("chain").notNull(), // 'ethereum', 'bitcoin'
+  metric: varchar("metric").notNull(), // 'gas_price', 'whale_transfers', 'hashrate'
+  value: varchar("value").notNull(),
+  provider: varchar("provider").notNull(), // 'etherscan', 'blockchair'
+  fetchedAt: timestamp("fetched_at").defaultNow(),
+  provenance: jsonb("provenance").notNull(),
+}, (table) => [
+  index("idx_onchain_ticks_chain_metric").on(table.chain, table.metric),
+  index("idx_onchain_ticks_timestamp").on(table.timestamp),
+]);
+
+export const macroEvents = pgTable("macro_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  timestamp: timestamp("timestamp").notNull(),
+  name: varchar("name").notNull(),
+  importance: varchar("importance").notNull(), // 'low', 'medium', 'high'
+  windowBeforeMs: integer("window_before_ms").default(3600000), // 1 hour
+  windowAfterMs: integer("window_after_ms").default(3600000), // 1 hour
+  provider: varchar("provider").notNull(), // 'trading_economics'
+  fetchedAt: timestamp("fetched_at").defaultNow(),
+  provenance: jsonb("provenance").notNull(),
+}, (table) => [
+  index("idx_macro_events_timestamp").on(table.timestamp),
+  index("idx_macro_events_importance").on(table.importance),
+]);
+
+export const connectorHealth = pgTable("connector_health", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  provider: varchar("provider").notNull().unique(),
+  status: varchar("status").notNull(), // 'healthy', 'degraded', 'down'
+  requestCount: integer("request_count").default(0),
+  errorCount: integer("error_count").default(0),
+  lastError: text("last_error"),
+  quotaCost: integer("quota_cost").default(0),
+  lastChecked: timestamp("last_checked").defaultNow(),
+}, (table) => [
+  index("idx_connector_health_provider").on(table.provider),
+]);
+
 export const optionsFlow = pgTable("options_flow", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   symbol: varchar("symbol").notNull(),
@@ -492,103 +587,21 @@ export type SystemHealthMetric = typeof systemHealthMetrics.$inferSelect;
 export type PerformanceBenchmark = typeof performanceBenchmarks.$inferSelect;
 export type AlertingRule = typeof alertingRules.$inferSelect;
 
-// Phase A - External Connectors & Schemas (Compliance Mode Implementation)
-// Market bars table for OHLCV data with provider metadata
-export const marketBars = pgTable("market_bars", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  symbol: varchar("symbol").notNull(),
-  timeframe: varchar("timeframe").notNull(), // '1m', '5m', '1h', '1d'
-  timestamp: timestamp("timestamp").notNull(),
-  open: decimal("open", { precision: 18, scale: 8 }).notNull(),
-  high: decimal("high", { precision: 18, scale: 8 }).notNull(),
-  low: decimal("low", { precision: 18, scale: 8 }).notNull(),
-  close: decimal("close", { precision: 18, scale: 8 }).notNull(),
-  volume: decimal("volume", { precision: 18, scale: 8 }).notNull(),
-  provider: varchar("provider").notNull(), // 'coingecko', 'binance'
-  datasetId: varchar("dataset_id").notNull(),
-  fetchedAt: timestamp("fetched_at").defaultNow(),
-  provenance: jsonb("provenance").notNull(), // {provider, endpoint, fetchedAt, quotaCost}
-}, (table) => [
-  index("idx_market_bars_symbol_ts").on(table.symbol, table.timestamp),
-  index("idx_market_bars_provider_symbol").on(table.provider, table.symbol),
-]);
+// Phase A Type Exports for New Tables
+export type InsertMarketBar = typeof marketBars.$inferInsert;
+export type InsertOrderbookSnap = typeof orderbookSnaps.$inferInsert;
+export type InsertSentimentTick = typeof sentimentTicks.$inferInsert;
+export type InsertOnchainTick = typeof onchainTicks.$inferInsert;
+export type InsertMacroEvent = typeof macroEvents.$inferInsert;
+export type InsertConnectorHealth = typeof connectorHealth.$inferInsert;
 
-// Orderbook snapshots table for L1/L2 order book data
-export const orderbookSnaps = pgTable("orderbook_snaps", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  symbol: varchar("symbol").notNull(),
-  timestamp: timestamp("timestamp").notNull(),
-  bid: decimal("bid", { precision: 18, scale: 8 }).notNull(),
-  ask: decimal("ask", { precision: 18, scale: 8 }).notNull(),
-  spreadBps: real("spread_bps").notNull(),
-  depth1bp: decimal("depth_1bp", { precision: 18, scale: 8 }).notNull(),
-  depth5bp: decimal("depth_5bp", { precision: 18, scale: 8 }).notNull(),
-  provider: varchar("provider").notNull(), // 'binance'
-  provenance: jsonb("provenance").notNull(),
-}, (table) => [
-  index("idx_orderbook_symbol_ts").on(table.symbol, table.timestamp),
-]);
-
-// Sentiment ticks table for social/news sentiment scores  
-export const sentimentTicks = pgTable("sentiment_ticks", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  timestamp: timestamp("timestamp").notNull(),
-  source: varchar("source").notNull(), // 'twitter', 'reddit', 'cryptopanic'
-  symbol: varchar("symbol").notNull(),
-  score: real("score").notNull(), // -1 to 1
-  volume: integer("volume").notNull(), // mentions/posts count
-  topic: text("topic"),
-  raw: jsonb("raw").notNull(), // raw sentiment data
-  provenance: jsonb("provenance").notNull(),
-}, (table) => [
-  index("idx_sentiment_symbol_ts").on(table.symbol, table.timestamp),
-  index("idx_sentiment_source").on(table.source),
-]);
-
-// Onchain ticks table for blockchain metrics
-export const onchainTicks = pgTable("onchain_ticks", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  timestamp: timestamp("timestamp").notNull(),
-  chain: varchar("chain").notNull(), // 'bitcoin', 'ethereum'
-  metric: varchar("metric").notNull(), // 'gas_price', 'hashrate', 'active_addresses'
-  value: decimal("value", { precision: 18, scale: 8 }).notNull(),
-  provider: varchar("provider").notNull(), // 'etherscan', 'blockchair'
-  provenance: jsonb("provenance").notNull(),
-}, (table) => [
-  index("idx_onchain_chain_metric_ts").on(table.chain, table.metric, table.timestamp),
-]);
-
-// Macro events table for economic calendar events
-export const macroEvents = pgTable("macro_events", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  timestamp: timestamp("timestamp").notNull(),
-  name: varchar("name").notNull(),
-  importance: varchar("importance").notNull(), // 'low', 'medium', 'high'
-  windowBeforeMs: integer("window_before_ms").notNull().default(3600000), // 1 hour
-  windowAfterMs: integer("window_after_ms").notNull().default(3600000), // 1 hour  
-  provider: varchar("provider").notNull(), // 'tradingeconomics'
-  provenance: jsonb("provenance").notNull(),
-}, (table) => [
-  index("idx_macro_events_ts").on(table.timestamp),
-  index("idx_macro_events_importance").on(table.importance),
-]);
-
-// Connector health metrics table
-export const connectorHealth = pgTable("connector_health", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  provider: varchar("provider").notNull().unique(),
-  status: varchar("status").notNull(), // 'healthy', 'degraded', 'down'
-  lastSuccessfulFetch: timestamp("last_successful_fetch"),
-  lastError: text("last_error"),
-  requestCount24h: integer("request_count_24h").default(0),
-  errorCount24h: integer("error_count_24h").default(0),
-  quotaUsed: integer("quota_used").default(0),
-  quotaLimit: integer("quota_limit"),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
-
-// Import layout schemas
-export * from "./layout-schema";
+// Insert Schema Validators
+export const insertMarketBarSchema = createInsertSchema(marketBars);
+export const insertOrderbookSnapSchema = createInsertSchema(orderbookSnaps);
+export const insertSentimentTickSchema = createInsertSchema(sentimentTicks);
+export const insertOnchainTickSchema = createInsertSchema(onchainTicks);
+export const insertMacroEventSchema = createInsertSchema(macroEvents);
+export const insertConnectorHealthSchema = createInsertSchema(connectorHealth);
 
 // Phase A type exports
 export type MarketBar = typeof marketBars.$inferSelect;

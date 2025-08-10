@@ -1,0 +1,501 @@
+Absolutely — here’s a single, GPT-agnostic, copy-paste prompt for Replit that pulls everything together: real connectors → features → deterministic backtests → Stevie strategy → reward/penalty scoring → variance targeting & tempered Kelly → promotion gate → feature drift alarms → anti-mock audits → UI/UX audit with verify loops. It’s written in Compliance Mode with phase gates, hard stop conditions, and self-verification so it’s much harder to “miss things.”
+
+
+---
+
+Replit Task — Build Stevie End-to-End (Compliance Mode, One-Shot Prompt)
+
+Operating rules (do not skip):
+
+Mode: Discover → Plan → Implement in Phases → Verify → Report, stopping after each phase with a manifest, diffs, and pass/fail checklist.
+
+Adaptation: If any paths differ from this prompt, print an OLD→NEW mapping, then adapt all file paths accordingly.
+
+No fabrication: If something can’t be computed/fetched, return unknown with a clear reason. Do not stub or hardcode metrics.
+
+Idempotent: Re-runs must not duplicate files or break previous runs.
+
+Proof or fail: Every “pass” must include test output, row counts, or API responses.
+
+
+
+---
+
+Phase 0 — Repo discovery (no changes)
+
+1. Print a repo map (client/server/shared/tests/scripts).
+
+
+2. Detect routing (Wouter/React Router), list routes/pages and top-level components.
+
+
+3. Static scan client/src/**/*.tsx for interactive controls and write Interaction Inventory → tools/interaction_inventory.json with entries like:
+
+
+
+{ "route": "/trading", "component": "OrderTicket", "selector": "[data-testid='submit-order']", "type": "button", "intendedAction": "place order", "handler": "onSubmit", "wired": true }
+
+4. Propose a checkbox plan for Phases A→L and UI/UX U0→U2. STOP and show.
+
+
+
+
+---
+
+Phase A — External connectors & schemas (server)
+
+Connect the configured sources (use live keys; if missing, return unknown with reason) and add Drizzle schemas.
+
+Connectors (create/extend):
+
+server/connectors/coingecko.ts — OHLCV (1m/5m/1h/1d) → market_bars
+
+server/connectors/binance.ts — klines + bookTicker WS (L1/L2) → orderbook_snaps
+
+server/connectors/x.ts — tweets by symbol/hashtag → sentiment_ticks
+
+server/connectors/reddit.ts — crypto subs posts/comments → sentiment_ticks
+
+server/connectors/cryptopanic.ts — news + votes → sentiment_ticks
+
+server/connectors/etherscan.ts — gas, whale transfers → onchain_ticks
+
+server/connectors/blockchair.ts — BTC hashrate/active addrs → onchain_ticks
+
+server/connectors/tradingeconomics.ts — macro calendar → macro_events
+
+
+Schemas (Drizzle) — add if missing:
+
+market_bars(symbol, ts, o,h,l,c,v, provider, datasetId, fetchedAt)
+
+orderbook_snaps(symbol, ts, bid, ask, spreadBps, depth1bp, depth5bp, provider)
+
+sentiment_ticks(ts, source, symbol, score, volume, topic, raw jsonb)
+
+onchain_ticks(ts, chain, metric, value, provider)
+
+macro_events(ts, name, importance, windowBeforeMs, windowAfterMs, provider)
+
+
+Rules: rate-limit via existing guards; idempotent upserts keyed by (provider, symbol, ts); record provenance {provider, endpoint, fetchedAt, quotaCost} and connector health counters.
+
+Acceptance (show proof): Minimal fetch per connector writes ≥1 row or returns unknown + reason; print last 24h row counts/table.
+
+
+---
+
+Phase B — Feature builders & unified API (server)
+
+Add server/features/*.ts and expose a single read API for strategy/backtests:
+
+microstructure.ts → spread_bps, imbalance_1, micro_vol_ewma, trade_run_len
+
+costs.ts → expected_slippage_bps(size) for sizes [0.1,0.5,1.0] of allowed
+
+social.ts → z-score + EWMA + composite (X/Reddit/CryptoPanic)
+
+onchain.ts → z-scores + gas_spike_flag & activity bias
+
+macro.ts → blackout windows from Trading Economics
+
+regime.ts → vol_pct, trend_strength, liquidity_tier
+
+
+API (append if exists):
+
+GET /api/features?symbol=BTCUSDT&from=2024-06-01T00:00:00Z&to=2024-06-02T00:00:00Z&tf=5m
+-> { bars:[], micro:{}, costs:{}, social:{}, onchain:{}, macro:{}, regime:{}, provenance:{datasetId,commit,generatedAt} }
+
+If any section unavailable, set it to null and include a reason. Never fabricate.
+
+Acceptance: /api/features returns non-empty sections or explicit null+reason, includes provenance.
+
+
+---
+
+Phase C — Deterministic backtest adapter (server)
+
+Backtest loop must not call the network; read from DB (CoinGecko canonical), enrich from cached features.
+
+On gaps, skip periods and log gap reasons.
+
+Save artifacts: artifacts/<runId>/{manifest.json, metrics.json, trades.csv, logs.ndjson} with dataset hash (use your hasher).
+
+
+Acceptance: 1-day BTCUSDT 5m run in <60s; artifacts include datasetId, runId, commit.
+
+
+---
+
+Phase D — Stevie strategy kernel & config
+
+shared/src/stevie/config.ts
+
+export type StevieConfig = {
+  baseRiskPct: number;
+  perSymbolCapPct: Record<string, number>;
+  newsMaxRiskPct: number;
+  takerBps: number; makerRebateBps: number; costCapBps: number;
+  socialGo: number; volPctBreakout: number; volPctMeanRevert: number;
+  tpBreakout:number; slBreakout:number; tpRevert:number; slRevert:number; tpNews:number; slNews:number;
+  minInterTradeSec:number; burstCapPerMin:number;
+};
+export const defaultStevieConfig: StevieConfig = {
+  baseRiskPct: 0.5, perSymbolCapPct:{BTCUSDT:2.0,ETHUSDT:1.5,SOLUSDT:1.2}, newsMaxRiskPct:0.5,
+  takerBps:7, makerRebateBps:0, costCapBps:8,
+  socialGo:0.75, volPctBreakout:70, volPctMeanRevert:40,
+  tpBreakout:10, slBreakout:6, tpRevert:8, slRevert:5, tpNews:12, slNews:8,
+  minInterTradeSec:20, burstCapPerMin:3
+};
+
+server/strategy/stevie.ts
+
+import { defaultStevieConfig, StevieConfig } from "../../shared/src/stevie/config";
+type Bars = { ts:number;o:number;h:number;l:number;c:number;v?:number }[];
+type Features = {
+  bars: Bars;
+  micro: { spread_bps:number; imbalance_1:number; micro_vol_ewma:number; trade_run_len:number } | null;
+  costs: { expected_slippage_bps?:(s:number)=>number; curve?:{sizePct:number;bps:number}[] } | null;
+  social: { z:number; delta:number; spike?:boolean } | null;
+  onchain: { gas_spike_flag?:boolean; bias?:number } | null;
+  macro: { blackout?:boolean } | null;
+  regime: { vol_pct:number; trend_strength:number; liquidity_tier:1|2|3 } | null;
+  provenance: { datasetId?:string; commit:string; generatedAt:string };
+};
+type Position = { symbol:string; qty:number; avgPrice:number } | null;
+type Action =
+  | { type:"HOLD"; reason:string }
+  | { type:"ENTER_MARKET"|"ENTER_IOC"; sizePct:number; tag:string; tp_bps:number; sl_bps:number; reduceOnly?:boolean }
+  | { type:"ENTER_LIMIT_MAKER"; sizePct:number; price:number; tag:string; tp_bps:number; sl_bps:number; reduceOnly?:boolean };
+
+function costAt(f:Features, sizePct:number){ if(!f.costs) return Infinity;
+  if (f.costs.expected_slippage_bps) return f.costs.expected_slippage_bps(sizePct);
+  const c=f.costs.curve||[]; if(!c.length) return Infinity;
+  return c.reduce((best,p)=> Math.abs(p.sizePct-sizePct)<Math.abs(best.sizePct-sizePct)?p:best).bps; }
+
+function snapback(f:Features){ if(!f.micro||f.bars.length<2) return false;
+  const last=f.bars.at(-1)!, prev=f.bars.at(-2)!; const delta=last.c-prev.c, run=f.micro.trade_run_len;
+  return (run>2 && Math.sign(delta)!==Math.sign(run) && Math.abs(f.micro.imbalance_1)<0.1);
+}
+
+export function decide(f:Features,pos:Position,cfg:StevieConfig=defaultStevieConfig):Action{
+  if(f.macro?.blackout) return {type:"HOLD",reason:"macro_blackout"};
+  if(f.onchain?.gas_spike_flag) return {type:"HOLD",reason:"onchain_gas_spike"};
+  const expSlip=costAt(f,cfg.baseRiskPct); if(expSlip>cfg.costCapBps) return {type:"HOLD",reason:"slippage_cap"};
+  const vol=f.regime?.vol_pct??50, spread=f.micro?.spread_bps??999, soc=f.social?.delta??0;
+  const tier=f.regime?.liquidity_tier??3, bias=f.onchain?.bias;
+  const cap=(sym:string)=>cfg.perSymbolCapPct[sym]??2.0; const sym="BTCUSDT";
+
+  const scale=(base:number)=>{ const t=tier===1?1:tier===2?0.7:0.5; const b=bias!=null?(1+Math.max(-0.5,Math.min(0.5,bias))):1; return Math.max(0, base*t*(b<0?0.75:1)); };
+
+  if (vol>cfg.volPctBreakout && spread<=cfg.takerBps+2 && soc>cfg.socialGo)
+    return { type:"ENTER_IOC", sizePct:Math.min(scale(cfg.baseRiskPct),cap(sym)), tag:"breakout", tp_bps:cfg.tpBreakout, sl_bps:cfg.slBreakout };
+
+  if (vol<cfg.volPctMeanRevert && snapback(f)){
+    const last=f.bars.at(-1)!.c; const price=last*(f.micro!.imbalance_1<0?0.999:1.001);
+    return { type:"ENTER_LIMIT_MAKER", sizePct:Math.min(scale(cfg.baseRiskPct*0.7),cap(sym)), price, tag:"mean_revert", tp_bps:cfg.tpRevert, sl_bps:cfg.slRevert };
+  }
+
+  if (f.social?.spike && spread<=cfg.takerBps)
+    return { type:"ENTER_IOC", sizePct:Math.min(cfg.baseRiskPct,cfg.newsMaxRiskPct), tag:"news", tp_bps:cfg.tpNews, sl_bps:cfg.slNews };
+
+  return { type:"HOLD", reason:"no_edge" };
+}
+
+Unit tests: server/strategy/stevie.spec.ts (ensure HOLD on blackout, breakout/mean-revert fire correctly, slippage cap blocks).
+
+
+---
+
+Phase E — Reward/Penalty scoring (backtest + live)
+
+shared/src/stevie/score.ts
+
+export type ScoreTerm = "pnl_bps"|"fees_bps"|"slippage_bps"|"latency_penalty"|"drawdown_penalty"|"churn_penalty"|"opportunity_penalty"|"toxicity_penalty";
+export type TradeSnapshot = { symbol:string; entryTs:number; exitTs:number; entryPx:number; exitPx:number; qty:number; equityAtEntry:number; feeBps:number; slippageForecastBps?:number; slippageRealizedBps:number; ackMs:number; mfeBps:number; maeBps:number; midAfter1sBps?:number; tpBps?:number; slBps?:number; };
+export type TradeScore = { total:number; terms:{name:ScoreTerm; value:number}[]; provenance:{ runId?:string; datasetId?:string; commit:string; generatedAt:string } };
+
+server/strategy/scorecard.ts
+
+import { TradeSnapshot, TradeScore, ScoreTerm } from "../../shared/src/stevie/score";
+export type ScoreConfig = { latencyPenaltyPerSec:number; drawdownPenaltyPerBp:number; churnPenalty:number; minHoldSecs:number; tinyPnlBps:number; opportunityPenaltyPerBp:number; toxicityThresholdBps:number; toxicityPenalty:number; };
+export function scoreTrade(s:TradeSnapshot,cfg:ScoreConfig,prov:TradeScore["provenance"]):TradeScore{
+  const terms:{name:ScoreTerm;value:number}[]=[];
+  const pnl_bps=((s.exitPx-s.entryPx)*s.qty)/s.equityAtEntry*10_000; terms.push({name:"pnl_bps",value:pnl_bps});
+  terms.push({name:"fees_bps",value:-s.feeBps}); terms.push({name:"slippage_bps",value:-s.slippageRealizedBps});
+  terms.push({name:"latency_penalty",value:-cfg.latencyPenaltyPerSec*(s.ackMs/1000)});
+  const ddExcess=Math.max(0,(s.maeBps)-(s.slBps??0)); terms.push({name:"drawdown_penalty",value:-cfg.drawdownPenaltyPerBp*ddExcess});
+  const churn=(s.exitTs-s.entryTs)<cfg.minHoldSecs*1000 && Math.abs(pnl_bps)<cfg.tinyPnlBps ? -cfg.churnPenalty:0; terms.push({name:"churn_penalty",value:churn});
+  const realizedEdge=pnl_bps+s.feeBps+s.slippageRealizedBps; const opp=Math.max(0,s.mfeBps-Math.max(realizedEdge,0));
+  terms.push({name:"opportunity_penalty",value:-cfg.opportunityPenaltyPerBp*opp});
+  const tox=(s.midAfter1sBps??0)<=-cfg.toxicityThresholdBps ? -cfg.toxicityPenalty : 0; terms.push({name:"toxicity_penalty",value:tox});
+  const total=terms.reduce((a,b)=>a+b.value,0); return { total, terms, provenance:prov };
+}
+
+shared/src/stevie/score_config.ts
+
+import { ScoreConfig } from "../../server/strategy/scorecard";
+export const defaultScoreConfig: ScoreConfig = {
+  latencyPenaltyPerSec: 0.5, drawdownPenaltyPerBp: 0.2, churnPenalty: 2,
+  minHoldSecs: 15, tinyPnlBps: 1, opportunityPenaltyPerBp: 0.1,
+  toxicityThresholdBps: 3, toxicityPenalty: 2
+};
+
+Wire-in:
+
+Backtest: on each closed trade, persist TradeScore and aggregate reward_terms in metrics.json.
+
+Live/paper: write to live_trade_scores(tradeId, score_total, score_terms, ts).
+
+
+Acceptance: metrics.json contains reward_terms with a sum equal to headline.reward_total.
+
+
+---
+
+Phase F — Sizing upgrades (variance targeting + tempered Kelly)
+
+server/risk/varianceTarget.ts
+
+export type TF = "1m"|"5m"|"15m"|"1h"|"4h"|"1d"; const M:Record<TF,number>={"1m":1,"5m":5,"15m":15,"1h":60,"4h":240,"1d":1440};
+export function annualizationFactor(tf:TF){ return Math.sqrt(525_600 / M[tf]); }
+export function rollingAnnualizedVolPct(closes:number[], tf:TF, window:number){ if(closes.length<window+1) return [];
+  const vols:number[]=[]; const af=annualizationFactor(tf); const logs:number[]=[];
+  for(let i=1;i<closes.length;i++) logs.push(Math.log(closes[i]/closes[i-1]));
+  for(let i=window;i<=logs.length;i++){ const s=logs.slice(i-window,i); const m=s.reduce((a,b)=>a+b,0)/s.length;
+    const v=s.reduce((a,b)=>a+(b-m)*(b-m),0)/(s.length-1); vols.push(Math.sqrt(v)*af*100); } return vols; }
+export function varianceTargetMultiplier(volPct:number|undefined, target=10, bounds={min:0.25,max:2.0}){ if(!volPct||volPct<=0) return bounds.min; const m=target/volPct; return Math.max(bounds.min,Math.min(bounds.max,m)); }
+
+server/sizing/temperedKelly.ts
+
+export function temperedKellyFraction({ edgeBps, varBps2, temper, min=0, max=0.05, score7d=0 }:{
+  edgeBps:number; varBps2:number; temper:number; min?:number; max?:number; score7d?:number;
+}):number{ if(varBps2<=0) return min; const e=edgeBps/10_000, v=varBps2/(10_000*10_000); let f=e/v; if(!isFinite(f)) f=0;
+  const penalty = score7d<0 ? Math.max(0.5, 1 + score7d/100) : 1; const out=f*temper*penalty; return Math.max(min,Math.min(max,out)); }
+
+Use in decide(): multiply calculated size by varianceTargetMultiplier(currentVolPct) and temperedKellyFraction({edgeBps,varBps2,temper,score7d}), then clamp to perSymbolCapPct.
+
+Tests: server/risk/varianceTarget.spec.ts, server/sizing/temperedKelly.spec.ts (basic expectations).
+
+
+---
+
+Phase G — Promotion gate (shadow → live)
+
+server/strategy/promotionGate.ts
+
+export type GateMetrics={ sharpe:number; maxDrawdownPct:number; profitFactor:number; slippageErrBps:number; };
+export type GateThresholds={ minSharpeDelta:number; maxMddWorsenPct:number; maxSlippageErrBps:number; minProfitFactor:number; minTrades:number; };
+export function promotionDecision({live,shadow,shadowTrades,thresholds:t}:{live:GateMetrics;shadow:GateMetrics;shadowTrades:number;thresholds:GateThresholds;}){
+  const reasons:string[]=[]; if(shadowTrades<t.minTrades) reasons.push("insufficient_trades");
+  if((shadow.sharpe-live.sharpe)<t.minSharpeDelta) reasons.push("sharpe_delta_too_small");
+  if((shadow.maxDrawdownPct-live.maxDrawdownPct)>t.maxMddWorsenPct) reasons.push("drawdown_worse");
+  if(shadow.slippageErrBps>t.maxSlippageErrBps) reasons.push("slippage_err_high");
+  if(shadow.profitFactor<t.minProfitFactor) reasons.push("profit_factor_low");
+  return { allow: reasons.length===0, reasons };
+}
+
+UI: Only enable Promote button when allow===true; show reasons otherwise.
+
+
+---
+
+Phase H — Anti-mock & provenance audits (CI + runtime)
+
+1) Mock scanner
+
+tools/audit_mock_scan.js
+
+const fs=require("fs"),path=require("path");const ROOTS=["server","client","shared"];const ALLOW=/(__tests__|fixtures|stories?|mocks?|scripts|README|\.md)$/i;const NEEDLES=/\b(mock|faker|dummy|stub|sampleData|lorem|json-server|msw|miragejs|nock)\b/i;let bad=[];
+function walk(d){for(const f of fs.readdirSync(d)){const p=path.join(d,f),s=fs.statSync(p);if(s.isDirectory())walk(p);else if(/\.(ts|tsx|js|json)$/.test(p)){if(ALLOW.test(p))continue;const t=fs.readFileSync(p,"utf8");if(NEEDLES.test(t))bad.push(p);}}}
+for(const r of ROOTS) if(fs.existsSync(r)) walk(r);
+if(bad.length){console.error("❌ Mock-like content found:",bad);process.exit(1);}console.log("✓ No mock fingerprints in source");
+
+2) Provenance guard
+
+server/middleware/provenanceGuard.ts
+
+import { Request, Response, NextFunction } from "express";
+export function requireProvenance(req:Request,res:Response,next:NextFunction){
+  const send=res.json.bind(res);
+  res.json=(body:any)=>{ const ok=body && (body.provenance || (body.headline && body.provenance));
+    if(!ok){ res.status(500); return send({error:"Missing provenance",path:req.path}); } return send(body); };
+  next();
+}
+
+Mount on /api/features and /api/bench.
+
+3) No-network backtest
+
+server/backtest/noNetwork.ts
+
+export function disallowNetwork(){ const thrower=()=>{throw new Error("Network call during backtest");}; // @ts-ignore
+(globalThis as any).fetch=thrower; }
+
+4) Cross-source sanity (Binance vs CoinGecko)
+
+tools/audit_cross_source.ts (TypeScript script): compare last-hour close medians; fail if median abs % diff > 0.5%. (Use the version you already saw; adapt SQL to your column names.)
+
+5) Entropy guard
+
+tools/metrics_entropy.spec.ts (vitest): ensure Sharpe isn’t identical across ≥3 runs.
+
+
+---
+
+Phase I — UI/UX Audit (WCAG 2.2 + wiring + heuristics)
+
+U0 — Static wiring
+
+tools/ui_wiring_check.js: flag dead buttons/links, missing data-testid, missing pending/disabled & toasts for mutations.
+Script: "check:ui": "node tools/ui_wiring_check.js".
+
+U1 — Playwright + axe
+
+Add:
+
+client/tests/e2e/config.ts (mobile + desktop projects)
+
+client/tests/e2e/axe.ts (a11y helper)
+
+client/tests/e2e/routes.spec.ts (no console errors, basic clicks → URL/network/DOM change)
+
+client/tests/e2e/accessibility.spec.ts
+
+Target size ≥24×24 for primary controls on mobile
+
+Keyboard traversal visible focus; no traps
+
+Drag alternatives present (numeric input / +/-)
+
+
+client/tests/e2e/heuristics.spec.ts
+
+Loading skeletons / error regions / consistent labels
+
+Nav pattern: bottom nav on mobile ([data-testid='bottom-nav']), side rail/drawer on desktop ([data-testid='side-rail'])
+
+
+
+U2 — Verify loop
+
+tools/ux_audit_runner.js runs check:ui + Playwright in retries (env UX_RETRIES=5).
+Script: "e2e": "playwright test --config client/tests/e2e/config.ts", "audit:ux": "node tools/ux_audit_runner.js".
+
+Acceptance: 0 console errors/warnings; axe serious/critical = 0; target-size & focus tests pass; all critical controls wired.
+
+
+---
+
+Phase J — Feature drift (PSI)
+
+tools/feature_drift.ts (TS): compute PSI for spreadbps, depth1bp comparing last 7d vs prior 30d; fail if PSI>0.25 on ≥2 features unless DRIFT_ACK=1. (Use the stub you saw; adapt columns if needed.)
+
+
+---
+
+Phase K — Execution router & UX cues (tiny)
+
+Execution chooser: maker vs IOC vs FOK using spread, toxicity flag, expected fill probability (simple heuristic).
+
+UI: add [data-testid='confidence-pill'], [data-testid='risk-preset-1x'], [data-testid='why-blocked']. Show confidence pill (low/med/high) and why blocked reason from router.
+
+
+Acceptance: E2E sees these testids; clicking risk preset updates size; “why blocked” shows the exact reason.
+
+
+---
+
+Phase L — Scripts & CI wiring
+
+Root package.json (append):
+
+{
+  "scripts": {
+    "test:stevie": "vitest run server/strategy/stevie.spec.ts",
+    "test:risk": "vitest run server/risk/varianceTarget.spec.ts",
+    "test:sizing": "vitest run server/sizing/temperedKelly.spec.ts",
+    "test:gate": "vitest run server/strategy/promotionGate.spec.ts",
+    "bench:entropy": "vitest run tools/metrics_entropy.spec.ts",
+    "audit:mock": "node tools/audit_mock_scan.js",
+    "audit:cross": "tsx tools/audit_cross_source.ts BTCUSDT 60",
+    "audit:drift": "tsx tools/feature_drift.ts",
+    "check:ui": "node tools/ui_wiring_check.js",
+    "e2e": "playwright test --config client/tests/e2e/config.ts",
+    "audit:ux": "node tools/ux_audit_runner.js",
+    "audit:data": "node tools/connectors_check.js"
+  }
+}
+
+.github/workflows/ci.yml (append steps):
+
+- name: Data audit
+  run: pnpm run audit:data
+
+- name: Strategy unit tests
+  run: pnpm run test:stevie
+
+- name: Risk & sizing tests
+  run: pnpm run test:risk && pnpm run test:sizing
+
+- name: Promotion gate tests
+  run: pnpm run test:gate
+
+- name: Reward guard / entropy
+  run: pnpm run bench:entropy
+
+- name: Audit — mock fingerprints
+  run: pnpm run audit:mock
+
+- name: Audit — cross-source sanity
+  run: pnpm run audit:cross
+
+- name: Feature drift (PSI)
+  run: pnpm run audit:drift
+
+- name: UI wiring check
+  run: pnpm run check:ui
+
+- name: E2E (UI/UX)
+  run: pnpm run e2e
+
+
+---
+
+Stop conditions (do not proceed if triggered)
+
+Any “critical” from check:ui.
+
+Any console error/warning during E2E.
+
+Any axe serious/critical issues.
+
+/api/features or /api/bench/* without provenance.
+
+Cross-source median diff > 0.5%.
+
+PSI drift triggers (unless DRIFT_ACK=1).
+
+Backtest uses network (noNetwork throws).
+
+Reward terms missing or sum mismatch.
+
+
+
+---
+
+Verify loops (run after fixes)
+
+Data: pnpm run audit:data
+
+UX: pnpm run audit:ux (set UX_RETRIES=5 to retry)
+
+
+Only mark the phase complete when the loop ends green and you’ve printed the manifest + diffs + checklist.
+
+
+---
+
+Begin now with Phase 0. Print the repo map, the Interaction Inventory, and the plan. Then proceed phase-by-phase with hard stops and proof at each step.
+

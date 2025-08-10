@@ -160,7 +160,7 @@ export class CoinGeckoConnector {
             coinId,
             interval,
             days,
-          },
+          } as Record<string, any>,
         });
       }
 

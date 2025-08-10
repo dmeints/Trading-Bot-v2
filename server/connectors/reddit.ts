@@ -1,132 +1,97 @@
 /**
- * Reddit API Connector - Phase A Implementation
- * Fetches crypto subreddit posts/comments for sentiment analysis with rate limiting and provenance tracking
+ * Reddit API Connector for Community Sentiment Analysis
+ * Fetches community sentiment data from cryptocurrency subreddits
  */
 
 import axios, { AxiosResponse } from 'axios';
-import { db } from '../db';
-import { sentimentTicks, connectorHealth, type InsertSentimentTick, type InsertConnectorHealth } from '@shared/schema';
-import { logger } from '../utils/logger';
 import { RateLimiter } from 'limiter';
+import { logger } from '../utils/logger';
+import { db } from '../db';
+import { sentimentTicks, connectorHealth } from '@shared/schema';
+import type { InsertSentimentTick, InsertConnectorHealth } from '@shared/schema';
 
-export interface RedditPostData {
-  id: string;
-  title: string;
-  selftext: string;
-  score: number;
-  upvote_ratio: number;
-  num_comments: number;
-  created_utc: number;
-  subreddit: string;
-  author: string;
-  permalink: string;
-  url: string;
-}
-
-export interface RedditCommentData {
-  id: string;
-  body: string;
-  score: number;
-  created_utc: number;
-  subreddit: string;
-  author: string;
-  permalink: string;
-  parent_id: string;
-}
-
-export interface RedditResponse {
+interface RedditPostResponse {
   data: {
     children: Array<{
-      data: RedditPostData | RedditCommentData;
+      data: {
+        id: string;
+        title: string;
+        selftext: string;
+        score: number;
+        num_comments: number;
+        created_utc: number;
+        subreddit: string;
+        author: string;
+        upvote_ratio: number;
+      };
     }>;
     after?: string;
-    before?: string;
   };
 }
 
 export class RedditConnector {
   private clientId: string | undefined;
   private clientSecret: string | undefined;
-  private userAgent = 'SkippyTrading/1.0';
-  private baseUrl = 'https://oauth.reddit.com';
-  private authUrl = 'https://www.reddit.com/api/v1/access_token';
-  private accessToken: string | null = null;
-  private tokenExpiresAt: Date | null = null;
+  private baseUrl = 'https://www.reddit.com/api/v1';
+  private oauthUrl = 'https://oauth.reddit.com';
   private limiter: RateLimiter;
   private requestCount = 0;
   private errorCount = 0;
-  private cryptoSubreddits: string[];
+  private accessToken: string | null = null;
 
   constructor() {
     this.clientId = process.env.REDDIT_CLIENT_ID;
     this.clientSecret = process.env.REDDIT_CLIENT_SECRET;
-    // Rate limit: 60 requests per minute for OAuth
+    // Rate limit: 60 requests per minute for authenticated API
     this.limiter = new RateLimiter({ tokensPerInterval: 60, interval: 60000 });
-    
-    // Crypto-related subreddits to monitor
-    this.cryptoSubreddits = [
-      'CryptoCurrency',
-      'Bitcoin',
-      'ethereum',
-      'solana', 
-      'cardano',
-      'dot',
-      'CryptoMarkets',
-      'altcoin',
-      'CoinBase',
-      'binance',
-    ];
   }
 
-  private async authenticate(): Promise<void> {
+  private async getAccessToken(): Promise<string> {
+    if (this.accessToken) {
+      return this.accessToken;
+    }
+
     if (!this.clientId || !this.clientSecret) {
       throw new Error('Reddit API credentials not configured');
     }
 
-    // Check if token is still valid
-    if (this.accessToken && this.tokenExpiresAt && new Date() < this.tokenExpiresAt) {
-      return;
-    }
-
-    const auth = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString('base64');
-    
     try {
-      const response = await axios.post(
-        this.authUrl,
+      const auth = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString('base64');
+      
+      const response = await axios.post(`${this.baseUrl}/access_token`, 
         'grant_type=client_credentials',
         {
           headers: {
             'Authorization': `Basic ${auth}`,
             'Content-Type': 'application/x-www-form-urlencoded',
-            'User-Agent': this.userAgent,
+            'User-Agent': 'SkippyBot/1.0',
           },
         }
       );
 
       this.accessToken = response.data.access_token;
-      // Reddit tokens expire in 1 hour, set expiry with 5min buffer
-      this.tokenExpiresAt = new Date(Date.now() + (response.data.expires_in - 300) * 1000);
+      logger.info('Reddit access token obtained');
+      return this.accessToken;
       
-      logger.info('Reddit authentication successful');
-    } catch (error: any) {
-      logger.error('Reddit authentication failed', error);
-      throw new Error(`Reddit authentication failed: ${error.message}`);
+    } catch (error) {
+      logger.error('Failed to get Reddit access token', error);
+      throw error;
     }
   }
 
   private async makeRequest<T>(endpoint: string, params?: Record<string, any>): Promise<T> {
-    await this.authenticate();
     await this.limiter.removeTokens(1);
     this.requestCount++;
 
+    const token = await this.getAccessToken();
     const config = {
-      baseURL: this.baseUrl,
+      baseURL: this.oauthUrl,
       headers: {
-        'Authorization': `Bearer ${this.accessToken}`,
-        'User-Agent': this.userAgent,
+        'Authorization': `Bearer ${token}`,
+        'User-Agent': 'SkippyBot/1.0',
       },
       params,
-      timeout: 15000,
+      timeout: 10000,
     };
 
     try {
@@ -152,263 +117,222 @@ export class RedditConnector {
     }
   }
 
-  async fetchPostsBySymbol(symbol: string, limit: number = 100): Promise<InsertSentimentTick[]> {
-    const keywords = this.getKeywordsForSymbol(symbol);
-    if (!keywords.length) {
-      logger.warn(`No keywords configured for symbol: ${symbol}`);
-      return [];
-    }
-
-    const sentimentTicks: InsertSentimentTick[] = [];
-
-    // Search across crypto subreddits
-    for (const subreddit of this.cryptoSubreddits) {
-      try {
-        const posts = await this.searchSubreddit(subreddit, keywords, limit / this.cryptoSubreddits.length);
-        
-        for (const post of posts) {
-          const sentiment = this.analyzeTextSentiment(post.title + ' ' + post.selftext);
-          const volume = this.calculatePostVolume(post);
-          
-          sentimentTicks.push({
-            timestamp: new Date(post.created_utc * 1000),
-            source: 'reddit',
-            symbol,
-            score: sentiment.score,
-            volume,
-            topic: `r/${post.subreddit}`,
-            raw: {
-              post_id: post.id,
-              title: post.title,
-              selftext: post.selftext,
-              score: post.score,
-              upvote_ratio: post.upvote_ratio,
-              num_comments: post.num_comments,
-              author: post.author,
-              subreddit: post.subreddit,
-              permalink: post.permalink,
-              keywords_matched: keywords.filter(kw => 
-                (post.title + ' ' + post.selftext).toLowerCase().includes(kw.toLowerCase())
-              ),
-            },
-            provenance: {
-              provider: 'reddit',
-              endpoint: `/r/${subreddit}/search`,
-              fetchedAt: new Date().toISOString(),
-              quotaCost: 1,
-              subreddit,
-              keywords: keywords.join(','),
-              limit,
-            },
-          });
-        }
-      } catch (error) {
-        logger.error(`Failed to fetch posts from r/${subreddit}`, error);
-      }
-    }
-
-    logger.info(`Fetched ${sentimentTicks.length} Reddit posts for ${symbol}`);
-    return sentimentTicks;
-  }
-
-  private async searchSubreddit(subreddit: string, keywords: string[], limit: number): Promise<RedditPostData[]> {
-    const query = keywords.join(' OR ');
-    const endpoint = `/r/${subreddit}/search`;
-    const params = {
-      q: query,
-      restrict_sr: 'on',
-      sort: 'new',
-      limit: Math.min(limit, 25), // Reddit API limit
-      t: 'day', // Last 24 hours
-    };
+  async fetchSentimentData(symbol: string): Promise<InsertSentimentTick[]> {
+    const subreddits = this.getCryptoSubreddits(symbol);
+    const sentiments: InsertSentimentTick[] = [];
 
     try {
-      const data = await this.makeRequest<RedditResponse>(endpoint, params);
-      
-      return data.data.children.map(child => child.data as RedditPostData);
-    } catch (error) {
-      logger.error(`Failed to search r/${subreddit}`, error);
-      return [];
-    }
-  }
-
-  async fetchHotPosts(subreddit: string, limit: number = 25): Promise<InsertSentimentTick[]> {
-    const endpoint = `/r/${subreddit}/hot`;
-    const params = { limit: Math.min(limit, 100) };
-
-    try {
-      const data = await this.makeRequest<RedditResponse>(endpoint, params);
-      const sentimentTicks: InsertSentimentTick[] = [];
-
-      for (const child of data.data.children) {
-        const post = child.data as RedditPostData;
-        const symbol = this.detectSymbolFromText(post.title + ' ' + post.selftext);
-        
-        if (symbol) {
-          const sentiment = this.analyzeTextSentiment(post.title + ' ' + post.selftext);
-          const volume = this.calculatePostVolume(post);
-          
-          sentimentTicks.push({
-            timestamp: new Date(post.created_utc * 1000),
-            source: 'reddit',
-            symbol,
-            score: sentiment.score,
-            volume,
-            topic: `r/${post.subreddit}`,
-            raw: {
-              post_id: post.id,
-              title: post.title,
-              selftext: post.selftext,
-              score: post.score,
-              upvote_ratio: post.upvote_ratio,
-              num_comments: post.num_comments,
-              author: post.author,
-              subreddit: post.subreddit,
-              permalink: post.permalink,
-            },
-            provenance: {
-              provider: 'reddit',
-              endpoint,
-              fetchedAt: new Date().toISOString(),
-              quotaCost: 1,
-              subreddit,
-              limit,
-            },
-          });
+      for (const subreddit of subreddits) {
+        const posts = await this.fetchSubredditPosts(subreddit, symbol);
+        if (posts.length > 0) {
+          const sentiment = this.analyzePosts(posts, symbol);
+          sentiments.push(sentiment);
         }
       }
 
-      logger.info(`Fetched ${sentimentTicks.length} hot posts from r/${subreddit}`);
-      return sentimentTicks;
+      logger.info(`Fetched Reddit sentiment for ${symbol}`, {
+        subreddits: subreddits.length,
+        sentiments: sentiments.length,
+      });
+
+      return sentiments;
       
     } catch (error) {
-      logger.error(`Failed to fetch hot posts from r/${subreddit}`, error);
+      logger.error(`Failed to fetch Reddit sentiment for ${symbol}`, error);
       throw error;
     }
   }
 
-  private getKeywordsForSymbol(symbol: string): string[] {
-    const keywordMap: Record<string, string[]> = {
-      'BTCUSDT': ['Bitcoin', 'BTC', '$BTC'],
-      'ETHUSDT': ['Ethereum', 'ETH', '$ETH'],
-      'SOLUSDT': ['Solana', 'SOL', '$SOL'],
-      'ADAUSDT': ['Cardano', 'ADA', '$ADA'],
-      'DOTUSDT': ['Polkadot', 'DOT', '$DOT'],
-      'LINKUSDT': ['Chainlink', 'LINK', '$LINK'],
-      'MATICUSDT': ['Polygon', 'MATIC', '$MATIC'],
-      'AVAXUSDT': ['Avalanche', 'AVAX', '$AVAX'],
+  private async fetchSubredditPosts(subreddit: string, symbol: string): Promise<any[]> {
+    const endpoint = `/r/${subreddit}/hot.json`;
+    const params = {
+      limit: 50,
+      t: 'day', // Posts from last 24 hours
     };
-    
-    return keywordMap[symbol] || [];
-  }
 
-  private detectSymbolFromText(text: string): string | null {
-    const lowerText = text.toLowerCase();
-    
-    // Simple symbol detection based on keywords
-    const symbolMap = {
-      'BTCUSDT': ['bitcoin', 'btc', '$btc'],
-      'ETHUSDT': ['ethereum', 'eth', '$eth'],
-      'SOLUSDT': ['solana', 'sol', '$sol'],
-      'ADAUSDT': ['cardano', 'ada', '$ada'],
-      'DOTUSDT': ['polkadot', 'dot', '$dot'],
-    };
-    
-    for (const [symbol, keywords] of Object.entries(symbolMap)) {
-      if (keywords.some(keyword => lowerText.includes(keyword))) {
-        return symbol;
+    try {
+      const data = await this.makeRequest<RedditPostResponse>(endpoint, params);
+      
+      if (!data.data?.children?.length) {
+        logger.warn(`No posts found in r/${subreddit}`);
+        return [];
       }
+
+      // Filter posts related to the symbol
+      const symbolKeywords = this.getSymbolKeywords(symbol);
+      const relevantPosts = data.data.children.filter(post => {
+        const text = (post.data.title + ' ' + post.data.selftext).toLowerCase();
+        return symbolKeywords.some(keyword => text.includes(keyword.toLowerCase()));
+      });
+
+      return relevantPosts.map(post => post.data);
+      
+    } catch (error) {
+      logger.error(`Failed to fetch posts from r/${subreddit}`, error);
+      return [];
     }
-    
-    return null;
   }
 
-  private analyzeTextSentiment(text: string): { score: number; confidence: number } {
-    // Simple sentiment analysis based on keywords
-    const positiveWords = ['bullish', 'moon', 'pump', 'buy', 'long', 'up', 'rise', 'gain', 'profit', 'bull', 'hodl', 'diamond hands'];
-    const negativeWords = ['bearish', 'dump', 'sell', 'short', 'down', 'drop', 'loss', 'bear', 'crash', 'dip', 'paper hands'];
-    
+  private analyzePosts(posts: any[], symbol: string): InsertSentimentTick {
+    let totalScore = 0;
+    let totalComments = 0;
+    let bullishCount = 0;
+    let bearishCount = 0;
+
+    for (const post of posts) {
+      totalScore += post.score;
+      totalComments += post.num_comments;
+
+      // Analyze sentiment based on title and content
+      const text = post.title + ' ' + post.selftext;
+      const sentiment = this.analyzeTextSentiment(text);
+      
+      if (sentiment > 0) bullishCount++;
+      if (sentiment < 0) bearishCount++;
+    }
+
+    // Calculate overall sentiment score
+    const sentimentScore = posts.length > 0 
+      ? (bullishCount - bearishCount) / posts.length 
+      : 0;
+
+    // Weight by engagement (upvotes and comments)
+    const avgEngagement = posts.length > 0 ? (totalScore + totalComments) / posts.length : 0;
+    const weightedSentiment = sentimentScore * Math.min(1, avgEngagement / 100);
+
+    return {
+      timestamp: new Date(),
+      source: 'reddit',
+      symbol: symbol.replace('USDT', ''),
+      score: Math.max(-1, Math.min(1, weightedSentiment)), // Clamp to [-1, 1]
+      volume: posts.length,
+      topic: `${symbol} community sentiment`,
+      raw: {
+        posts: posts.slice(0, 3), // Store first 3 posts
+        totalScore,
+        totalComments,
+        bullishCount,
+        bearishCount,
+        avgEngagement,
+      } as Record<string, any>,
+      provider: 'reddit',
+      provenance: {
+        provider: 'reddit',
+        fetchedAt: new Date().toISOString(),
+        quotaCost: 1,
+        postsAnalyzed: posts.length,
+      } as Record<string, any>,
+    };
+  }
+
+  private getCryptoSubreddits(symbol: string): string[] {
+    const subredditMap: Record<string, string[]> = {
+      'BTCUSDT': ['Bitcoin', 'CryptoCurrency', 'BitcoinBeginners'],
+      'ETHUSDT': ['ethereum', 'ethtrader', 'CryptoCurrency'],
+      'SOLUSDT': ['solana', 'CryptoCurrency'],
+      'ADAUSDT': ['cardano', 'CryptoCurrency'],
+      'DOTUSDT': ['dot', 'CryptoCurrency'],
+    };
+
+    return subredditMap[symbol] || ['CryptoCurrency'];
+  }
+
+  private getSymbolKeywords(symbol: string): string[] {
+    const keywordMap: Record<string, string[]> = {
+      'BTCUSDT': ['bitcoin', 'btc', 'satoshi'],
+      'ETHUSDT': ['ethereum', 'eth', 'ether', 'vitalik'],
+      'SOLUSDT': ['solana', 'sol'],
+      'ADAUSDT': ['cardano', 'ada'],
+      'DOTUSDT': ['polkadot', 'dot'],
+    };
+
+    return keywordMap[symbol] || [symbol.replace('USDT', '')];
+  }
+
+  private analyzeTextSentiment(text: string): number {
+    const bullishKeywords = [
+      'bullish', 'moon', 'pump', 'buy', 'hodl', 'diamond hands', 'to the moon',
+      'green', 'profit', 'gain', 'up', 'rise', 'rally', 'surge', 'breakout',
+      'ath', 'all time high', 'bullrun', 'adoption', 'institutional'
+    ];
+
+    const bearishKeywords = [
+      'bearish', 'dump', 'crash', 'sell', 'panic', 'fear', 'red', 'blood',
+      'drop', 'fall', 'down', 'correction', 'dip', 'bubble', 'scam',
+      'dead', 'rekt', 'liquidated', 'bear market', 'recession'
+    ];
+
     const lowerText = text.toLowerCase();
-    let positiveCount = 0;
-    let negativeCount = 0;
-    
-    positiveWords.forEach(word => {
-      if (lowerText.includes(word)) positiveCount++;
-    });
-    
-    negativeWords.forEach(word => {
-      if (lowerText.includes(word)) negativeCount++;
-    });
-    
-    const totalSentimentWords = positiveCount + negativeCount;
-    
-    if (totalSentimentWords === 0) {
-      return { score: 0, confidence: 0.1 };
-    }
-    
-    const score = (positiveCount - negativeCount) / totalSentimentWords;
-    const confidence = Math.min(totalSentimentWords / 5, 1);
-    
-    return { score: Math.max(-1, Math.min(1, score)), confidence };
-  }
+    let sentiment = 0;
 
-  private calculatePostVolume(post: RedditPostData): number {
-    // Calculate engagement volume based on score and comments
-    return Math.max(0, post.score) + post.num_comments * 2; // Weight comments higher
+    for (const keyword of bullishKeywords) {
+      if (lowerText.includes(keyword)) sentiment += 1;
+    }
+
+    for (const keyword of bearishKeywords) {
+      if (lowerText.includes(keyword)) sentiment -= 1;
+    }
+
+    return Math.max(-1, Math.min(1, sentiment / 10)); // Normalize
   }
 
   async storeSentimentTicks(ticks: InsertSentimentTick[]): Promise<void> {
     if (ticks.length === 0) return;
 
     try {
-      await db.insert(sentimentTicks).values(ticks);
-      logger.info(`Stored ${ticks.length} Reddit sentiment ticks to database`);
+      await db.insert(sentimentTicks)
+        .values(ticks)
+        .onConflictDoUpdate({
+          target: [sentimentTicks.source, sentimentTicks.symbol, sentimentTicks.timestamp],
+          set: {
+            score: sentimentTicks.score,
+            volume: sentimentTicks.volume,
+            topic: sentimentTicks.topic,
+            raw: sentimentTicks.raw,
+            provenance: sentimentTicks.provenance,
+            fetchedAt: new Date(),
+          },
+        });
+
+      logger.info(`Stored ${ticks.length} Reddit sentiment ticks`);
     } catch (error) {
       logger.error('Failed to store Reddit sentiment ticks', error);
       throw error;
     }
   }
 
-  private async updateHealthStatus(status: 'healthy' | 'degraded' | 'down', error: string | null): Promise<void> {
-    const healthData: InsertConnectorHealth = {
-      provider: 'reddit',
-      status,
-      lastSuccessfulFetch: status === 'healthy' ? new Date() : undefined,
-      lastError: error,
-      requestCount24h: this.requestCount,
-      errorCount24h: this.errorCount,
-      quotaUsed: this.requestCount,
-      quotaLimit: 60,
-    };
-
+  private async updateHealthStatus(status: 'healthy' | 'degraded' | 'down', lastError: string | null): Promise<void> {
     try {
-      await db.insert(connectorHealth)
-        .values(healthData)
-        .onConflictDoUpdate({
-          target: connectorHealth.provider,
-          set: healthData,
-        });
+      await db.insert(connectorHealth).values({
+        provider: 'reddit',
+        status,
+        requestCount: this.requestCount,
+        errorCount: this.errorCount,
+        lastError,
+        quotaCost: this.requestCount,
+      } as InsertConnectorHealth).onConflictDoUpdate({
+        target: connectorHealth.provider,
+        set: {
+          status,
+          requestCount: this.requestCount,
+          errorCount: this.errorCount,
+          lastError,
+          quotaCost: this.requestCount,
+          lastChecked: new Date(),
+        },
+      });
     } catch (error) {
       logger.error('Failed to update Reddit connector health', error);
     }
   }
 
-  async getHealthStatus(): Promise<{ status: string; requestCount: number; errorCount: number; configured: boolean }> {
-    const configured = !!(this.clientId && this.clientSecret);
+  async getHealthStatus(): Promise<any> {
     return {
-      status: !configured ? 'down' : 
-              this.errorCount / Math.max(this.requestCount, 1) > 0.1 ? 'degraded' : 'healthy',
+      provider: 'reddit',
+      status: this.errorCount > 10 ? 'degraded' : 'healthy',
       requestCount: this.requestCount,
       errorCount: this.errorCount,
-      configured,
+      hasCredentials: !!(this.clientId && this.clientSecret),
     };
   }
-
-  resetDailyCounters(): void {
-    this.requestCount = 0;
-    this.errorCount = 0;
-  }
 }
-
-// Export singleton instance
-export const redditConnector = new RedditConnector();

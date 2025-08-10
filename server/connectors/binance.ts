@@ -127,7 +127,7 @@ export class BinanceConnector {
             quotaCost: 1,
             interval,
             limit,
-          },
+          } as Record<string, any>,
         });
       });
 
@@ -179,7 +179,7 @@ export class BinanceConnector {
           fetchedAt: new Date().toISOString(),
           quotaCost: 1,
           lastUpdateId: data.lastUpdateId,
-        },
+        } as Record<string, any>,
       };
 
       logger.info(`Fetched order book snapshot for ${symbol} from Binance`);

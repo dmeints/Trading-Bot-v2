@@ -50,21 +50,25 @@ import {
   type InsertBacktestResults,
   type FeedbackSubmission,
   type InsertFeedbackSubmission,
-  userLayouts,
-  experiments,
-  userExperimentAssignments,
-  experimentMetrics,
-  userPreferences,
-  type UserLayout,
-  type InsertUserLayout,
-  type Experiment,
-  type InsertExperiment,
-  type UserExperimentAssignment,
-  type InsertUserExperimentAssignment,
-  type ExperimentMetric,
-  type InsertExperimentMetric,
-  type UserPreference,
-  type InsertUserPreference,
+  // Phase A - External Connectors & Schemas
+  marketBars,
+  orderbookSnaps,
+  sentimentTicks,
+  onchainTicks,
+  macroEvents,
+  connectorHealth,
+  type MarketBar,
+  type InsertMarketBar,
+  type OrderbookSnap,
+  type InsertOrderbookSnap,
+  type SentimentTick,
+  type InsertSentimentTick,
+  type OnchainTick,
+  type InsertOnchainTick,
+  type MacroEvent,
+  type InsertMacroEvent,
+  type ConnectorHealth,
+  type InsertConnectorHealth,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sql } from "drizzle-orm";
@@ -107,23 +111,19 @@ export interface IStorage {
   createFeedbackSubmission(feedbackData: InsertFeedbackSubmission): Promise<FeedbackSubmission>;
   getFeedbackSubmissions(limit?: number): Promise<FeedbackSubmission[]>;
 
-  // Layout management
-  getUserLayouts(userId: string): Promise<UserLayout[]>;
-  saveUserLayout(userId: string, layoutData: InsertUserLayout): Promise<UserLayout>;
-  deleteUserLayout(userId: string, layoutId: string): Promise<void>;
-
-  // Experiment management
-  getExperimentByName(name: string): Promise<Experiment | undefined>;
-  getUserExperimentAssignment(userId: string, experimentName: string): Promise<UserExperimentAssignment | undefined>;
-  assignUserToExperiment(userId: string, experimentId: string, variant: string): Promise<UserExperimentAssignment>;
-  trackExperimentEvent(data: InsertExperimentMetric): Promise<void>;
-  getAllExperiments(): Promise<Experiment[]>;
-  getExperimentMetrics(experimentId: string): Promise<any[]>;
-  createExperiment(data: InsertExperiment): Promise<Experiment>;
-
-  // User preferences
-  getUserPreferences(userId: string): Promise<UserPreference | undefined>;
-  updateUserPreferences(userId: string, updates: Partial<InsertUserPreference>): Promise<UserPreference>;
+  // Phase A - External Connectors & Schemas Storage Interface
+  storeMarketBars(bars: InsertMarketBar[]): Promise<void>;
+  getMarketBars(symbol: string, timeframe: string, limit?: number): Promise<MarketBar[]>;
+  storeOrderbookSnaps(snaps: InsertOrderbookSnap[]): Promise<void>;
+  getOrderbookSnaps(symbol: string, limit?: number): Promise<OrderbookSnap[]>;
+  storeSentimentTicks(ticks: InsertSentimentTick[]): Promise<void>;
+  getSentimentTicks(symbol: string, source?: string, limit?: number): Promise<SentimentTick[]>;
+  storeOnchainTicks(ticks: InsertOnchainTick[]): Promise<void>;
+  getOnchainTicks(chain: string, metric?: string, limit?: number): Promise<OnchainTick[]>;
+  storeMacroEvents(events: InsertMacroEvent[]): Promise<void>;
+  getMacroEvents(importance?: string, limit?: number): Promise<MacroEvent[]>;
+  updateConnectorHealth(health: InsertConnectorHealth): Promise<ConnectorHealth>;
+  getConnectorHealth(provider?: string): Promise<ConnectorHealth[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -371,6 +371,213 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
     return preferences;
+  }
+
+  // Phase A - External Connectors & Schemas Storage Implementation
+  async storeMarketBars(bars: InsertMarketBar[]): Promise<void> {
+    if (bars.length === 0) return;
+    try {
+      await db.insert(marketBars).values(bars).onConflictDoUpdate({
+        target: [marketBars.symbol, marketBars.timestamp, marketBars.provider],
+        set: {
+          open: marketBars.open,
+          high: marketBars.high,
+          low: marketBars.low,
+          close: marketBars.close,
+          volume: marketBars.volume,
+          fetchedAt: new Date(),
+        },
+      });
+    } catch (error) {
+      logger.error('Failed to store market bars', error);
+      throw error;
+    }
+  }
+
+  async getMarketBars(symbol: string, timeframe: string, limit = 100): Promise<MarketBar[]> {
+    try {
+      return await db
+        .select()
+        .from(marketBars)
+        .where(and(eq(marketBars.symbol, symbol), eq(marketBars.timeframe, timeframe)))
+        .orderBy(desc(marketBars.timestamp))
+        .limit(limit);
+    } catch (error) {
+      logger.error('Failed to get market bars', error);
+      throw error;
+    }
+  }
+
+  async storeOrderbookSnaps(snaps: InsertOrderbookSnap[]): Promise<void> {
+    if (snaps.length === 0) return;
+    try {
+      await db.insert(orderbookSnaps).values(snaps).onConflictDoUpdate({
+        target: [orderbookSnaps.symbol, orderbookSnaps.timestamp, orderbookSnaps.provider],
+        set: {
+          bid: orderbookSnaps.bid,
+          ask: orderbookSnaps.ask,
+          spreadBps: orderbookSnaps.spreadBps,
+          depth1bp: orderbookSnaps.depth1bp,
+          depth5bp: orderbookSnaps.depth5bp,
+          fetchedAt: new Date(),
+        },
+      });
+    } catch (error) {
+      logger.error('Failed to store orderbook snaps', error);
+      throw error;
+    }
+  }
+
+  async getOrderbookSnaps(symbol: string, limit = 100): Promise<OrderbookSnap[]> {
+    try {
+      return await db
+        .select()
+        .from(orderbookSnaps)
+        .where(eq(orderbookSnaps.symbol, symbol))
+        .orderBy(desc(orderbookSnaps.timestamp))
+        .limit(limit);
+    } catch (error) {
+      logger.error('Failed to get orderbook snaps', error);
+      throw error;
+    }
+  }
+
+  async storeSentimentTicks(ticks: InsertSentimentTick[]): Promise<void> {
+    if (ticks.length === 0) return;
+    try {
+      await db.insert(sentimentTicks).values(ticks).onConflictDoUpdate({
+        target: [sentimentTicks.source, sentimentTicks.symbol, sentimentTicks.timestamp],
+        set: {
+          score: sentimentTicks.score,
+          volume: sentimentTicks.volume,
+          topic: sentimentTicks.topic,
+          raw: sentimentTicks.raw,
+          fetchedAt: new Date(),
+        },
+      });
+    } catch (error) {
+      logger.error('Failed to store sentiment ticks', error);
+      throw error;
+    }
+  }
+
+  async getSentimentTicks(symbol: string, source?: string, limit = 100): Promise<SentimentTick[]> {
+    try {
+      const conditions = [eq(sentimentTicks.symbol, symbol)];
+      if (source) conditions.push(eq(sentimentTicks.source, source));
+      
+      return await db
+        .select()
+        .from(sentimentTicks)
+        .where(and(...conditions))
+        .orderBy(desc(sentimentTicks.timestamp))
+        .limit(limit);
+    } catch (error) {
+      logger.error('Failed to get sentiment ticks', error);
+      throw error;
+    }
+  }
+
+  async storeOnchainTicks(ticks: InsertOnchainTick[]): Promise<void> {
+    if (ticks.length === 0) return;
+    try {
+      await db.insert(onchainTicks).values(ticks).onConflictDoUpdate({
+        target: [onchainTicks.chain, onchainTicks.metric, onchainTicks.timestamp],
+        set: {
+          value: onchainTicks.value,
+          fetchedAt: new Date(),
+        },
+      });
+    } catch (error) {
+      logger.error('Failed to store onchain ticks', error);
+      throw error;
+    }
+  }
+
+  async getOnchainTicks(chain: string, metric?: string, limit = 100): Promise<OnchainTick[]> {
+    try {
+      const conditions = [eq(onchainTicks.chain, chain)];
+      if (metric) conditions.push(eq(onchainTicks.metric, metric));
+      
+      return await db
+        .select()
+        .from(onchainTicks)
+        .where(and(...conditions))
+        .orderBy(desc(onchainTicks.timestamp))
+        .limit(limit);
+    } catch (error) {
+      logger.error('Failed to get onchain ticks', error);
+      throw error;
+    }
+  }
+
+  async storeMacroEvents(events: InsertMacroEvent[]): Promise<void> {
+    if (events.length === 0) return;
+    try {
+      await db.insert(macroEvents).values(events).onConflictDoUpdate({
+        target: [macroEvents.name, macroEvents.timestamp, macroEvents.provider],
+        set: {
+          importance: macroEvents.importance,
+          windowBeforeMs: macroEvents.windowBeforeMs,
+          windowAfterMs: macroEvents.windowAfterMs,
+          fetchedAt: new Date(),
+        },
+      });
+    } catch (error) {
+      logger.error('Failed to store macro events', error);
+      throw error;
+    }
+  }
+
+  async getMacroEvents(importance?: string, limit = 100): Promise<MacroEvent[]> {
+    try {
+      const conditions = importance ? [eq(macroEvents.importance, importance)] : [];
+      
+      return await db
+        .select()
+        .from(macroEvents)
+        .where(conditions.length > 0 ? and(...conditions) : undefined)
+        .orderBy(desc(macroEvents.timestamp))
+        .limit(limit);
+    } catch (error) {
+      logger.error('Failed to get macro events', error);
+      throw error;
+    }
+  }
+
+  async updateConnectorHealth(health: InsertConnectorHealth): Promise<ConnectorHealth> {
+    try {
+      const [updated] = await db.insert(connectorHealth).values(health).onConflictDoUpdate({
+        target: connectorHealth.provider,
+        set: {
+          status: health.status,
+          requestCount: health.requestCount,
+          errorCount: health.errorCount,
+          lastError: health.lastError,
+          quotaCost: health.quotaCost,
+          lastChecked: new Date(),
+        },
+      }).returning();
+      return updated;
+    } catch (error) {
+      logger.error('Failed to update connector health', error);
+      throw error;
+    }
+  }
+
+  async getConnectorHealth(provider?: string): Promise<ConnectorHealth[]> {
+    try {
+      const conditions = provider ? [eq(connectorHealth.provider, provider)] : [];
+      
+      return await db
+        .select()
+        .from(connectorHealth)
+        .where(conditions.length > 0 ? and(...conditions) : undefined)
+        .orderBy(desc(connectorHealth.lastChecked));
+    } catch (error) {
+      logger.error('Failed to get connector health', error);
+      throw error;
+    }
   }
 }
 

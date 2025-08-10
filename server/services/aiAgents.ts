@@ -65,21 +65,46 @@ abstract class AIAgent {
 class MarketAnalystAgent extends AIAgent {
   async process(marketData: any): Promise<AgentResponse> {
     try {
-      const prompt = `Analyze the following market data and provide insights:
-      ${JSON.stringify(marketData)}
+      // Get REAL comprehensive market data from our data sources
+      const { dataIngestionService } = await import('./dataIngestion');
+      const { sentimentAnalyzer } = await import('./sentimentAnalyzer');
       
-      Focus on:
-      - Price trends and patterns
-      - Volume analysis
-      - Support and resistance levels
-      - Market momentum indicators
+      const symbol = marketData?.symbol || 'BTC';
+      
+      // Fetch real data from CoinGecko/Binance
+      const ohlcvData = await dataIngestionService.getLatestOHLCV?.(symbol, 24) || [];
+      
+      // Get real sentiment from Twitter/Reddit/News
+      const sentimentData = await sentimentAnalyzer.getAggregatedSentiment(symbol);
+      
+      // Get on-chain metrics from Etherscan/Blockchair  
+      const onChainCollector = dataIngestionService.collectors?.get('onchain');
+      const onChainData = await onChainCollector?.collectCurrentMetrics?.([symbol]);
+
+      const prompt = `Analyze the following REAL cryptocurrency market data:
+
+OHLCV Data (Last 24 hours): ${JSON.stringify(ohlcvData.slice(-5))}
+Current Price: ${ohlcvData[ohlcvData.length - 1]?.close || 'N/A'}
+
+Real Sentiment Analysis:
+- Overall Sentiment: ${sentimentData.overallSentiment.toFixed(3)} (${sentimentData.overallSentiment > 0 ? 'Bullish' : 'Bearish'})
+- Confidence: ${sentimentData.confidence.toFixed(3)}
+- Sources: ${sentimentData.breakdown.map(b => `${b.source}: ${b.sentiment.toFixed(2)}`).join(', ')}
+
+On-Chain Data: ${JSON.stringify(onChainData)}
+
+Provide technical analysis with:
+- Price trends based on REAL data
+- Volume analysis from actual exchange data
+- Support/resistance levels from price action
+- Market sentiment integration from social data
       
       Respond in JSON format with: {
         "trend": "bullish|bearish|sideways",
         "confidence": 0.0-1.0,
         "key_levels": {"support": number, "resistance": number},
         "momentum": "strong|moderate|weak",
-        "analysis": "detailed explanation"
+        "analysis": "detailed explanation including sentiment and on-chain factors"
       }`;
 
       const response = await openai.chat.completions.create({
@@ -87,7 +112,7 @@ class MarketAnalystAgent extends AIAgent {
         messages: [
           {
             role: "system",
-            content: "You are an expert market analyst specializing in cryptocurrency markets. Provide technical analysis based on price and volume data."
+            content: "You are an expert cryptocurrency analyst with access to REAL market data from CoinGecko, Binance, Twitter, Reddit, and on-chain sources. Provide analysis based on actual data, not hypotheticals."
           },
           {
             role: "user",

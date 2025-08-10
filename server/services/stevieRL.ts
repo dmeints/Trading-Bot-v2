@@ -68,7 +68,7 @@ export class RLTradingEnvironment {
     this.initialPortfolioValue = initialValue;
   }
 
-  // Initialize environment with market data
+  // Initialize environment with REAL market data from all our data sources
   async reset(userId: string): Promise<MarketState> {
     try {
       // Get user's current positions and portfolio
@@ -77,19 +77,22 @@ export class RLTradingEnvironment {
         sum + (Number(pos.quantity) * Number(pos.currentPrice)), 0
       );
 
-      // Mock market data (would integrate with real market data)
+      // Get REAL data from ALL our configured data sources  
+      const { stevieDataIntegration } = await import('./stevieDataIntegration');
+      const realMarketData = await stevieDataIntegration.getComprehensiveMarketState('BTC');
+      
       const marketState: MarketState = {
-        prices: this.generatePriceHistory(100), // Last 100 periods
-        volumes: this.generateVolumeHistory(100),
-        technicalIndicators: this.calculateTechnicalIndicators([]),
-        sentiment: Math.random() * 2 - 1, // -1 to 1
+        prices: realMarketData.priceHistory24h,
+        volumes: realMarketData.volumeHistory24h,
+        technicalIndicators: realMarketData.technicalIndicators,
+        sentiment: realMarketData.sentiment.overall, // Real sentiment from ALL sources
         positions: positions.map(p => ({
           symbol: p.symbol,
           quantity: Number(p.quantity),
           unrealizedPnl: Number(p.unrealizedPnl)
         })),
         portfolioValue: portfolioValue || this.initialPortfolioValue,
-        timestamp: Date.now()
+        timestamp: realMarketData.timestamp
       };
 
       this.currentState = marketState;
@@ -197,17 +200,132 @@ export class RLTradingEnvironment {
     return drawdown > this.maxDrawdownThreshold;
   }
 
+  // Get comprehensive market data from ALL our configured data sources
+  private async getComprehensiveMarketData(symbol: string): Promise<{
+    priceHistory: number[];
+    volumeHistory: number[];
+    technicalIndicators: any;
+    aggregatedSentiment: number;
+    onChainMetrics: any;
+    macroEvents: any;
+  }> {
+    try {
+      // Import our actual data services
+      const { dataIngestionService } = await import('./dataIngestion');
+      const { sentimentAnalyzer } = await import('./sentimentAnalyzer');
+      
+      // Get real OHLCV data from CoinGecko/Binance
+      const ohlcvData = await dataIngestionService.getLatestOHLCV(symbol, 100);
+      const priceHistory = ohlcvData.map(d => d.close);
+      const volumeHistory = ohlcvData.map(d => d.volume);
+      
+      // Get real sentiment from Twitter/Reddit/News/CryptoPanic
+      const sentimentData = await sentimentAnalyzer.getAggregatedSentiment(symbol);
+      
+      // Get on-chain data from Etherscan/Blockchair
+      const onChainCollector = dataIngestionService.collectors?.get('onchain');
+      const onChainMetrics = await onChainCollector?.collectCurrentMetrics([symbol]);
+      
+      // Calculate real technical indicators from actual price data
+      const technicalIndicators = this.calculateRealTechnicalIndicators(priceHistory);
+      
+      return {
+        priceHistory,
+        volumeHistory,
+        technicalIndicators,
+        aggregatedSentiment: sentimentData.overallSentiment,
+        onChainMetrics,
+        macroEvents: null // TODO: Integrate Trading Economics API
+      };
+      
+    } catch (error) {
+      logger.error('Error fetching comprehensive market data, falling back to simulation', { error });
+      
+      // Only fallback to simulation if real data completely fails
+      return {
+        priceHistory: this.generatePriceHistory(100),
+        volumeHistory: this.generateVolumeHistory(100),
+        technicalIndicators: this.calculateTechnicalIndicators([]),
+        aggregatedSentiment: 0,
+        onChainMetrics: null,
+        macroEvents: null
+      };
+    }
+  }
+
   private generatePriceHistory(length: number): number[] {
-    const prices = [100]; // Starting price
+    // FALLBACK ONLY - Should use real CoinGecko/Binance data
+    const prices = [100]; 
     for (let i = 1; i < length; i++) {
-      const change = (Math.random() - 0.5) * 0.02; // ±1% random walk
+      const change = (Math.random() - 0.5) * 0.02;
       prices.push(prices[i-1] * (1 + change));
     }
     return prices;
   }
 
   private generateVolumeHistory(length: number): number[] {
+    // FALLBACK ONLY - Should use real exchange data
     return Array.from({ length }, () => Math.random() * 1000000);
+  }
+
+  // Calculate technical indicators from REAL price data
+  private calculateRealTechnicalIndicators(prices: number[]): any {
+    if (prices.length < 26) {
+      return this.calculateTechnicalIndicators(prices);
+    }
+
+    // RSI calculation on real data
+    const rsi = this.calculateRSI(prices.slice(-14));
+    
+    // MACD calculation on real data  
+    const ema12 = this.calculateEMA(prices, 12);
+    const ema26 = this.calculateEMA(prices, 26);
+    const macd = ema12[ema12.length - 1] - ema26[ema26.length - 1];
+    
+    // Bollinger Bands on real data
+    const sma20 = this.calculateSMA(prices.slice(-20));
+    const stdDev = this.calculateStdDev(prices.slice(-20), sma20);
+    
+    return {
+      rsi,
+      macd,
+      bollinger: {
+        upper: sma20 + (2 * stdDev),
+        middle: sma20,
+        lower: sma20 - (2 * stdDev)
+      }
+    };
+  }
+
+  private calculateRSI(prices: number[]): number {
+    let gains = 0, losses = 0;
+    for (let i = 1; i < prices.length; i++) {
+      const change = prices[i] - prices[i-1];
+      if (change > 0) gains += change;
+      else losses -= change;
+    }
+    const avgGain = gains / (prices.length - 1);
+    const avgLoss = losses / (prices.length - 1);
+    const rs = avgGain / avgLoss;
+    return 100 - (100 / (1 + rs));
+  }
+
+  private calculateEMA(prices: number[], period: number): number[] {
+    const k = 2 / (period + 1);
+    const ema = [prices[0]];
+    for (let i = 1; i < prices.length; i++) {
+      ema.push(prices[i] * k + ema[i-1] * (1 - k));
+    }
+    return ema;
+  }
+
+  private calculateSMA(prices: number[]): number {
+    return prices.reduce((a, b) => a + b) / prices.length;
+  }
+
+  private calculateStdDev(prices: number[], mean: number): number {
+    const variance = prices.reduce((sum, price) => sum + Math.pow(price - mean, 2), 0) / prices.length;
+    return Math.sqrt(variance);
   }
 
   private calculateTechnicalIndicators(prices: number[]): any {

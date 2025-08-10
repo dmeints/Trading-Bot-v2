@@ -2,13 +2,13 @@
  * Phase J - Real-Time Execution Integration API Routes
  */
 
-import { Router } from "express";
+import express from 'express';
 import { z } from "zod";
 import { executionRouter, type OrderRequest } from "../services/ExecutionRouter";
 import { logger } from "../utils/logger";
 import { isAuthenticated } from "../replitAuth";
 
-const router = Router();
+const router = express.Router();
 
 // Request validation schemas
 const orderRequestSchema = z.object({
@@ -31,7 +31,7 @@ const executionStatusSchema = z.object({
 router.post('/route', isAuthenticated, async (req, res) => {
   try {
     const request = orderRequestSchema.parse(req.body);
-    
+
     logger.info('[ExecutionAPI] Processing execution routing request', {
       userId: req.user?.claims?.sub,
       symbol: request.symbol,
@@ -40,7 +40,7 @@ router.post('/route', isAuthenticated, async (req, res) => {
     });
 
     const decision = await executionRouter.routeExecution(request);
-    
+
     res.json({
       success: true,
       decision,
@@ -49,7 +49,7 @@ router.post('/route', isAuthenticated, async (req, res) => {
 
   } catch (error) {
     logger.error('[ExecutionAPI] Execution routing failed', error);
-    
+
     if (error instanceof z.ZodError) {
       return res.status(400).json({
         success: false,
@@ -72,7 +72,7 @@ router.post('/route', isAuthenticated, async (req, res) => {
 router.get('/status/:symbol', isAuthenticated, async (req, res) => {
   try {
     const { symbol } = req.params;
-    
+
     if (!symbol) {
       return res.status(400).json({
         success: false,
@@ -81,7 +81,7 @@ router.get('/status/:symbol', isAuthenticated, async (req, res) => {
     }
 
     const status = await executionRouter.getExecutionStatus(symbol);
-    
+
     res.json({
       success: true,
       status,
@@ -90,7 +90,7 @@ router.get('/status/:symbol', isAuthenticated, async (req, res) => {
 
   } catch (error) {
     logger.error('[ExecutionAPI] Status check failed', error);
-    
+
     res.status(500).json({
       success: false,
       error: 'Failed to get execution status'
@@ -105,7 +105,7 @@ router.get('/status/:symbol', isAuthenticated, async (req, res) => {
 router.post('/analyze', isAuthenticated, async (req, res) => {
   try {
     const baseRequest = orderRequestSchema.parse(req.body);
-    
+
     // Analyze all three urgency levels
     const scenarios = await Promise.all([
       executionRouter.routeExecution({ ...baseRequest, urgency: 'LOW' }),
@@ -130,7 +130,7 @@ router.post('/analyze', isAuthenticated, async (req, res) => {
 
   } catch (error) {
     logger.error('[ExecutionAPI] Analysis failed', error);
-    
+
     res.status(500).json({
       success: false,
       error: 'Failed to analyze execution scenarios'
@@ -146,7 +146,7 @@ router.get('/health', async (req, res) => {
   try {
     // Test with a common symbol
     const testStatus = await executionRouter.getExecutionStatus('BTCUSDT');
-    
+
     res.json({
       success: true,
       health: 'operational',
@@ -160,7 +160,7 @@ router.get('/health', async (req, res) => {
 
   } catch (error) {
     logger.error('[ExecutionAPI] Health check failed', error);
-    
+
     res.status(503).json({
       success: false,
       health: 'degraded',
@@ -169,4 +169,36 @@ router.get('/health', async (req, res) => {
   }
 });
 
-export default router;
+// POST /api/execution/decide - Get execution recommendation
+router.post('/decide', async (req, res) => {
+  try {
+    const { symbol, orderSize, side, urgency = 'medium' } = req.body;
+
+    // Mock market data for now - in production, fetch from live feed
+    const marketData = {
+      bid: 50000,
+      ask: 50010,
+      bidSize: 1.5,
+      askSize: 2.0,
+      lastPrice: 50005,
+      volume24h: 15000
+    };
+
+    const context = {
+      symbol,
+      orderSize,
+      side,
+      urgency,
+      marketData
+    };
+
+    const decision = executionRouter.decideExecution(context);
+
+    res.json(decision);
+  } catch (error) {
+    console.error('Execution decision error:', error);
+    res.status(500).json({ error: 'Failed to generate execution decision' });
+  }
+});
+
+export { router as executionRoutes };

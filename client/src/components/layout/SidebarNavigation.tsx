@@ -1,6 +1,6 @@
 import { useTradingStore } from '@/stores/tradingStore';
 import { Card } from '@/components/ui/card';
-import { BarChart3, TrendingUp, Wallet, Settings, Activity, Zap, Brain, MessageCircle, Target } from 'lucide-react';
+import { BarChart3, TrendingUp, Wallet, Settings, Activity, Zap, Brain, MessageCircle, Target, Timer } from 'lucide-react';
 import { useLocation } from 'wouter';
 
 export default function SidebarNavigation() {
@@ -139,6 +139,18 @@ export default function SidebarNavigation() {
           >
             <Target className="w-4 h-4" />
             <span className="text-sm font-medium">Advanced Strategies</span>
+          </button>
+          <button 
+            onClick={() => setLocation('/algorithm-training')}
+            className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors ${
+              location === '/algorithm-training' 
+                ? 'bg-orange-600/20 text-orange-400' 
+                : 'text-gray-400 hover:bg-gray-700 hover:text-white'
+            }`}
+            data-testid="link-algorithm-training"
+          >
+            <Timer className="w-4 h-4" />
+            <span className="text-sm font-medium">Algorithm Training</span>
           </button>
           <button 
             onClick={() => setLocation('/service-level')}

@@ -180,6 +180,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Phase C: Advanced Trading Strategies
   const { strategiesRouter } = await import('./routes/strategies.js');
   app.use('/api/strategies', strategiesRouter);
+
+  // Phase D: Real-Time Algorithm Training
+  const { trainingRouter } = await import('./routes/training.js');
+  app.use('/api/training', trainingRouter);
   
   // Real algorithm benchmark routes (actual trading performance testing)
   const { realBenchmarkRoutes } = await import('./routes/realBenchmarkRoutes');

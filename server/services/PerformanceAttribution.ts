@@ -5,7 +5,7 @@
 
 import { logger } from "../utils/logger";
 import { db } from "../db";
-import { trades, positions, marketBars, sentimentTicks } from "@shared/schema";
+import { trades, positions, marketBars, sentimentTicksExtended } from "@shared/schema";
 import { desc, gte, and, lte, eq } from "drizzle-orm";
 
 export interface FactorAttribution {
@@ -80,11 +80,11 @@ export class PerformanceAttributionService {
         .where(
           and(
             eq(trades.userId, userId),
-            gte(trades.timestamp, startDate),
-            lte(trades.timestamp, endDate)
+            gte(trades.executedAt, startDate),
+            lte(trades.executedAt, endDate)
           )
         )
-        .orderBy(desc(trades.timestamp));
+        .orderBy(desc(trades.executedAt));
 
       // Fetch benchmark data
       const benchmarkData = await db
@@ -470,14 +470,14 @@ export class PerformanceAttributionService {
     // Analyze correlation with sentiment data
     const sentimentData = await db
       .select()
-      .from(sentimentTicks)
+      .from(sentimentTicksExtended)
       .where(
         and(
-          gte(sentimentTicks.timestamp, startDate),
-          lte(sentimentTicks.timestamp, endDate)
+          gte(sentimentTicksExtended.timestamp, startDate),
+          lte(sentimentTicksExtended.timestamp, endDate)
         )
       )
-      .orderBy(sentimentTicks.timestamp);
+      .orderBy(sentimentTicksExtended.timestamp);
 
     if (sentimentData.length === 0) return 0;
 

@@ -7,7 +7,7 @@ import axios, { AxiosResponse } from 'axios';
 import { RateLimiter } from 'limiter';
 import { logger } from '../utils/logger';
 import { db } from '../db';
-import { onchainTicks, connectorHealth } from '@shared/schema';
+import { onchainTicksExtended, connectorHealth } from '@shared/schema';
 import type { InsertOnchainTick, InsertConnectorHealth } from '@shared/schema';
 
 interface EtherscanResponse {

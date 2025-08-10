@@ -6,7 +6,7 @@
 import { Router } from 'express';
 import { connectorManager } from '../connectors/index';
 import { db } from '../db';
-import { marketBars, orderbookSnaps, sentimentTicks, onchainTicks, macroEvents, connectorHealth } from '@shared/schema';
+import { marketBars, orderbookSnapsExtended, sentimentTicksExtended, onchainTicksExtended, macroEventsExtended, connectorHealth } from '@shared/schema';
 import { desc, eq, and, gte, lte } from 'drizzle-orm';
 import { logger } from '../utils/logger';
 

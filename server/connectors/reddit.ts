@@ -7,7 +7,7 @@ import axios, { AxiosResponse } from 'axios';
 import { RateLimiter } from 'limiter';
 import { logger } from '../utils/logger';
 import { db } from '../db';
-import { sentimentTicks, connectorHealth } from '@shared/schema';
+import { sentimentTicksExtended, connectorHealth } from '@shared/schema';
 import type { InsertSentimentTick, InsertConnectorHealth } from '@shared/schema';
 
 interface RedditPostResponse {

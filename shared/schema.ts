@@ -440,6 +440,18 @@ export const marketBars = pgTable("market_bars", {
 ]);
 
 export const orderbookSnaps = pgTable("orderbook_snaps", {
+  symbol: varchar("symbol", { length: 20 }).notNull(),
+  timestamp: timestamp("timestamp").notNull(),
+  bid: decimal("bid", { precision: 20, scale: 8 }).notNull(),
+  ask: decimal("ask", { precision: 20, scale: 8 }).notNull(),
+  spreadBps: decimal("spread_bps", { precision: 10, scale: 2 }),
+  depth1bp: decimal("depth_1bp", { precision: 20, scale: 8 }),
+  depth5bp: decimal("depth_5bp", { precision: 20, scale: 8 }),
+  provider: varchar("provider", { length: 50 }).notNull(),
+});
+
+// Add orderbookSnaps with proper ID and indices
+export const orderbookSnapsExtended = pgTable("orderbook_snaps_extended", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   symbol: varchar("symbol").notNull(),
   timestamp: timestamp("timestamp").notNull(),
@@ -452,10 +464,10 @@ export const orderbookSnaps = pgTable("orderbook_snaps", {
   fetchedAt: timestamp("fetched_at").defaultNow(),
   provenance: jsonb("provenance").notNull(),
 }, (table) => [
-  index("idx_orderbook_snaps_symbol_timestamp").on(table.symbol, table.timestamp),
+  index("idx_orderbook_snaps_extended_symbol_timestamp").on(table.symbol, table.timestamp),
 ]);
 
-export const sentimentTicks = pgTable("sentiment_ticks", {
+export const sentimentTicksExtended = pgTable("sentiment_ticks_extended", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   timestamp: timestamp("timestamp").notNull(),
   source: varchar("source").notNull(), // 'x', 'reddit', 'cryptopanic'
@@ -468,11 +480,11 @@ export const sentimentTicks = pgTable("sentiment_ticks", {
   fetchedAt: timestamp("fetched_at").defaultNow(),
   provenance: jsonb("provenance").notNull(),
 }, (table) => [
-  index("idx_sentiment_ticks_source_symbol").on(table.source, table.symbol),
-  index("idx_sentiment_ticks_timestamp").on(table.timestamp),
+  index("idx_sentiment_ticks_extended_source_symbol").on(table.source, table.symbol),
+  index("idx_sentiment_ticks_extended_timestamp").on(table.timestamp),
 ]);
 
-export const onchainTicks = pgTable("onchain_ticks", {
+export const onchainTicksExtended = pgTable("onchain_ticks_extended", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   timestamp: timestamp("timestamp").notNull(),
   chain: varchar("chain").notNull(), // 'ethereum', 'bitcoin'
@@ -482,11 +494,11 @@ export const onchainTicks = pgTable("onchain_ticks", {
   fetchedAt: timestamp("fetched_at").defaultNow(),
   provenance: jsonb("provenance").notNull(),
 }, (table) => [
-  index("idx_onchain_ticks_chain_metric").on(table.chain, table.metric),
-  index("idx_onchain_ticks_timestamp").on(table.timestamp),
+  index("idx_onchain_ticks_extended_chain_metric").on(table.chain, table.metric),
+  index("idx_onchain_ticks_extended_timestamp").on(table.timestamp),
 ]);
 
-export const macroEvents = pgTable("macro_events", {
+export const macroEventsExtended = pgTable("macro_events_extended", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   timestamp: timestamp("timestamp").notNull(),
   name: varchar("name").notNull(),
@@ -497,8 +509,8 @@ export const macroEvents = pgTable("macro_events", {
   fetchedAt: timestamp("fetched_at").defaultNow(),
   provenance: jsonb("provenance").notNull(),
 }, (table) => [
-  index("idx_macro_events_timestamp").on(table.timestamp),
-  index("idx_macro_events_importance").on(table.importance),
+  index("idx_macro_events_extended_timestamp").on(table.timestamp),
+  index("idx_macro_events_extended_importance").on(table.importance),
 ]);
 
 export const connectorHealth = pgTable("connector_health", {
@@ -598,9 +610,9 @@ export type InsertConnectorHealth = typeof connectorHealth.$inferInsert;
 // Insert Schema Validators
 export const insertMarketBarSchema = createInsertSchema(marketBars);
 export const insertOrderbookSnapSchema = createInsertSchema(orderbookSnaps);
-export const insertSentimentTickSchema = createInsertSchema(sentimentTicks);
-export const insertOnchainTickSchema = createInsertSchema(onchainTicks);
-export const insertMacroEventSchema = createInsertSchema(macroEvents);
+export const insertSentimentTickSchema = createInsertSchema(sentimentTicksExtended);
+export const insertOnchainTickSchema = createInsertSchema(onchainTicksExtended);
+export const insertMacroEventSchema = createInsertSchema(macroEventsExtended);
 export const insertConnectorHealthSchema = createInsertSchema(connectorHealth);
 
 // Phase A type exports
@@ -608,12 +620,12 @@ export type MarketBar = typeof marketBars.$inferSelect;
 export type InsertMarketBar = typeof marketBars.$inferInsert;
 export type OrderbookSnap = typeof orderbookSnaps.$inferSelect;
 export type InsertOrderbookSnap = typeof orderbookSnaps.$inferInsert;
-export type SentimentTick = typeof sentimentTicks.$inferSelect;
-export type InsertSentimentTick = typeof sentimentTicks.$inferInsert;
-export type OnchainTick = typeof onchainTicks.$inferSelect;
-export type InsertOnchainTick = typeof onchainTicks.$inferInsert;
-export type MacroEvent = typeof macroEvents.$inferSelect;
-export type InsertMacroEvent = typeof macroEvents.$inferInsert;
+export type SentimentTick = typeof sentimentTicksExtended.$inferSelect;
+export type InsertSentimentTick = typeof sentimentTicksExtended.$inferInsert;
+export type OnchainTick = typeof onchainTicksExtended.$inferSelect;
+export type InsertOnchainTick = typeof onchainTicksExtended.$inferInsert;
+export type MacroEvent = typeof macroEventsExtended.$inferSelect;
+export type InsertMacroEvent = typeof macroEventsExtended.$inferInsert;
 export type ConnectorHealth = typeof connectorHealth.$inferSelect;
 export type InsertConnectorHealth = typeof connectorHealth.$inferInsert;
 export type Position = typeof positions.$inferSelect;

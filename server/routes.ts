@@ -80,34 +80,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Development bypass middleware - fix authentication
   const isDevelopment = process.env.NODE_ENV === 'development';
-  const devBypass = async (req: any, res: any, next: any) => {
-    if (isDevelopment) {
-      // Always set dev user in development
+  
+  if (isDevelopment) {
+    // Apply early bypass for development
+    app.use('*', async (req: any, res: any, next: any) => {
       req.user = { claims: { sub: 'dev-user-123' } };
       req.isAuthenticated = () => true;
       
-      // Ensure dev user exists in storage
-      try {
-        let user = await storage.getUser('dev-user-123');
-        if (!user) {
-          user = await storage.upsertUser({
-            id: 'dev-user-123',
-            email: 'dev@skippy.local',
-            firstName: 'Dev',
-            lastName: 'User',
-            profileImageUrl: 'https://via.placeholder.com/150'
-          });
-          logger.info('[DevBypass] Created development user:', user.id);
+      // Ensure dev user exists in storage once
+      if (!req.session?.devUserCreated) {
+        try {
+          let user = await storage.getUser('dev-user-123');
+          if (!user) {
+            user = await storage.upsertUser({
+              id: 'dev-user-123',
+              email: 'dev@skippy.local',
+              firstName: 'Dev',
+              lastName: 'User',
+              profileImageUrl: 'https://via.placeholder.com/150'
+            });
+          }
+          req.session = req.session || {};
+          req.session.devUserCreated = true;
+        } catch (error) {
+          // Silent fail to prevent blocking requests
+          logger.debug('[DevBypass] User creation skipped:', { error: error instanceof Error ? error.message : String(error) });
         }
-      } catch (error) {
-        logger.error('[DevBypass] Error ensuring dev user exists:', { error: error instanceof Error ? error.message : String(error) });
       }
-    }
-    next();
-  };
-
-  // Apply dev bypass as early middleware
-  app.use('*', devBypass);
+      next();
+    });
+  }
   
   // Auth middleware
   if (!isDevelopment) {
@@ -218,6 +220,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Phase L: Production Monitoring
   const productionMonitoringRouter = (await import('./routes/monitoring.js')).default;
   app.use('/api/monitoring', productionMonitoringRouter);
+
+  // Features API (from original manifest)
+  const featuresApiRouter = (await import('./routes/features.js')).default;
+  app.use('/api/features', featuresApiRouter);
+
+  // Stevie Core Algorithm API (comprehensive trading engine)
+  const stevieCoreRouter = (await import('./routes/stevieCore.js')).default;
+  app.use('/api/stevie-core', stevieCoreRouter);
   
   // Real algorithm benchmark routes (actual trading performance testing)
   const { realBenchmarkRoutes } = await import('./routes/realBenchmarkRoutes');

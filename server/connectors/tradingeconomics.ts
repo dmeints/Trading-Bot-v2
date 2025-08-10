@@ -7,7 +7,7 @@ import axios, { AxiosResponse } from 'axios';
 import { RateLimiter } from 'limiter';
 import { logger } from '../utils/logger';
 import { db } from '../db';
-import { macroEvents, connectorHealth } from '@shared/schema';
+import { macroEventsExtended, connectorHealth } from '@shared/schema';
 import type { InsertMacroEvent, InsertConnectorHealth } from '@shared/schema';
 
 interface TradingEconomicsEvent {

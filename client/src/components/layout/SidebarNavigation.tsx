@@ -1,6 +1,6 @@
 import { useTradingStore } from '@/stores/tradingStore';
 import { Card } from '@/components/ui/card';
-import { BarChart3, TrendingUp, Wallet, Settings, Activity, Zap, Brain, MessageCircle, Target, Timer } from 'lucide-react';
+import { BarChart3, TrendingUp, Wallet, Settings, Activity, Zap, Brain, MessageCircle, Target, Timer, Play } from 'lucide-react';
 import { useLocation } from 'wouter';
 
 export default function SidebarNavigation() {
@@ -151,6 +151,18 @@ export default function SidebarNavigation() {
           >
             <Timer className="w-4 h-4" />
             <span className="text-sm font-medium">Algorithm Training</span>
+          </button>
+          <button 
+            onClick={() => setLocation('/live-trading')}
+            className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors ${
+              location === '/live-trading' 
+                ? 'bg-red-600/20 text-red-400' 
+                : 'text-gray-400 hover:bg-gray-700 hover:text-white'
+            }`}
+            data-testid="link-live-trading"
+          >
+            <Play className="w-4 h-4" />
+            <span className="text-sm font-medium">Live Trading</span>
           </button>
           <button 
             onClick={() => setLocation('/service-level')}

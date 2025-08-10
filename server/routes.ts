@@ -184,6 +184,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Phase D: Real-Time Algorithm Training
   const { trainingRouter } = await import('./routes/training.js');
   app.use('/api/training', trainingRouter);
+
+  // Phase E: Live Trading Execution
+  const { liveTradingRouter } = await import('./routes/liveTrading.js');
+  app.use('/api/live', liveTradingRouter);
   
   // Real algorithm benchmark routes (actual trading performance testing)
   const { realBenchmarkRoutes } = await import('./routes/realBenchmarkRoutes');

@@ -1,119 +1,239 @@
-import express, { type Request, Response, NextFunction } from "express";
-import { registerRoutes } from "./routes";
-import { setupVite, serveStatic, log } from "./vite";
-import { env } from "./config/env";
-import { requestIdMiddleware, type RequestWithId } from "./middleware/requestId";
-import { logger } from "./utils/logger";
-import { rateLimiters } from "./middleware/rateLimiter";
-import { errorHandler, notFoundHandler } from "./utils/errorHandler";
-import helmet from "helmet";
 
-// Initialize telemetry
-import { initializeTelemetry } from "./monitoring/telemetry";
-import { metricsMiddleware } from "./monitoring/metrics";
-initializeTelemetry();
+/**
+ * Main server entry point with all integrations
+ */
 
-// Validate environment variables on startup
-logger.info('Starting Skippy Trading Platform', {
-  nodeEnv: env.NODE_ENV,
-  port: env.PORT,
-  buildSha: env.BUILD_SHA,
-  aiServicesEnabled: env.AI_SERVICES_ENABLED
-});
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import compression from 'compression';
+import { createServer } from 'http';
+import { WebSocketServer } from 'ws';
+import { logger } from './utils/logger.js';
+import { errorHandler } from './utils/errorHandler.js';
+import { requestId } from './middleware/requestId.js';
+import { rateLimiter } from './middleware/rateLimiter.js';
+import { apiGuardrails } from './middleware/apiGuardrails.js';
+
+// Route imports
+import { healthRoutes } from './routes/health.js';
+import { tradingRoutes } from './routes/trading.js';
+import { portfolioRoutes } from './routes/portfolio.js';
+import { marketRoutes } from './routes/marketRoutes.js';
+import { aiChatRoutes } from './routes/aiChat.js';
+import { executionRoutes } from './routes/execution.js';
+import { paperTradeBridgeRoutes } from './routes/paperTradeBridge.js';
+
+// Service imports
+import { marketData } from './services/marketData.js';
+import { paperTradeBridge } from './services/paperTradeBridge.js';
 
 const app = express();
+const PORT = process.env.PORT || 5000;
 
-// Trust proxy for correct IP handling behind Replit's proxy
-app.set('trust proxy', 1);
-
-// Security headers
-app.use(helmet({ 
-  contentSecurityPolicy: env.NODE_ENV === 'production' ? undefined : false 
+// Security middleware
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'", "'unsafe-eval'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'", "ws:", "wss:"],
+    },
+  },
 }));
 
-// Request ID middleware for tracking
-app.use(requestIdMiddleware);
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production' 
+    ? ['https://your-production-domain.com'] 
+    : true,
+  credentials: true
+}));
 
-// General rate limiting for all API routes
-app.use('/api', rateLimiters.default);
+app.use(compression());
 
-// Metrics middleware for monitoring
-app.use(metricsMiddleware);
+// Request middleware
+app.use(requestId);
+app.use(rateLimiter);
+app.use(apiGuardrails);
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+// Body parsing
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-app.use((req: any, res: any, next: any) => {
+// Logging middleware
+app.use((req, res, next) => {
   const start = Date.now();
-  const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
-
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
-
-  res.on("finish", () => {
+  
+  res.on('finish', () => {
     const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "…";
-      }
-
-      log(logLine);
-      
-      // Also log to structured logger for requests with IDs
-      if (req.id) {
-        logger.withRequest(req.id).info('API Request', {
-          method: req.method,
-          path,
-          statusCode: res.statusCode,
-          duration,
-          userAgent: req.headers['user-agent'],
-          ip: req.ip
-        });
-      }
-    }
+    logger.info('API Request', {
+      method: req.method,
+      path: req.path,
+      statusCode: res.statusCode,
+      duration,
+      userAgent: req.get('User-Agent'),
+      ip: req.ip,
+      requestId: (req as any).requestId
+    });
   });
-
+  
   next();
 });
 
-(async () => {
-  const server = await registerRoutes(app);
+// API Routes
+app.use('/api/health', healthRoutes);
+app.use('/api/trading', tradingRoutes);
+app.use('/api/portfolio', portfolioRoutes);
+app.use('/api/market', marketRoutes);
+app.use('/api/ai', aiChatRoutes);
+app.use('/api/execution', executionRoutes);
+app.use('/api/paper-trade-bridge', paperTradeBridgeRoutes);
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
-  if (app.get("env") === "development") {
-    await setupVite(app, server);
-  } else {
-    serveStatic(app);
+// Static file serving for client
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const clientDistPath = join(__dirname, '../client/dist');
+
+app.use(express.static(clientDistPath));
+
+// SPA fallback
+app.get('*', (req, res) => {
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ error: 'API endpoint not found' });
   }
+  res.sendFile(join(clientDistPath, 'index.html'));
+});
 
-  // 404 handler for unknown routes (after frontend routing)
-  app.use(notFoundHandler);
-  
-  // Global error handler
-  app.use(errorHandler);
+// Error handling
+app.use(errorHandler);
 
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = env.PORT;
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
-    log(`serving on port ${port}`);
-    log('Server started successfully - AI services will initialize on first request');
+// Create HTTP server
+const server = createServer(app);
+
+// WebSocket server
+const wss = new WebSocketServer({ server, path: '/ws' });
+
+wss.on('connection', (ws, req) => {
+  const clientIp = req.socket.remoteAddress;
+  logger.info(`New WebSocket connection from ${clientIp}`);
+
+  ws.on('message', (data) => {
+    try {
+      const message = JSON.parse(data.toString());
+      
+      if (message.type === 'subscribe') {
+        // Handle subscription to real-time data
+        ws.send(JSON.stringify({
+          type: 'subscribed',
+          channel: message.channel,
+          status: 'success'
+        }));
+      }
+    } catch (error) {
+      logger.warn('Invalid WebSocket message:', error);
+    }
   });
-})();
+
+  ws.on('close', (code, reason) => {
+    logger.info(`WebSocket connection closed: ${code} - ${reason}`);
+  });
+
+  ws.on('error', (error) => {
+    logger.error('WebSocket error:', error);
+  });
+
+  // Send initial connection confirmation
+  ws.send(JSON.stringify({
+    type: 'connected',
+    message: 'Connected to Skippy AI Trading System',
+    timestamp: new Date().toISOString()
+  }));
+});
+
+// Broadcast market data updates
+function broadcastMarketData(data: any) {
+  const message = JSON.stringify({
+    type: 'market_update',
+    data,
+    timestamp: new Date().toISOString()
+  });
+
+  wss.clients.forEach((client) => {
+    if (client.readyState === client.OPEN) {
+      client.send(message);
+    }
+  });
+}
+
+// Initialize services
+async function initializeServices() {
+  try {
+    logger.info('Initializing Skippy Trading Platform services...');
+    
+    // Initialize market data service
+    await marketData.initialize();
+    logger.info('✅ Market data service initialized');
+
+    // Initialize paper trade bridge
+    await paperTradeBridge.initialize();
+    logger.info('✅ Paper trade bridge initialized');
+
+    // Set up market data broadcasting
+    marketData.on('priceUpdate', broadcastMarketData);
+    
+    logger.info('🚀 All services initialized successfully');
+    
+  } catch (error) {
+    logger.error('❌ Service initialization failed:', error);
+    process.exit(1);
+  }
+}
+
+// Start server
+async function startServer() {
+  try {
+    await initializeServices();
+    
+    server.listen(PORT, '0.0.0.0', () => {
+      logger.info(`🚀 Skippy Trading Platform running on port ${PORT}`);
+      logger.info(`📊 Health check: http://localhost:${PORT}/api/health`);
+      logger.info(`🔥 Paper Trade Burn-In: http://localhost:${PORT}/api/paper-trade-bridge`);
+      logger.info(`🌐 WebSocket: ws://localhost:${PORT}/ws`);
+    });
+  } catch (error) {
+    logger.error('Failed to start server:', error);
+    process.exit(1);
+  }
+}
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  logger.info('SIGTERM received, shutting down gracefully...');
+  
+  // Cleanup paper trade bridge
+  await paperTradeBridge.cleanup();
+  
+  server.close(() => {
+    logger.info('Server closed');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', async () => {
+  logger.info('SIGINT received, shutting down gracefully...');
+  
+  // Cleanup paper trade bridge
+  await paperTradeBridge.cleanup();
+  
+  server.close(() => {
+    logger.info('Server closed');
+    process.exit(0);
+  });
+});
+
+startServer();

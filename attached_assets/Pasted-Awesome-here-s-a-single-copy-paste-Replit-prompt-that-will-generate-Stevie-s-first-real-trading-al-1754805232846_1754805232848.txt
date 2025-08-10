@@ -1,0 +1,423 @@
+Awesome — here’s a single copy-paste Replit prompt that will generate Stevie’s first real trading algorithm, wire in config + unit tests, and bolt on the anti-mock audit layers so fake data can’t sneak in.
+
+
+---
+
+Replit Task — Implement Stevie Strategy + Real Audits (Drop-in)
+
+Mode: Compliance (Discover → Plan → Implement → Verify → Report).
+No fabrication: If any value can’t be computed/fetched, return unknown with a reason. Don’t stub or hardcode metrics.
+
+Phase 0 — Repo discovery (no changes)
+
+1. Print a repo map for client/, server/, shared/, tests, and package scripts.
+
+
+2. If your paths differ from the ones below, print an OLD→NEW mapping and adapt all generated paths.
+
+
+
+
+---
+
+Phase 1 — Add Stevie config & decision kernel
+
+1) shared/src/stevie/config.ts
+
+export type StevieConfig = {
+  // risk & sizing
+  baseRiskPct: number;            // % of equity per trade before tier scaling
+  perSymbolCapPct: Record<string, number>;
+  newsMaxRiskPct: number;
+
+  // costs/limits
+  takerBps: number;               // exchange taker fee (bps)
+  makerRebateBps: number;         // maker rebate (bps, use 0 if none)
+  costCapBps: number;             // max expected slippage bps allowed
+
+  // router thresholds
+  socialGo: number;               // min delta to treat as "go" on social
+  volPctBreakout: number;         // > → breakout
+  volPctMeanRevert: number;       // < → mean-revert
+
+  // brackets (bps)
+  tpBreakout: number; slBreakout: number;
+  tpRevert: number;   slRevert: number;
+  tpNews: number;     slNews: number;
+
+  // cooldowns
+  minInterTradeSec: number;       // per symbol
+  burstCapPerMin: number;
+};
+
+export const defaultStevieConfig: StevieConfig = {
+  baseRiskPct: 0.5,
+  perSymbolCapPct: { BTCUSDT: 2.0, ETHUSDT: 1.5, SOLUSDT: 1.2 },
+  newsMaxRiskPct: 0.5,
+
+  takerBps: 7,                    // adjust to venue
+  makerRebateBps: 0,
+  costCapBps: 8,                  // block if expected slippage > 8 bps
+
+  socialGo: 0.75,                 // z-scored delta threshold
+  volPctBreakout: 70,
+  volPctMeanRevert: 40,
+
+  tpBreakout: 10, slBreakout: 6,
+  tpRevert: 8,   slRevert: 5,
+  tpNews: 12,    slNews: 8,
+
+  minInterTradeSec: 20,
+  burstCapPerMin: 3,
+};
+
+2) server/strategy/stevie.ts
+
+import { defaultStevieConfig, StevieConfig } from "../../shared/src/stevie/config";
+
+// Feature types pulled from /api/features (shape must match your endpoint)
+type Bars = { ts:number; o:number; h:number; l:number; c:number; v?:number }[];
+type Features = {
+  bars: Bars;
+  micro: { spread_bps:number; imbalance_1:number; micro_vol_ewma:number; trade_run_len:number } | null;
+  costs: { expected_slippage_bps: (sizePct:number)=>number } | { curve?: Array<{sizePct:number; bps:number}> } | null;
+  social: { z:number; delta:number; spike?:boolean } | null;
+  onchain: { gas_spike_flag?:boolean; bias?:number } | null;
+  macro: { blackout?:boolean } | null;
+  regime: { vol_pct:number; trend_strength:number; liquidity_tier:1|2|3 } | null;
+  provenance: { datasetId?:string; commit:string; generatedAt:string };
+};
+
+type Action =
+  | { type:"HOLD"; reason:string }
+  | { type:"ENTER_MARKET"; sizePct:number; tag:string; tp_bps:number; sl_bps:number; reduceOnly?:boolean }
+  | { type:"ENTER_IOC"; sizePct:number; tag:string; tp_bps:number; sl_bps:number; reduceOnly?:boolean }
+  | { type:"ENTER_LIMIT_MAKER"; sizePct:number; price:number; tag:string; tp_bps:number; sl_bps:number; reduceOnly?:boolean };
+
+type Position = { symbol:string; qty:number; avgPrice:number } | null;
+
+function costAt(cfg:StevieConfig, f:Features, sizePct:number): number {
+  if (!f.costs) return Number.POSITIVE_INFINITY;
+  if (typeof (f.costs as any).expected_slippage_bps === "function") {
+    return (f.costs as any).expected_slippage_bps(sizePct);
+  }
+  const curve = (f.costs as any).curve as Array<{sizePct:number; bps:number}> | undefined;
+  if (!curve || !curve.length) return Number.POSITIVE_INFINITY;
+  // simple piecewise nearest
+  let best = curve[0].bps, bestD = Math.abs(curve[0].sizePct - sizePct);
+  for (const p of curve) {
+    const d = Math.abs(p.sizePct - sizePct);
+    if (d < bestD) { best = p.bps; bestD = d; }
+  }
+  return best;
+}
+
+function scaleByLiquidity(base:number, tier:1|2|3, onchainBias:number|undefined): number {
+  const t = tier === 1 ? 1.0 : tier === 2 ? 0.7 : 0.5;
+  const b = onchainBias != null ? (1 + Math.max(-0.5, Math.min(0.5, onchainBias))) : 1;
+  return Math.max(0, base * t * (b < 0 ? 0.75 : 1.0));
+}
+
+function snapback(f:Features): boolean {
+  if (!f.micro || !f.bars.length) return false;
+  const last = f.bars[f.bars.length - 1];
+  const prev = f.bars[f.bars.length - 2] || last;
+  const delta = last.c - prev.c;
+  // Snapback if price reverted opposite to trade_run direction and imbalance flips
+  const run = f.micro.trade_run_len;
+  return (run > 2 && Math.sign(delta) !== Math.sign(run) && Math.abs(f.micro.imbalance_1) < 0.1);
+}
+
+export function decide(features: Features, pos: Position, cfg: StevieConfig = defaultStevieConfig): Action {
+  const f = features;
+  // Hard blocks
+  if (f.macro?.blackout) return { type:"HOLD", reason:"macro_blackout" };
+  if (f.onchain?.gas_spike_flag) return { type:"HOLD", reason:"onchain_gas_spike" };
+
+  // slippage cap at base size
+  const sizeBase = cfg.baseRiskPct;
+  const expSlip = costAt(cfg, f, sizeBase);
+  if (expSlip > cfg.costCapBps) return { type:"HOLD", reason:"slippage_cap" };
+
+  const volPct = f.regime?.vol_pct ?? 50;
+  const spread = f.micro?.spread_bps ?? 999;
+  const socialDelta = f.social?.delta ?? 0;
+  const liquidityTier = f.regime?.liquidity_tier ?? 3;
+  const onBias = f.onchain?.bias;
+
+  // Router: Breakout
+  if (volPct > cfg.volPctBreakout && spread <= (cfg.takerBps + 2) && socialDelta > cfg.socialGo) {
+    const size = Math.min(scaleByLiquidity(sizeBase, liquidityTier, onBias), cfg.perSymbolCapPct["BTCUSDT"] ?? 2.0);
+    return { type:"ENTER_IOC", sizePct:size, tag:"breakout", tp_bps: cfg.tpBreakout, sl_bps: cfg.slBreakout, reduceOnly:false };
+  }
+
+  // Router: Mean reversion
+  if (volPct < cfg.volPctMeanRevert && snapback(f)) {
+    const size = Math.min(scaleByLiquidity(sizeBase*0.7, liquidityTier, onBias), cfg.perSymbolCapPct["BTCUSDT"] ?? 2.0);
+    const last = f.bars[f.bars.length-1]?.c ?? 0;
+    const price = last * (f.micro!.imbalance_1 < 0 ? 0.999 : 1.001);
+    return { type:"ENTER_LIMIT_MAKER", sizePct:size, price, tag:"mean_revert", tp_bps: cfg.tpRevert, sl_bps: cfg.slRevert, reduceOnly:false };
+  }
+
+  // Router: News momentum
+  if (f.social?.spike && spread <= cfg.takerBps) {
+    const size = Math.min(cfg.baseRiskPct, cfg.newsMaxRiskPct);
+    return { type:"ENTER_IOC", sizePct:size, tag:"news", tp_bps: cfg.tpNews, sl_bps: cfg.slNews, reduceOnly:false };
+  }
+
+  return { type:"HOLD", reason:"no_edge" };
+}
+
+3) Unit tests for the kernel
+
+server/strategy/stevie.spec.ts
+
+import { describe, it, expect } from "vitest";
+import { decide } from "./stevie";
+import { defaultStevieConfig } from "../../shared/src/stevie/config";
+
+const baseF = () => ({
+  bars: [{ts:1,o:1,h:1,l:1,c:100},{ts:2,o:1,h:1,l:1,c:100.1}],
+  micro: { spread_bps: 5, imbalance_1: 0.05, micro_vol_ewma: 1, trade_run_len: 3 },
+  costs: { expected_slippage_bps: (s:number)=> 4 + s },
+  social: { z: 1.1, delta: 0, spike:false },
+  onchain: { gas_spike_flag:false, bias:0 },
+  macro: { blackout:false },
+  regime: { vol_pct: 50, trend_strength: 0.5, liquidity_tier: 1 },
+  provenance: { commit:"test", generatedAt:new Date().toISOString() }
+});
+
+describe("stevie router", () => {
+  it("holds on blackout", () => {
+    const f = baseF(); (f.macro as any).blackout = true;
+    const a = decide(f as any, null, defaultStevieConfig);
+    expect(a.type).toBe("HOLD");
+  });
+
+  it("fires breakout when vol high, spread ok, social rising", () => {
+    const f = baseF(); (f.regime as any).vol_pct = 80; (f.social as any).delta = 1.0; (f.micro as any).spread_bps = 8;
+    const a = decide(f as any, null, { ...defaultStevieConfig, takerBps: 7 });
+    expect(a.type).toBe("ENTER_IOC");
+    expect((a as any).tag).toBe("breakout");
+  });
+
+  it("fires mean-revert when vol low and snapback", () => {
+    const f = baseF(); (f.regime as any).vol_pct = 30; (f.micro as any).trade_run_len = 4; (f.bars[1] as any).c = 99.9;
+    const a = decide(f as any, null, defaultStevieConfig);
+    expect(a.type).toBe("ENTER_LIMIT_MAKER");
+    expect((a as any).tag).toBe("mean_revert");
+  });
+
+  it("blocks on slippage cap", () => {
+    const f = baseF(); (f.costs as any).expected_slippage_bps = () => 999;
+    const a = decide(f as any, null, defaultStevieConfig);
+    expect(a.type).toBe("HOLD");
+  });
+});
+
+
+---
+
+Phase 2 — Backtest safety: no-network + entropy test
+
+1) server/backtest/noNetwork.ts
+
+export function disallowNetwork() {
+  const thrower = () => { throw new Error("Network call during backtest"); };
+  // @ts-ignore
+  globalThis.fetch = thrower;
+  // Optionally block other clients here
+}
+
+> Ensure your backtest runner calls disallowNetwork() at start.
+
+
+
+2) tools/metrics_entropy.spec.ts
+
+import { expect, test } from "vitest";
+import fs from "fs";
+
+test("headline metrics vary across runs", () => {
+  if (!fs.existsSync("artifacts")) return;
+  const runs = fs.readdirSync("artifacts").slice(0,5).flatMap(id => {
+    try { return [JSON.parse(fs.readFileSync(`artifacts/${id}/metrics.json`,"utf8"))]; } catch { return []; }
+  });
+  if (runs.length < 3) return; // not enough to judge — skip
+  const sharpe = runs.map(r => r?.headline?.sharpe).filter((x)=>typeof x==="number");
+  const uniq = new Set(sharpe.map(x => x!.toFixed(4)));
+  expect(uniq.size).toBeGreaterThan(1); // suspicious if identical
+});
+
+
+---
+
+Phase 3 — Anti-mock & provenance runtime gates
+
+1) tools/audit_mock_scan.js
+
+const fs = require("fs"), path = require("path");
+const ROOTS = ["server","client","shared"];
+const ALLOW = /(__tests__|fixtures|stories?|mocks?|scripts|README|\.md)$/i;
+const NEEDLES = /\b(mock|faker|dummy|stub|sampleData|lorem|json-server|msw|miragejs|nock)\b/i;
+
+let bad = [];
+function walk(d){ for(const f of fs.readdirSync(d)){ const p=path.join(d,f); const s=fs.statSync(p);
+  if(s.isDirectory()) walk(p); else if(/\.(ts|tsx|js|json)$/.test(p)){
+    if (ALLOW.test(p)) continue;
+    const t = fs.readFileSync(p,"utf8");
+    if (NEEDLES.test(t)) bad.push(p);
+  }}}
+for (const r of ROOTS) if (fs.existsSync(r)) walk(r);
+if (bad.length){ console.error("❌ Mock-like content found:", bad); process.exit(1); }
+console.log("✓ No mock fingerprints in source");
+
+2) server/middleware/provenanceGuard.ts
+
+import { Request, Response, NextFunction } from "express";
+export function requireProvenance(req: Request, res: Response, next: NextFunction) {
+  const send = res.json.bind(res);
+  res.json = (body: any) => {
+    const ok = body && (body.provenance || (body.headline && body.provenance));
+    if (!ok) return send({ error:"Missing provenance", path:req.path });
+    return send(body);
+  };
+  next();
+}
+
+> Mount on /api/features and /api/bench routes:
+app.use("/api/features", requireProvenance); app.use("/api/bench", requireProvenance);
+
+
+
+3) Production anti-mock boot
+
+server/boot/antiMock.ts
+
+const forbiddenEnv = ["MOCK","FAKE","STUB","SEED_DATA"];
+for (const k of Object.keys(process.env)) {
+  if (process.env.NODE_ENV === "production" && forbiddenEnv.some(w => k.includes(w)) && process.env[k]) {
+    throw new Error(`Forbidden mock env in production: ${k}`);
+  }
+}
+
+> import after env validation in server bootstrap:
+
+
+
+if (process.env.NODE_ENV === "production") { require("./boot/antiMock"); }
+
+
+---
+
+Phase 4 — Cross-source sanity audit (Binance vs CoinGecko)
+
+tools/audit_cross_source.ts
+
+import { drizzle } from "drizzle-orm/node-postgres";
+import pg from "pg";
+
+const symbol = process.argv[2] || "BTCUSDT";
+const minutes = Number(process.argv[3] || 60);
+
+(async () => {
+  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  const db = drizzle(client);
+
+  const since = Date.now() - minutes*60*1000;
+
+  const rows = await client.query(`
+    SELECT ts, c, provider
+    FROM market_bars
+    WHERE symbol=$1 AND ts >= $2
+      AND provider IN ('coingecko','binance')
+    ORDER BY ts ASC
+  `,[symbol, since]);
+
+  const g: Record<string, number[]> = { coingecko:[], binance:[] };
+  for (const r of rows.rows) g[r.provider]?.push(Number(r.c));
+  if (!g.coingecko.length || !g.binance.length) {
+    console.error("❌ Missing series from one or both providers");
+    process.exit(1);
+  }
+  const n = Math.min(g.coingecko.length, g.binance.length);
+  let diffs: number[] = [];
+  for (let i=0;i<n;i++){
+    const mid1 = g.coingecko[i], mid2 = g.binance[i];
+    diffs.push(Math.abs(mid1 - mid2) / ((mid1+mid2)/2));
+  }
+  diffs.sort((a,b)=>a-b);
+  const med = diffs[Math.floor(diffs.length/2)] * 100; // %
+  console.log(`Median abs % diff (${symbol}, ${minutes}m): ${med.toFixed(3)}%`);
+  if (med > 0.5) { console.error("❌ Divergence > 0.5%"); process.exit(1); }
+  console.log("✓ Cross-source sanity OK");
+  process.exit(0);
+})();
+
+
+---
+
+Phase 5 — Scripts & CI wiring
+
+Update root package.json (append scripts)
+
+{
+  "scripts": {
+    "test:stevie": "vitest run server/strategy/stevie.spec.ts",
+    "audit:mock": "node tools/audit_mock_scan.js",
+    "audit:cross": "tsx tools/audit_cross_source.ts BTCUSDT 60",
+    "bench:entropy": "vitest run tools/metrics_entropy.spec.ts"
+  }
+}
+
+Append to .github/workflows/ci.yml
+
+- name: Strategy unit tests
+  run: pnpm run test:stevie
+
+- name: Audit — mock fingerprints
+  run: pnpm run audit:mock
+
+- name: Audit — cross-source sanity
+  run: pnpm run audit:cross
+
+- name: Tests — entropy & backtest safety
+  run: pnpm run bench:entropy
+
+
+---
+
+Phase 6 — Backtest smoke command (deterministic)
+
+Run a tiny slice to prove it all wires:
+
+pnpm bench run --strategy stevie --version 1.0 \
+  --symbols BTCUSDT --timeframe 5m \
+  --from 2024-06-01 --to 2024-06-02 \
+  --fee-bps 7 --slip-bps 5 --rng-seed 42
+# Expect artifacts/<runId> with manifest.json, metrics.json, trades.csv, logs.ndjson
+
+
+---
+
+Acceptance checklist (must pass, print proof)
+
+vitest run server/strategy/stevie.spec.ts is green.
+
+Backtest smoke writes artifacts with datasetId, runId, commit.
+
+audit:mock prints “No mock fingerprints in source”.
+
+audit:cross prints median diff ≤ 0.5%.
+
+bench:entropy passes (or skips if <3 runs).
+
+/api/features and /api/bench/* responses include provenance (middleware enforced).
+
+
+
+---
+
+If anything fails, stop, print the exact file path and reason, and propose a fix. After everything passes, we’ll iterate on the strategy thresholds with your live keys/data and start the improvement loop (shadow mode → promote).
+

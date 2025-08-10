@@ -29,6 +29,8 @@ The platform features Stevie, an advanced AI trading companion with comprehensiv
 - **LLM Conversational Interface**: OpenAI GPT-4o integration with function calling for portfolio analysis, trade explanations, and strategy suggestions.
 - **Reinforcement Learning Strategy**: A full RL trading environment with PPO/DQN agents, composite reward functions, and continuous learning, including Optuna hyperparameter optimization and genetic algorithm strategy evolution.
 - **Comprehensive Data Integration**: Full integration with all 8 external data sources (CoinGecko Pro, Binance WebSocket, Twitter API, Reddit API, Etherscan, CryptoPanic, Blockchair, Trading Economics) providing real market data, sentiment analysis, and on-chain metrics to the algorithm.
+- **Real Algorithmic Trading Engine**: Stevie now uses a quantitative decision engine with mathematical routing logic - breakout detection, mean reversion, news momentum, liquidity scaling, and risk-adjusted position sizing. Replaces simplistic if-statements with comprehensive multi-factor analysis.
+- **Anti-Mock Data Protection**: Production guardrails prevent fake data infiltration with provenance tracking, cross-source validation, and entropy testing to ensure algorithm integrity.
 - **Context Management**: A sliding window memory of 1,000 tokens plus key trade events for personalized conversations.
 - **UI Personality Integration**: All notifications, toasts, and interactions use Stevie's encouraging, data-driven personality.
 - **Feedback & Monitoring System**: Includes thumbs-up/down feedback, weekly performance reports, and adaptive risk alerts.

@@ -53,6 +53,7 @@ import docsRoutes from "./routes/docsRoutes";
 import { startRetrainingJobs } from "./jobs/retrainingCron";
 import { AlertingIntegration } from "./services/alertingIntegration";
 import stevieSupertainRoutes from './routes/stevie-supertrain';
+import featuresRouter from './routes/features.js';
 import featureRoutes from './routes/featureRoutes';
 import stevieRoutes from './routes/stevieRoutes';
 import realTrainingRoutes from './routes/realTrainingRoutes';
@@ -115,6 +116,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Unified API routes
   app.use('/api', unifiedApi);
+
+  // Features API for real algorithmic trading
+  app.use('/api/features', featuresRouter);
 
   // Stevie AI Companion routes
   app.use('/api/stevie', stevieRoutes);

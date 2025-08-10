@@ -74,6 +74,7 @@
     "input-otp": "^1.4.2",
     "json2csv": "^6.0.0-alpha.2",
     "lighthouse": "^12.8.1",
+    "limiter": "^3.0.0",
     "lucide-react": "^0.453.0",
     "memoizee": "^0.4.17",
     "memorystore": "^1.6.7",

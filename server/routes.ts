@@ -68,6 +68,7 @@ import tradingTestRoutes from './routes/trading-tests.js';
 import { registerMarketRoutes } from './routes/marketRoutes';
 import { registerStrategyRoutes } from './routes/strategyRoutes';
 import { registerBacktestRoutes } from './routes/backtestRoutes';
+import externalConnectorsRouter from './routes/externalConnectors';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -168,6 +169,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Data fusion routes (on-chain + sentiment)
   app.use('/api/fusion', dataFusionRoutes);
+
+  // External connectors API (Phase A - Compliance Mode)
+  app.use('/api/connectors', externalConnectorsRouter);
   
   // Real algorithm benchmark routes (actual trading performance testing)
   const { realBenchmarkRoutes } = await import('./routes/realBenchmarkRoutes');

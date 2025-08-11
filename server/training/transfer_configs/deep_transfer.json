@@ -1,0 +1,17 @@
+{
+  "baseModel": "AlphaStock-Transformer",
+  "transferLayers": [
+    "attention_layers",
+    "prediction_head"
+  ],
+  "freezeLayers": [
+    "embedding_layers"
+  ],
+  "learningRateSchedule": {
+    "initial": 0.00005,
+    "reduction": 0.3,
+    "patience": 15
+  },
+  "fineTuningEpochs": 100,
+  "validationSplit": 0.15
+}

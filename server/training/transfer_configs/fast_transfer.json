@@ -1,0 +1,17 @@
+{
+  "baseModel": "FinRL-PPO",
+  "transferLayers": [
+    "feature_extractor",
+    "policy_head"
+  ],
+  "freezeLayers": [
+    "shared_layers"
+  ],
+  "learningRateSchedule": {
+    "initial": 0.0001,
+    "reduction": 0.5,
+    "patience": 10
+  },
+  "fineTuningEpochs": 50,
+  "validationSplit": 0.2
+}

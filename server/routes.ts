@@ -71,6 +71,7 @@ import registerBacktestRoutes from './routes/backtestRoutes';
 import externalConnectorsRouter from './routes/externalConnectors';
 import connectorsRouter from './routes/connectors';
 import comprehensiveFeaturesRouter from './routes/comprehensive-features';
+import { transferLearningRouter } from './routes/transferLearning.js';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Development bypass function
@@ -1676,6 +1677,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Real Training Day Routes (replaces marketing fluff with actual ML training)
   app.use('/api/training', realTrainingRoutes);
+
+  // Transfer Learning Routes (jumpstart training with pre-trained models)
+  app.use('/api/transfer-learning', transferLearningRouter);
 
   // Async Training Job Routes
   app.use('/api/training-jobs', trainingJobsRouter);

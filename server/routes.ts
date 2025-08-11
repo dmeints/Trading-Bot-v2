@@ -1678,6 +1678,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Real Training Day Routes (replaces marketing fluff with actual ML training)
   app.use('/api/training', realTrainingRoutes);
 
+  // Real Training Day Routes (replaces marketing fluff with actual ML training)
+  app.use('/api/training', realTrainingRoutes);
+
   // Transfer Learning Routes (jumpstart training with pre-trained models)
   app.use('/api/transfer-learning', transferLearningRouter);
 

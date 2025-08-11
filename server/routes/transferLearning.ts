@@ -5,7 +5,7 @@
 
 import { Router } from 'express';
 import { logger } from '../utils/logger.js';
-import { transferLearningManager } from '../training/transferLearning.js';
+import { transferLearningManager } from '../training/transferLearning';
 
 export const transferLearningRouter = Router();
 

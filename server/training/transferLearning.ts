@@ -399,7 +399,7 @@ class TransferLearningManager {
   }
 
   /**
-   * Simulate transfer learning training process
+   * Simulate transfer learning training process with realistic curves
    */
   async simulateTransferTraining(
     baseModel: PreTrainedModel,
@@ -408,32 +408,58 @@ class TransferLearningManager {
   ) {
     // Simulate progressive improvement from pre-trained baseline
     const basePerformance = baseModel.performance.sharpeRatio;
-    const targetImprovement = 0.3; // 30% improvement target
+    
+    // Realistic improvement targets based on transfer learning research
+    const maxImprovement = config.transferLayers.includes('all') ? 0.4 : 
+                          config.transferLayers.length > 2 ? 0.3 : 0.2;
     
     const epochs = config.fineTuningEpochs;
     let currentPerformance = basePerformance;
     let convergenceEpoch = epochs;
+    let bestPerformance = basePerformance;
+    let patienceCounter = 0;
     
-    // Simulate training progression
+    // Simulate realistic training progression with plateau detection
     for (let epoch = 1; epoch <= epochs; epoch++) {
-      // Progressive improvement with diminishing returns
-      const improvementFactor = Math.exp(-epoch / (epochs * 0.3));
-      const epochImprovement = targetImprovement * improvementFactor * 0.1;
+      // S-curve improvement with noise and plateaus
+      const progress = epoch / epochs;
+      const sigmoidProgress = 1 / (1 + Math.exp(-10 * (progress - 0.5)));
       
-      currentPerformance += epochImprovement;
+      // Add realistic noise and occasional setbacks
+      const noise = (Math.random() - 0.5) * 0.02;
+      const epochImprovement = maxImprovement * sigmoidProgress * 0.1 + noise;
       
-      // Early convergence simulation
-      if (epoch > 20 && Math.random() > 0.95) {
+      currentPerformance = Math.max(basePerformance, currentPerformance + epochImprovement);
+      
+      // Track best performance for early stopping
+      if (currentPerformance > bestPerformance) {
+        bestPerformance = currentPerformance;
+        patienceCounter = 0;
+      } else {
+        patienceCounter++;
+      }
+      
+      // Early convergence based on patience (realistic ML training)
+      if (patienceCounter >= config.learningRateSchedule.patience && epoch > 20) {
         convergenceEpoch = epoch;
+        currentPerformance = bestPerformance;
+        logger.info('[TransferLearning] Early convergence detected', {
+          epoch,
+          reason: 'patience_exceeded',
+          finalSharpe: currentPerformance.toFixed(3)
+        });
         break;
       }
       
-      // Log progress every 10 epochs
+      // Log progress every 10 epochs with realistic metrics
       if (epoch % 10 === 0) {
+        const improvement = ((currentPerformance - basePerformance) / basePerformance * 100);
         logger.info('[TransferLearning] Training progress', {
           epoch,
           currentSharpe: currentPerformance.toFixed(3),
-          improvement: ((currentPerformance - basePerformance) / basePerformance * 100).toFixed(1) + '%'
+          improvement: improvement.toFixed(1) + '%',
+          bestSharpe: bestPerformance.toFixed(3),
+          patience: `${patienceCounter}/${config.learningRateSchedule.patience}`
         });
       }
     }
@@ -444,10 +470,17 @@ class TransferLearningManager {
       improvement: finalImprovement,
       finalPerformance: {
         sharpeRatio: currentPerformance,
-        estimatedReturns: baseModel.performance.returns * (1 + finalImprovement * 0.7),
-        estimatedDrawdown: baseModel.performance.maxDrawdown * (1 - finalImprovement * 0.3)
+        estimatedReturns: baseModel.performance.returns * (1 + finalImprovement * 0.8),
+        estimatedDrawdown: Math.max(0.02, baseModel.performance.maxDrawdown * (1 - finalImprovement * 0.4))
       },
-      convergenceEpoch
+      convergenceEpoch,
+      trainingCurve: {
+        epochs: convergenceEpoch,
+        startingSharpe: basePerformance,
+        finalSharpe: currentPerformance,
+        maxImprovement: maxImprovement,
+        actualImprovement: finalImprovement
+      }
     };
   }
 

@@ -1,4 +1,3 @@
-
 /**
  * Mixture-of-Experts Trading Policy
  * Combines expert recommendations using learned gating
@@ -74,7 +73,7 @@ export class MixtureOfExpertsPolicy {
 
     // Get individual expert recommendations
     const expertActions: Map<string, ExpertAction> = new Map();
-    
+
     for (const expertId of expertIds) {
       const expert = this.experts.get(expertId);
       if (expert && expert.decide) {
@@ -126,10 +125,10 @@ export class MixtureOfExpertsPolicy {
     switch (this.params.ensembleMethod) {
       case 'weighted_average':
         return this.weightedAverageEnsemble(validActions, expertWeights);
-      
+
       case 'winner_takes_all':
         return this.winnerTakesAllEnsemble(validActions, expertWeights);
-      
+
       case 'confidence_weighted':
       default:
         return this.confidenceWeightedEnsemble(validActions, expertWeights);
@@ -220,7 +219,7 @@ export class MixtureOfExpertsPolicy {
       const weight = expertWeights.find(w => w.expertId === expertId)?.weight || 0;
       totalWeight += weight;
       weightedSize += action.sizePct * weight;
-      
+
       if (action.side === 'buy') buyVotes += weight;
       else sellVotes += weight;
     }
@@ -346,12 +345,12 @@ export class MixtureOfExpertsPolicy {
     const maxWeight = Math.max(...expertWeights.map(w => w.weight));
     const weightEntropy = this.calculateWeightEntropy(expertWeights);
     const normalizedEntropy = weightEntropy / Math.log(expertWeights.length);
-    
+
     // High confidence when:
     // 1. Individual expert confidence is high
     // 2. Gating weights are concentrated (low entropy)
     const concentrationBonus = 1 - normalizedEntropy;
-    
+
     return Math.min(0.95, ensembleDecision.confidence * (0.7 + 0.3 * concentrationBonus));
   }
 
@@ -408,7 +407,7 @@ export class MixtureOfExpertsPolicy {
     };
   } {
     const expertStats = this.gating.getPerformanceStats();
-    
+
     const recentDecisions = this.decisionHistory.slice(-100);
     const abstainCount = recentDecisions.filter(d => d.abstain).length;
     const avgConfidence = recentDecisions.length > 0 

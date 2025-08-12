@@ -27,6 +27,8 @@ export interface ExecutionPlan {
   reasoning: string;
   expectedCost_bps: number;
   confidence: number;
+  uncertaintyAdjusted?: boolean;
+  uncertaintyReasoning?: string;
 }
 
 // New interfaces and classes for Phase 3
@@ -62,11 +64,12 @@ export interface ExecutionDecision {
 }
 
 /**
- * Determine optimal execution strategy based on market conditions
+ * Determine optimal execution strategy based on market conditions and uncertainty
  */
 export function routeOrder(
   request: OrderRequest,
-  conditions: MarketConditions
+  conditions: MarketConditions,
+  uncertaintyScore: number = 0
 ): ExecutionPlan {
 
   const { symbol, side, sizePct } = request;
@@ -123,6 +126,28 @@ export function routeOrder(
     fallbacks.push({ ...request, type: 'market' });
   }
 
+  // Uncertainty-based execution adjustments
+  let uncertaintyAdjusted = false;
+  let uncertaintyReasoning = '';
+  
+  if (uncertaintyScore > 0.3) {
+    uncertaintyAdjusted = true;
+    
+    // High uncertainty - prefer more conservative execution
+    if (primary.type === 'market') {
+      primary = { ...primary, type: 'ioc', timeInForce: 'ioc' };
+      uncertaintyReasoning = 'High prediction uncertainty - switching to IOC from market order';
+      expectedCost_bps += 2;
+    } else if (primary.type === 'limit') {
+      // Make limit orders more passive
+      uncertaintyReasoning = 'High prediction uncertainty - using more passive limit strategy';
+      expectedCost_bps -= 1; // More passive = better price
+    }
+    
+    confidence -= uncertaintyScore * 0.3;
+    reasoning += `. Uncertainty (${uncertaintyScore.toFixed(3)}) adjusted execution strategy`;
+  }
+
   // Adjust for market conditions
   if (volatility_pct > 2.0) {
     // High volatility - prefer faster execution
@@ -153,7 +178,9 @@ export function routeOrder(
     fallbacks,
     reasoning,
     expectedCost_bps: Math.round(expectedCost_bps * 100) / 100,
-    confidence: Math.max(0.1, Math.min(1.0, confidence))
+    confidence: Math.max(0.1, Math.min(1.0, confidence)),
+    uncertaintyAdjusted,
+    uncertaintyReasoning
   };
 }
 

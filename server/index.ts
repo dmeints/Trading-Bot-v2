@@ -5,6 +5,7 @@ import { notFoundHandler, errorHandler } from "./utils/errorHandler";
 import { registerRoutes } from "./routes";
 import { env } from "./config/env";
 import { logger } from "./utils/logger";
+import { createTradingConformalPredictor } from './brain/conformal';
 
 const app = express();
 
@@ -49,7 +50,7 @@ app.use((req, res, next) => {
       }
 
       log(logLine);
-      
+
       // Also log to structured logger for requests with IDs
       if (req.id) {
         logger.withRequest(req.id).info('API Request', {
@@ -81,7 +82,7 @@ app.use((req, res, next) => {
 
   // 404 handler for unknown routes (after frontend routing)
   app.use(notFoundHandler);
-  
+
   // Global error handler
   app.use(errorHandler);
 
@@ -99,3 +100,7 @@ app.use((req, res, next) => {
     log('Server started successfully - AI services will initialize on first request');
   });
 })();
+
+// Initialize global conformal predictor for uncertainty quantification
+(global as any).conformalPredictor = createTradingConformalPredictor();
+logger.info('[Server] Initialized global conformal predictor for uncertainty quantification');

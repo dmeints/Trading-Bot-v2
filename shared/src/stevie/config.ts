@@ -30,6 +30,11 @@ export type StevieConfig = {
   // Risk controls
   minInterTradeSec: number;
   burstCapPerMin: number;
+  
+  // Uncertainty quantification thresholds
+  uncertaintyWarnThreshold: number;
+  uncertaintyMaxThreshold: number;
+  minConformalSamples: number;
 };
 
 export const defaultStevieConfig: StevieConfig = {
@@ -64,7 +69,12 @@ export const defaultStevieConfig: StevieConfig = {
   
   // Execution controls
   minInterTradeSec: 20,
-  burstCapPerMin: 3
+  burstCapPerMin: 3,
+  
+  // Uncertainty quantification
+  uncertaintyWarnThreshold: 0.3,
+  uncertaintyMaxThreshold: 0.6,
+  minConformalSamples: 50
 };
 
 /**

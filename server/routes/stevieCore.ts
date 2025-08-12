@@ -123,13 +123,15 @@ router.post('/route-execution', async (req, res) => {
       toxicity_score: routeData.toxicity_score
     };
     
-    const plan = routeOrder(orderRequest, conditions);
+    const uncertaintyScore = routeData.uncertaintyScore || 0;
+    const plan = routeOrder(orderRequest, conditions, uncertaintyScore);
     
     logger.info('[StevieCore] Execution routed', {
       symbol: routeData.symbol,
       side: routeData.side,
       primaryType: plan.primary.type,
-      expectedCost: plan.expectedCost_bps
+      expectedCost: plan.expectedCost_bps,
+      uncertaintyAdjusted: plan.uncertaintyAdjusted
     });
     
     res.json({
@@ -151,6 +153,50 @@ router.post('/route-execution', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to route execution'
+    });
+  }
+});
+
+/**
+ * GET /api/uncertainty/coverage
+ * Get conformal prediction coverage diagnostics
+ */
+router.get('/uncertainty/coverage', async (req, res) => {
+  try {
+    // Import conformal predictor (assuming it's available globally or through a service)
+    const { ConformalPredictor } = await import('../brain/conformal');
+    
+    // Get or create global conformal predictor instance
+    const conformalPredictor = global.conformalPredictor || new ConformalPredictor();
+    
+    const diagnostics = conformalPredictor.getDiagnostics();
+    
+    logger.info('[StevieCore] Uncertainty coverage requested', {
+      calibrationSamples: diagnostics.calibrationSamples,
+      empiricalCoverage: diagnostics.empiricalCoverage,
+      coverageGap: diagnostics.coverageGap
+    });
+    
+    res.json({
+      success: true,
+      coverage: {
+        empiricalCoverage: diagnostics.empiricalCoverage,
+        expectedCoverage: diagnostics.expectedCoverage,
+        coverageGap: diagnostics.coverageGap,
+        avgIntervalWidth: diagnostics.avgIntervalWidth,
+        calibrationSamples: diagnostics.calibrationSamples,
+        status: diagnostics.coverageGap < 0.05 ? 'good' : 
+                diagnostics.coverageGap < 0.1 ? 'warning' : 'poor',
+        recentNonconformityScores: diagnostics.recentNonconformityScores.slice(-10)
+      }
+    });
+    
+  } catch (error) {
+    logger.error('[StevieCore] Uncertainty coverage failed', error);
+    
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get uncertainty coverage'
     });
   }
 });

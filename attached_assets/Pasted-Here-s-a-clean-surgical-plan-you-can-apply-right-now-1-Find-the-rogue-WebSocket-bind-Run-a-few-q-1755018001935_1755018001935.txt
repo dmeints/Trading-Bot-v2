@@ -1,0 +1,199 @@
+Here’s a clean, surgical plan you can apply right now:
+
+1) Find the rogue WebSocket bind
+Run a few quick greps to find any stand-alone WS servers that bind by port: instead of attaching to the HTTP server:
+
+nginx
+Copy
+Edit
+# look for ws/socket.io servers created with a { port } option
+rg -n "new (WebSocketServer|Server)\s*\(\s*\{[^}]*port:"
+rg -n "(ws|socket\.io|uWebSockets|\@fastify/websocket)"
+rg -n "createServer\(|http\.createServer\("
+rg -n "listen\(\s*\d+|listen\(\s*\{[^}]*port"
+rg -n "WS_PORT|VITE_WS|REPLIT_WS|process\.env\.(WS_|PORT)"
+If you see anything like:
+
+ts
+Copy
+Edit
+new WebSocketServer({ port: 5000, path: '/ws' })
+that’s your conflict. In your setup the WS server should attach to the already created HTTP server, not bind its own port.
+
+2) Make the architecture single-source-of-truth
+You want exactly one place that:
+
+Resolves the port
+
+Calls server.listen(...)
+
+Creates the WebSocket server attached to that HTTP server
+
+Everything else should import and use the resulting httpServer / wss.
+
+A. Harden server/index.ts
+ts
+Copy
+Edit
+// server/index.ts
+import http from 'http';
+import { app } from './app';             // your express app
+import { registerRoutes } from './routes';
+import { createWSS } from './ws';        // new helper (below)
+
+const PORT = Number(process.env.PORT) || 5000;
+
+function onError(err: NodeJS.ErrnoException) {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`[boot] Port ${PORT} in use. Did another dev server or a rogue WS bind steal it?`);
+  } else if (err.code === 'EACCES') {
+    console.error(`[boot] No permission to bind port ${PORT}. Try a higher port or sudo.`);
+  } else {
+    console.error('[boot] Listen error:', err);
+  }
+  process.exit(1);
+}
+
+const httpServer = http.createServer(app);
+// IMPORTANT: do not pass { reusePort: true } here; it causes subtle conflicts in single-process dev.
+
+registerRoutes(app); // register only routes/middleware; do NOT create a second httpServer inside
+
+// Attach WS to the existing HTTP server on /ws
+createWSS({ server: httpServer, path: '/ws' });
+
+httpServer.on('error', onError);
+httpServer.on('listening', () => {
+  const addr = httpServer.address();
+  console.log(`[boot] Serving on port ${typeof addr === 'object' && addr ? addr.port : PORT}`);
+});
+
+httpServer.listen(PORT);
+B. Make routes.ts stop creating servers
+Ensure it doesn’t call http.createServer() or listen(). It should only register handlers:
+
+ts
+Copy
+Edit
+// server/routes.ts
+import { Express } from 'express';
+
+export function registerRoutes(app: Express) {
+  // app.get('/api/health', ...)
+  // app.use('/api/...', ...)
+  // NO http.createServer, NO server.listen here
+}
+C. Centralize WebSocket creation (and guard against double init)
+ts
+Copy
+Edit
+// server/ws.ts
+import { WebSocketServer } from 'ws';
+import type { Server as HTTPServer } from 'http';
+
+let wssSingleton: WebSocketServer | null = null;
+
+export function createWSS(opts: { server: HTTPServer; path?: string }) {
+  if (wssSingleton) {
+    console.warn('[ws] Reusing existing WebSocketServer (double init avoided).');
+    return wssSingleton;
+  }
+  const { server, path = '/ws' } = opts;
+  const wss = new WebSocketServer({ server, path });
+
+  wss.on('listening', () => console.log(`[ws] attached at ${path}`));
+  wss.on('error', (err) => {
+    console.error('[ws] WebSocket server error:', err);
+    if ((err as any).code === 'EADDRINUSE') {
+      console.error('[ws] EADDRINUSE: a rogue WS server is binding directly to the port. Remove any { port: ... } WS inits.');
+    }
+  });
+
+  wssSingleton = wss;
+  return wss;
+}
+3) Add definitive runtime checks (so this never sneaks back)
+A. Boot-time assertions
+ts
+Copy
+Edit
+// server/boot_guard.ts
+import { Server as HTTPServer } from 'http';
+
+export function assertServerState(server: HTTPServer) {
+  const s: any = server;
+  if (s.listening !== true) {
+    console.warn('[boot_guard] httpServer not listening yet when creating WSS. Ensure listen() order is correct.');
+  }
+}
+Call assertServerState(httpServer) right before createWSS(...) and again inside the listening event to verify order.
+
+B. Dev test to catch rogue WS “port” usage
+Add a tiny unit test that fails if WebSocketServer is constructed with { port: ... } anywhere in the code (uses monkey-patch in test only):
+
+ts
+Copy
+Edit
+// server/__tests__/ws_bind_guard.spec.ts
+import { describe, it, expect, vi } from 'vitest';
+import * as ws from 'ws';
+
+describe('WS must attach to HTTP server (no direct port bind)', () => {
+  it('throws if WebSocketServer is created with { port }', async () => {
+    const ctor = ws.WebSocketServer as any;
+    const spy = vi.spyOn(ws, 'WebSocketServer' as any);
+    try {
+      new (ctor)({ port: 5000 });
+      // If this succeeds anywhere in tests, fail fast.
+      expect(false).toBe(true);
+    } catch {
+      expect(true).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+(If you don’t love monkey-patching, a lighter option is a repo grep in CI that fails when it finds new WebSocketServer({ port:.)
+
+4) Logs that tell the truth
+Add these (super helpful) logs:
+
+Before listen: [boot] trying to listen on ${PORT}
+
+On error: show exact code (EADDRINUSE/EACCES)
+
+On listening: print the port resolved by the OS
+
+In WS: log that it’s attached to the HTTP server and not binding a port
+
+5) Quick checklist to validate the fix
+ rg shows no new WebSocketServer({ port: ... }) in the repo
+
+ routes.ts has no createServer() and no listen()
+
+ Only server/index.ts calls server.listen(...)
+
+ Boot logs print:
+
+[boot] trying to listen on 5000
+
+[boot] Serving on port 5000
+
+[ws] attached at /ws
+
+ No more “WebSocket Server error: EADDRINUSE”
+
+6) If you’re on Replit/Vite dev: split dev vs prod clearly
+In dev, Vite has its own HMR WS on its port. Your app WS should be behind your HTTP server (e.g., 5000). Avoid running a second app process that also tries to bind 5000.
+
+A small guard helps:
+
+ts
+Copy
+Edit
+const isDev = process.env.NODE_ENV !== 'production';
+if (isDev) {
+  // optionally probe the port and log a warning if it’s busy
+  // or pick a free port with get-port (dev only)
+}
+If you paste these snippets in and still don’t see [boot] Serving on port 5000, share the exact boot log line and I’ll help you chase the next failing edge (permissions, container port exposure, or an earlier throw).

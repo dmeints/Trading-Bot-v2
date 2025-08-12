@@ -73,6 +73,8 @@ import connectorsRouter from './routes/connectors';
 import comprehensiveFeaturesRouter from './routes/comprehensive-features';
 import { transferLearningRouter } from './routes/transferLearning.js';
 import healthRoutes from './routes/health.js';
+import { priceStream } from './services/priceStream.js';
+import { getLastOHLCVSync } from './routes/marketRoutes.js';
 import { registerBacktestRoutes } from './routes/backtestRoutes.js';
 import { getLastOHLCVSync } from "./routes/marketRoutes";
 

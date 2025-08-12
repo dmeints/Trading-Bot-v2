@@ -1,110 +1,90 @@
-/**
- * Real Backtesting Engine with Actual Market Data Integration
- * 
- * This system provides comprehensive backtesting capabilities using real market data,
- * technical analysis, and robust risk management for cryptocurrency trading strategies.
- */
+import { db } from '../db.js';
+import { marketBars } from '../../shared/schema.js';
+import { binanceConnector } from '../connectors/binance.js';
+import { eq, and, gte, lte } from 'drizzle-orm';
+import { logger } from '../utils/logger.js';
 
-import { storage } from '../storage';
-import { marketDataService } from './marketData';
-import { logger } from '../utils/logger';
-import type { InsertBacktestResults } from '../../shared/schema';
-import { getOHLCV } from "./exchanges/binance";
-import { calculateSMA } from '../utils/indicators';
-import type { InsertMarketBar } from '@shared/schema';
-
-
-function toBarsForDB(symbol: string, timeframe: string, candles: {timestamp:number,open:number,high:number,low:number,close:number,volume:number}[]): InsertMarketBar[] {
-  const ds = (ts:number) => `binance:${symbol}:${timeframe}:${new Date(ts).toISOString().slice(0,10)}`;
-  return candles.map(c => ({
-    symbol,
-    timeframe,
-    timestamp: new Date(c.timestamp),
-    open: String(c.open),
-    high: String(c.high),
-    low: String(c.low),
-    close: String(c.close),
-    volume: String(c.volume ?? 0),
-    provider: 'binance',
-    datasetId: ds(c.timestamp),
-    provenance: { source: 'binance', endpoint: 'klines', symbol, timeframe }
-  }));
+interface Candle {
+  timestamp: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
 }
 
-async function loadCandles(symbol: string, timeframe: string, from: Date, to: Date, fast: number, slow: number) {
-  const ms: Record<string, number> = { 
-    '1m': 60000, '5m': 300000, '15m': 900000, 
-    '1h': 3600000, '4h': 14400000, '1d': 86400000 
-  };
-  const msPerCandle = ms[timeframe] ?? 3600000;
-  const needed = Math.ceil((+to - +from) / msPerCandle) + slow + 10;
+async function loadCandles(
+  symbol: string,
+  timeframe: string,
+  from: string,
+  to: string,
+  fast: number,
+  slow: number
+): Promise<Candle[]> {
+  const fromDate = new Date(from);
+  const toDate = new Date(to);
+
+  // Calculate needed candles with buffer for indicators
+  const intervalMs = timeframe === '1m' ? 60000 : timeframe === '5m' ? 300000 : 3600000;
+  const neededCount = Math.ceil((toDate.getTime() - fromDate.getTime()) / intervalMs) + Math.max(fast, slow) + 10;
+
+  logger.info(`Loading ${neededCount} candles for ${symbol} ${timeframe} from DB`);
 
   try {
-    const rows = await storage.getMarketBars(symbol, timeframe, needed);
-    if (rows && rows.length >= slow + 10) {
-      logger.info(`Using ${rows.length} candles from database`);
-      return rows.map(r => ({ 
-        timestamp: +new Date(r.timestamp), 
-        open: +r.open, 
-        high: +r.high, 
-        low: +r.low, 
-        close: +r.close, 
-        volume: +(r.volume || 0) 
+    // Try to get from database first
+    const dbBars = await db
+      .select()
+      .from(marketBars)
+      .where(
+        and(
+          eq(marketBars.symbol, symbol),
+          eq(marketBars.timeframe, timeframe),
+          gte(marketBars.timestamp, fromDate),
+          lte(marketBars.timestamp, toDate)
+        )
+      )
+      .orderBy(marketBars.timestamp);
+
+    if (dbBars.length >= neededCount * 0.8) {
+      logger.info(`Using ${dbBars.length} candles from DB`);
+      return dbBars.map(bar => ({
+        timestamp: bar.timestamp.getTime(),
+        open: parseFloat(bar.open),
+        high: parseFloat(bar.high),
+        low: parseFloat(bar.low),
+        close: parseFloat(bar.close),
+        volume: parseFloat(bar.volume)
       }));
     }
-  } catch (e) {
-    logger.warn('Failed to load candles from database, falling back to Binance:', { error: String(e) });
+
+    logger.info(`Insufficient DB data (${dbBars.length}/${neededCount}), fetching from Binance`);
+
+    // Fallback to Binance API
+    const freshBars = await binanceConnector.fetchKlines(
+      symbol,
+      timeframe as '1m' | '5m' | '1h' | '1d',
+      neededCount
+    );
+
+    // Persist to DB
+    if (freshBars.length > 0) {
+      await binanceConnector.storeMarketBars(freshBars);
+      logger.info(`Persisted ${freshBars.length} fresh bars to DB`);
+    }
+
+    return freshBars.map(bar => ({
+      timestamp: bar.timestamp.getTime(),
+      open: parseFloat(bar.open),
+      high: parseFloat(bar.high),
+      low: parseFloat(bar.low),
+      close: parseFloat(bar.close),
+      volume: parseFloat(bar.volume)
+    }));
+
+  } catch (error) {
+    logger.error('Error loading candles:', error);
+    throw error;
   }
-
-  // Fallback to Binance HTTP
-  logger.info('Loading candles from Binance API');
-  const candles = await getOHLCV(symbol, timeframe, Math.min(1000, needed));
-
-  // Try to persist the fetched candles
-  try {
-    await storage.storeMarketBars(toBarsForDB(symbol, timeframe, candles));
-    logger.info(`Persisted ${candles.length} candles to database`);
-  } catch (e) {
-    logger.warn('Failed to persist candles to database:', { error: String(e) });
-  }
-
-  return candles;
-}
-
-
-interface BacktestParams {
-  symbol: string;
-  timeframe: string;
-  from: string;
-  to: string;
-  fast: number;
-  slow: number;
-}
-
-interface BacktestTrade {
-  timestamp: number;
-  price: number;
-  side: 'buy' | 'sell';
-  size: number;
-  pnl?: number;
-}
-
-interface BacktestMetrics {
-  totalPnL: number;
-  totalReturn: number;
-  sharpeRatio: number;
-  maxDrawdown: number;
-  totalTrades: number;
-  winRate: number;
-  startValue: number;
-  endValue: number;
-}
-
-interface BacktestResult {
-  metrics: BacktestMetrics;
-  trades: BacktestTrade[];
-  equity: number[];
-  parameters: BacktestParams;
 }
 
 function calculateSMA(prices: number[], period: number): number[] {
@@ -120,132 +100,110 @@ function calculateSMA(prices: number[], period: number): number[] {
   return sma;
 }
 
-export async function runSMABacktest(params: BacktestParams): Promise<BacktestResult> {
-  const { symbol, timeframe, from, to, fast, slow } = params;
-  const fromDate = new Date(from);
-  const toDate = new Date(to);
+export async function runSMABacktest(params: {
+  symbol: string;
+  timeframe: string;
+  from: string;
+  to: string;
+  fast: number;
+  slow: number;
+}) {
+  try {
+    const candles = await loadCandles(
+      params.symbol,
+      params.timeframe,
+      params.from,
+      params.to,
+      params.fast,
+      params.slow
+    );
 
-  // Validate parameters
-  if (fast >= slow) {
-    throw new Error('Fast SMA period must be less than slow SMA period');
-  }
+    if (candles.length < Math.max(params.fast, params.slow)) {
+      throw new Error('Insufficient candle data for backtest');
+    }
 
-  // Get historical data (DB first, then Binance fallback)
-  const candles = await loadCandles(symbol, timeframe, fromDate, toDate, fast, slow);
+    const closes = candles.map(c => c.close);
+    const fastSMA = calculateSMA(closes, params.fast);
+    const slowSMA = calculateSMA(closes, params.slow);
 
-  if (candles.length < slow) {
-    throw new Error(`Insufficient data: need at least ${slow} candles, got ${candles.length}`);
-  }
+    let position = 0;
+    let cash = 10000;
+    let equity = cash;
+    let trades = 0;
+    let wins = 0;
+    let maxEquity = cash;
+    let maxDrawdown = 0;
 
-  const closePrices = candles.map(c => c.close);
-  const fastSMA = calculateSMA(closePrices, fast);
-  const slowSMA = calculateSMA(closePrices, slow);
+    const equityCurve: number[] = [];
 
-  const trades: BacktestTrade[] = [];
-  const equity: number[] = [];
+    for (let i = params.slow; i < candles.length; i++) {
+      const price = candles[i].close;
+      const prevFast = fastSMA[i - 1];
+      const prevSlow = slowSMA[i - 1];
+      const currFast = fastSMA[i];
+      const currSlow = slowSMA[i];
 
-  let position = 0; // 0 = flat, 1 = long
-  let cash = 10000; // Starting capital
-  let shares = 0;
-  let entryPrice = 0;
+      // Buy signal: fast SMA crosses above slow SMA
+      if (position === 0 && prevFast <= prevSlow && currFast > currSlow) {
+        position = cash / price;
+        cash = 0;
+        trades++;
+      }
+      // Sell signal: fast SMA crosses below slow SMA
+      else if (position > 0 && prevFast >= prevSlow && currFast < currSlow) {
+        const sellValue = position * price;
+        if (sellValue > cash) wins++;
+        cash = sellValue;
+        position = 0;
+      }
 
-  const txnFee = 0.001; // 0.1% transaction fee
+      equity = cash + (position * price);
+      equityCurve.push(equity);
 
-  for (let i = slow; i < candles.length; i++) {
-    const currentPrice = candles[i].close;
-    const fastValue = fastSMA[i];
-    const slowValue = slowSMA[i];
+      if (equity > maxEquity) maxEquity = equity;
+      const drawdown = (maxEquity - equity) / maxEquity;
+      if (drawdown > maxDrawdown) maxDrawdown = drawdown;
+    }
 
-    if (isNaN(fastValue) || isNaN(slowValue)) continue;
-
-    // Strategy logic: Long when fast > slow, flat otherwise
-    const shouldBeLong = fastValue > slowValue;
-
-    if (shouldBeLong && position === 0) {
-      // Enter long position
-      const size = cash / currentPrice;
-      const cost = size * currentPrice;
-      const fee = cost * txnFee;
-
-      shares = size;
-      cash = cash - cost - fee;
-      position = 1;
-      entryPrice = currentPrice;
-
-      trades.push({
-        timestamp: candles[i].timestamp,
-        price: currentPrice,
-        side: 'buy',
-        size: size
-      });
-    } else if (!shouldBeLong && position === 1) {
-      // Exit long position
-      const proceeds = shares * currentPrice;
-      const fee = proceeds * txnFee;
-      const pnl = proceeds - fee - (shares * entryPrice);
-
-      cash = cash + proceeds - fee;
-
-      trades.push({
-        timestamp: candles[i].timestamp,
-        price: currentPrice,
-        side: 'sell',
-        size: shares,
-        pnl: pnl
-      });
-
-      shares = 0;
+    // Close final position
+    if (position > 0) {
+      cash = position * candles[candles.length - 1].close;
       position = 0;
     }
 
-    // Calculate current portfolio value
-    const portfolioValue = cash + (shares * currentPrice);
-    equity.push(portfolioValue);
+    const finalEquity = cash;
+    const totalReturn = (finalEquity - 10000) / 10000;
+    const winRate = trades > 0 ? wins / trades : 0;
+
+    // Simple Sharpe calculation
+    const returns = equityCurve.map((eq, i) =>
+      i === 0 ? 0 : (eq - equityCurve[i - 1]) / equityCurve[i - 1]
+    ).slice(1);
+
+    const avgReturn = returns.reduce((a, b) => a + b, 0) / returns.length;
+    const returnStd = Math.sqrt(
+      returns.reduce((sum, ret) => sum + Math.pow(ret - avgReturn, 2), 0) / returns.length
+    );
+    const sharpe = returnStd > 0 ? (avgReturn / returnStd) * Math.sqrt(252) : 0;
+
+    return {
+      success: true,
+      metrics: {
+        pnl: totalReturn,
+        sharpe,
+        maxDrawdown,
+        winRate,
+        trades,
+        finalEquity
+      },
+      candles: candles.length
+    };
+
+  } catch (error) {
+    logger.error('SMA backtest error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
   }
-
-  // Final metrics calculation
-  const startValue = 10000;
-  const endValue = cash + (shares * candles[candles.length - 1].close);
-  const totalPnL = endValue - startValue;
-  const totalReturn = (endValue / startValue - 1) * 100;
-
-  // Calculate Sharpe ratio (simplified)
-  const returns = equity.slice(1).map((val, i) => (val - equity[i]) / equity[i]);
-  const avgReturn = returns.reduce((a, b) => a + b, 0) / returns.length;
-  const volatility = Math.sqrt(
-    returns.reduce((sum, ret) => sum + Math.pow(ret - avgReturn, 2), 0) / returns.length
-  );
-  const sharpeRatio = volatility > 0 ? (avgReturn / volatility) * Math.sqrt(252) : 0;
-
-  // Calculate max drawdown
-  let maxDrawdown = 0;
-  let peak = startValue;
-  for (const value of equity) {
-    if (value > peak) peak = value;
-    const drawdown = (peak - value) / peak;
-    if (drawdown > maxDrawdown) maxDrawdown = drawdown;
-  }
-
-  // Win rate
-  const profitableTrades = trades.filter(t => t.pnl && t.pnl > 0).length;
-  const totalTradesPairs = Math.floor(trades.length / 2);
-  const winRate = totalTradesPairs > 0 ? (profitableTrades / totalTradesPairs) * 100 : 0;
-
-  const metrics: BacktestMetrics = {
-    totalPnL,
-    totalReturn,
-    sharpeRatio,
-    maxDrawdown: maxDrawdown * 100,
-    totalTrades: trades.length,
-    winRate,
-    startValue,
-    endValue
-  };
-
-  return {
-    metrics,
-    trades,
-    equity,
-    parameters: params
-  };
 }

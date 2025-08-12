@@ -13,11 +13,11 @@ import scenarioCoverageRouter from './routes/scenarioCoverage';
 import conformalTuningRouter from './routes/conformalTuning';
 
 // Import routes
-import healthRoutes from './routes/health.js';
-import tradingRoutes from './routes/trading.js';
-import portfolioRoutes from './routes/portfolio.js';
-import errorRoutes from './routes/errors.js';
-import chartDataRoutes from './routes/chart-data.js';
+import healthRoutes from './routes/health';
+import tradingRoutes from './routes/trading';
+import portfolioRoutes from './routes/portfolio';
+import errorRoutes from './routes/errors';
+import chartDataRoutes from './routes/chart-data';
 
 const app = express();
 

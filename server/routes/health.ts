@@ -1,6 +1,6 @@
 import { Router } from "express";
 
-export const healthRoutes = Router();
+const healthRoutes = Router();
 
 healthRoutes.get("/", async (_req, res) => {
   // TODO: replace placeholders with real histogram snapshots
@@ -14,3 +14,5 @@ healthRoutes.get("/", async (_req, res) => {
   };
   res.json({ status: "ok", slo });
 });
+
+export default healthRoutes;

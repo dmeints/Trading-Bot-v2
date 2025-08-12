@@ -9,6 +9,7 @@ import { IntlProvider } from "@/providers/IntlProvider";
 import { SkipLink } from "@/components/accessibility/SkipLink";
 import { LiveRegion } from "@/components/accessibility/LiveRegion";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { errorRecoveryService } from './services/errorRecovery';
 
 // Lazy load pages for better performance
 const Landing = lazy(() => import("@/pages/landing"));
@@ -118,6 +119,25 @@ function Router() {
 }
 
 function App() {
+  const handleGlobalError = async (error: Error, errorInfo: any) => {
+    // Attempt automatic recovery
+    const recovered = await errorRecoveryService.attemptRecovery(error, {
+      resetState: () => {
+        // Reset application state if needed
+        queryClient.clear();
+        sessionStorage.removeItem('tempData');
+      },
+      retryFunction: async () => {
+        // Retry failed operations
+        await queryClient.refetchQueries();
+      }
+    });
+
+    if (!recovered) {
+      console.error('Failed to recover from error:', error);
+    }
+  };
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
@@ -125,7 +145,36 @@ function App() {
           <SkipLink />
           <LiveRegion message="" />
           <Toaster />
-          <ErrorBoundary>
+          <ErrorBoundary
+            enableRetry={true}
+            onError={handleGlobalError}
+            fallback={(error, retry) => (
+              <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
+                <div className="text-center max-w-md">
+                  <h1 className="text-xl font-bold text-white mb-4">
+                    Application Error
+                  </h1>
+                  <p className="text-gray-400 mb-6">
+                    {error.message}
+                  </p>
+                  <div className="space-y-2">
+                    <button
+                      onClick={retry}
+                      className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                    >
+                      Try Again
+                    </button>
+                    <button
+                      onClick={() => window.location.reload()}
+                      className="w-full bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700"
+                    >
+                      Reload Page
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          >
             <Router />
           </ErrorBoundary>
         </IntlProvider>

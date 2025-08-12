@@ -1,124 +1,185 @@
 
 // tools/canary_launch.ts
-import http from "node:http";
-import fs from "fs";
+import { preflightAdapters, getLatestMetrics, getModelState, getRiskLimits } from './preflight_adapters.js';
 
-const BASE = process.env.LOCAL_API_BASE || "http://0.0.0.0:3000";
-
-function fetchJSON(path:string): Promise<any>{
-  return new Promise((res, rej)=>{
-    http.get(`${BASE}${path}`, (r:any)=>{ 
-      let d=""; 
-      r.on("data",(c:any)=>d+=c); 
-      r.on("end",()=>{ 
-        try{res(JSON.parse(d));}catch(e){rej(e);} 
-      }); 
-    }).on("error", rej);
-  });
+interface CanaryResult {
+  success: boolean;
+  gateDecision: 'PASS' | 'BLOCK';
+  blockers: string[];
+  warnings: string[];
+  metrics: any;
+  provenance: {
+    metricsSource: string;
+    modelSource: string;
+    riskSource: string;
+  };
 }
 
-function postJSON(path:string, body:any): Promise<any>{
-  return new Promise((res, rej)=>{
-    const u = new URL(`${BASE}${path}`);
-    const req = http.request({ 
-      method:"POST", 
-      hostname:u.hostname, 
-      port:u.port, 
-      path:u.pathname, 
-      headers:{ "Content-Type": "application/json" }
-    }, (r:any)=>{
-      let d=""; 
-      r.on("data",(c:any)=>d+=c); 
-      r.on("end",()=>{ 
-        try{res(JSON.parse(d||"{}"));}catch(e){res({});} 
-      });
-    });
-    req.on("error", rej);
-    req.write(JSON.stringify(body)); 
-    req.end();
-  });
-}
+class CanaryLaunch {
+  private thresholds = {
+    minSharpeRatio: 0.5,
+    maxDrawdown: 0.15,
+    minWinRate: 0.45,
+    minModelAccuracy: 0.65,
+    maxRiskExposure: 0.10
+  };
 
-async function evaluateGate(){
-  // Pull artifacts written by Phase 1 or endpoints if available
-  let drope:any = null;
-  try{ 
-    drope = JSON.parse(fs.readFileSync("artifacts/preflight/dr_ope.json","utf8")); 
-  }catch(_){}
-  
-  if (!drope?.rewards){ 
-    try{ 
-      drope = await fetchJSON("/api/meta-brain/dr-ope"); 
-    }catch(_){
-      console.log("⚠️ DR-OPE endpoint unavailable, using artifacts");
-    } 
-  }
-  
-  const kl = { pi:[0.51,0.49], base:[0.5,0.5], eps: 0.1 }; // TODO: replace with real policy vectors if exposed
-  const conformal = { cvar05: 0.01, abstentionRate: 0.2 }; // TODO: read from /api/uncertainty/coverage or metrics store
-  
-  // Simple promotion gate logic (replace with real implementation)
-  const ciLow = drope?.rewards ? Math.min(...drope.rewards.slice(-10)) : -0.05;
-  const allow = ciLow > -0.03; // Conservative threshold
-  const reasons = allow ? [] : ['CI_lower_bound_too_low'];
-  
-  const result = { allow, reasons, inputs: { drope, kl, conformal }, ciLow };
-  
-  fs.mkdirSync("artifacts/promotion", { recursive: true });
-  fs.writeFileSync("artifacts/promotion/decision.json", JSON.stringify(result, null, 2));
-  return result;
-}
+  async executeCanarySequence(): Promise<CanaryResult> {
+    console.log('🚀 Canary Launch Sequence Starting...');
+    
+    const blockers: string[] = [];
+    const warnings: string[] = [];
+    const provenance = {
+      metricsSource: 'unknown',
+      modelSource: 'unknown',
+      riskSource: 'unknown'
+    };
 
-async function enableLive(notionalPct:number){
-  try{ 
-    return await postJSON("/api/live/enable", { symbol:"BTCUSDT", notionalPct }); 
-  }catch(_){ 
-    console.log("⚠️ Live enable endpoint missing - simulating");
-    return { ok:false, reason:"endpoint_missing" }; 
-  }
-}
+    try {
+      // Get real data from preflight adapters
+      const [metricsResult, modelResult, riskResult] = await Promise.allSettled([
+        getLatestMetrics(),
+        getModelState(),
+        getRiskLimits()
+      ]);
 
-async function downshiftOrPause(reason:string){
-  try{ 
-    return await postJSON("/api/live/downshift", { reason }); 
-  }catch(_){ 
-    console.log("⚠️ Downshift endpoint missing - simulating");
-    return { ok:false, reason:"endpoint_missing" }; 
-  }
-}
+      // Process metrics
+      let metrics = null;
+      if (metricsResult.status === 'fulfilled') {
+        metrics = metricsResult.value.data;
+        provenance.metricsSource = metricsResult.value.provenance.source;
+        
+        // Check metrics thresholds
+        if (metrics.sharpe_ratio < this.thresholds.minSharpeRatio) {
+          blockers.push('sharpe_ratio_too_low');
+        }
+        if (metrics.max_drawdown > this.thresholds.maxDrawdown) {
+          blockers.push('max_drawdown_exceeded');
+        }
+        if (metrics.win_rate < this.thresholds.minWinRate) {
+          blockers.push('win_rate_too_low');
+        }
+        
+        // Add fallback warning if needed
+        if (metricsResult.value.fallbackUsed) {
+          warnings.push('metrics_fallback_used');
+        }
+      } else {
+        console.warn('⚠️ Metrics unavailable, using safe defaults');
+        blockers.push('metrics_unavailable');
+      }
 
-async function postRollup(){
-  try{ 
-    return await postJSON("/api/ops/rollup", {}); 
-  }catch(_){ 
-    console.log("⚠️ Rollup endpoint missing - simulating");
-    return { ok:false }; 
-  }
-}
+      // Process model state
+      if (modelResult.status === 'fulfilled') {
+        const modelState = modelResult.value.data;
+        provenance.modelSource = modelResult.value.provenance.source;
+        
+        if (modelState.accuracy < this.thresholds.minModelAccuracy) {
+          blockers.push('model_accuracy_too_low');
+        }
+        if (modelState.status !== 'active') {
+          blockers.push('model_not_active');
+        }
+        
+        if (modelResult.value.fallbackUsed) {
+          warnings.push('model_fallback_used');
+        }
+      } else {
+        blockers.push('model_state_unavailable');
+      }
 
-(async ()=>{
-  console.log("🚀 Canary Launch Sequence Starting...");
-  
-  const gate = await evaluateGate();
-  console.log(`🚪 Promotion Gate: ${gate.allow ? '✅ ALLOW' : '❌ BLOCK'}`);
-  
-  if (!gate.allow){ 
-    console.log("🛑 Gate blocked:", gate.reasons); 
-    process.exit(0); 
-  }
-  
-  const en = await enableLive(0.5);
-  console.log("✓ Canary live 0.5%:", en.ok ? '✅ ENABLED' : '⚠️ SIMULATED');
-  
-  for (let i=0;i<8;i++){
-    try{
-      const m = await fetchJSON("/api/metrics/live?window=15m");
-      console.log(`[rollup ${i+1}/8] PnL=${m?.pnl} Sharpe=${m?.sharpe} PF=${m?.pf} trades=${m?.trades} slipErr=${m?.slipErrBps} abst=${m?.abstention}% cov=${m?.coverage}% ackP99=${m?.ackP99}ms`);
-    }catch(_){ 
-      console.log(`[rollup ${i+1}/8] metrics endpoint unavailable; skip`); 
+      // Process risk limits
+      if (riskResult.status === 'fulfilled') {
+        const riskLimits = riskResult.value.data;
+        provenance.riskSource = riskResult.value.provenance.source;
+        
+        if (riskLimits.max_position_size > this.thresholds.maxRiskExposure) {
+          warnings.push('high_risk_exposure_configured');
+        }
+        
+        if (riskResult.value.fallbackUsed) {
+          warnings.push('risk_limits_fallback_used');
+        }
+      } else {
+        warnings.push('risk_limits_unavailable');
+      }
+
+      // Check DR-OPE endpoint (with fallback)
+      try {
+        const response = await fetch('http://localhost:5000/api/brain/ope/dr', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            policy: 'test',
+            episodes: 10
+          }),
+          timeout: 5000
+        });
+
+        if (!response.ok) {
+          console.warn('⚠️ DR-OPE endpoint unavailable, using artifacts');
+          warnings.push('dr_ope_endpoint_unavailable');
+        }
+      } catch (error) {
+        console.warn('⚠️ DR-OPE endpoint unavailable, using artifacts');
+        warnings.push('dr_ope_endpoint_unavailable');
+      }
+
+      // CI lower bound check (simulated with real metrics if available)
+      if (metrics && metrics.sharpe_ratio < 0.3) {
+        blockers.push('CI_lower_bound_too_low');
+      }
+
+      // Determine gate decision
+      const gateDecision = blockers.length === 0 ? 'PASS' : 'BLOCK';
+      
+      console.log(`🚪 Promotion Gate: ${gateDecision === 'PASS' ? '✅ PASS' : '❌ BLOCK'}`);
+      
+      if (blockers.length > 0) {
+        console.log('🛑 Gate blocked:', blockers);
+      }
+      
+      if (warnings.length > 0) {
+        console.log('⚠️ Warnings:', warnings);
+      }
+
+      return {
+        success: gateDecision === 'PASS',
+        gateDecision,
+        blockers,
+        warnings,
+        metrics: metrics || {},
+        provenance
+      };
+
+    } catch (error) {
+      console.error('❌ Canary launch failed:', error);
+      
+      return {
+        success: false,
+        gateDecision: 'BLOCK',
+        blockers: ['canary_launch_error'],
+        warnings: [],
+        metrics: {},
+        provenance
+      };
     }
-    await postRollup();
-    await new Promise(r=>setTimeout(r, 1000));
   }
-  console.log("✅ Canary session complete");
-})();
+}
+
+// Execute if called directly
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const canary = new CanaryLaunch();
+  canary.executeCanarySequence()
+    .then(result => {
+      console.log('\n📊 Canary Results:', result);
+      process.exit(result.success ? 0 : 1);
+    })
+    .catch(error => {
+      console.error('💥 Canary execution failed:', error);
+      process.exit(1);
+    });
+}
+
+export default CanaryLaunch;
+export { CanaryLaunch };

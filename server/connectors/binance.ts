@@ -51,11 +51,11 @@ export class BinanceConnector {
   private maxReconnectAttempts = 5;
 
   constructor() {
-    // Rate limit: 1200 requests per minute
-    this.limiter = new RateLimiter({ tokensPerInterval: 1200, interval: 60000 });
+    // Rate limit: More conservative - 600 requests per minute (50% of limit)
+    this.limiter = new RateLimiter({ tokensPerInterval: 600, interval: 60000 });
   }
 
-  private async makeRequest<T>(endpoint: string, params?: Record<string, any>): Promise<T> {
+  private async makeRequest<T>(endpoint: string, params?: Record<string, any>, retryCount = 0): Promise<T> {
     await this.limiter.removeTokens(1);
     this.requestCount++;
 
@@ -72,16 +72,27 @@ export class BinanceConnector {
     } catch (error: any) {
       this.errorCount++;
       const errorMessage = error.response?.data?.msg || error.message || 'Unknown error';
-      await this.updateHealthStatus('degraded', errorMessage);
       
       logger.error('Binance API error', {
         endpoint,
         error: errorMessage,
         status: error.response?.status,
+        retryCount,
       });
 
+      if (error.response?.status === 429 && retryCount < 3) {
+        // Exponential backoff for rate limits
+        const backoffDelay = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
+        logger.warn(`Rate limited, backing off for ${backoffDelay}ms`, { retryCount });
+        
+        await new Promise(resolve => setTimeout(resolve, backoffDelay));
+        return this.makeRequest(endpoint, params, retryCount + 1);
+      }
+
+      await this.updateHealthStatus('degraded', errorMessage);
+
       if (error.response?.status === 429) {
-        throw new Error('Rate limit exceeded');
+        throw new Error(`Rate limit exceeded after ${retryCount + 1} attempts`);
       }
       
       throw error;

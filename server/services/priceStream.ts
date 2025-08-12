@@ -19,8 +19,17 @@ export class PriceStream {
   start() {
     if (this.ws) return;
     
-    logger.info(`[PriceStream] Connecting to ${this.url}`);
-    this.ws = new WebSocket(this.url);
+    // Add delay before connecting to reduce connection spam
+    const connectDelay = Math.random() * 2000 + 1000; // 1-3 seconds random delay
+    setTimeout(() => {
+      logger.info(`[PriceStream] Connecting to ${this.url}`);
+      this.ws = new WebSocket(this.url);
+      this.setupWebSocketHandlers();
+    }, connectDelay);
+  }
+
+  private setupWebSocketHandlers() {
+    if (!this.ws) return;
     
     this.ws.on('open', () => { 
       this.connected = true; 
@@ -60,8 +69,10 @@ export class PriceStream {
     this.ws.on('close', () => { 
       this.connected = false; 
       this.ws = undefined; 
-      logger.info(`[PriceStream] Disconnected ${this.symbol}, reconnecting in 2s`);
-      setTimeout(() => this.start(), 2000); 
+      // Exponential backoff for reconnections - start with 5s, max 30s
+      const reconnectDelay = Math.min(5000 * Math.pow(1.5, Math.random() * 3), 30000);
+      logger.info(`[PriceStream] Disconnected ${this.symbol}, reconnecting in ${Math.round(reconnectDelay/1000)}s`);
+      setTimeout(() => this.start(), reconnectDelay); 
     });
     
     this.ws.on('error', (error) => { 

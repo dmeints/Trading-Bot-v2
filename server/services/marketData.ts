@@ -61,10 +61,10 @@ export class MarketDataService {
     // Fetch initial data
     await this.fetchRealMarketData();
     
-    // Update prices every 30 seconds (respect rate limits)
+    // Update prices every 60 seconds to reduce API pressure
     this.updateInterval = setInterval(async () => {
       await this.fetchRealMarketData();
-    }, 30000);
+    }, 60000);
   }
 
   private setupCronJobs() {
@@ -81,6 +81,9 @@ export class MarketDataService {
 
   private async fetchRealMarketData() {
     try {
+      // Add random delay to spread out API calls
+      await new Promise(resolve => setTimeout(resolve, Math.random() * 5000));
+      
       const coinIds = Array.from(this.coinGeckoMap.values()).join(',');
       
       const response = await axios.get('https://api.coingecko.com/api/v3/simple/price', {
@@ -91,7 +94,10 @@ export class MarketDataService {
           include_24hr_vol: 'true',
           include_market_cap: 'true'
         },
-        timeout: 10000
+        timeout: 15000, // Increased timeout
+        headers: {
+          'User-Agent': 'Skippy Trading Platform v1.0'
+        }
       });
 
       // Update our cache with real data

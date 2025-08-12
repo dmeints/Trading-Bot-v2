@@ -17,6 +17,7 @@
     "bench:test": "vitest run tools/__tests__/benchmark.spec.ts",
     "cli": "tsx cli/index.ts",
     "stevie:train": "tsx cli/skippy-train.ts",
+    "stevie:train:risk": "tsx -e \"import { riskAwarePPO } from './server/services/stevieRL'; console.log('Training Risk-Aware PPO...'); const metrics = riskAwarePPO.trainStep(true); console.log('Metrics:', JSON.stringify(metrics, null, 2));\"",
     "test": "vitest",
     "type-check": "tsc --noEmit",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",

@@ -77,6 +77,11 @@ import { priceStream } from './services/priceStream.js';
 import { getLastOHLCVSync } from './routes/marketRoutes.js';
 import { registerBacktestRoutes } from './routes/backtestRoutes.js';
 import { getLastOHLCVSync } from "./routes/marketRoutes";
+import strategyRouterRoutes from './routes/strategyRouter';
+import { bocpdDetector } from './services/regime/bo_cpd';
+import { featureGating } from '../tools/features/gating';
+import { pbtManager } from '../tools/pbt';
+import { promotionService } from './services/promotion';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Development bypass function
@@ -389,7 +394,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Auth routes
-  app.get('/api/auth/user', isDevelopment ? (req: any, res: any, next: any) => next() : isAuthenticated, async (req: any, res) => {
+  app.get('/api/auth/user', isDevelopment ? devBypass : isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -1828,6 +1833,123 @@ export async function registerRoutes(app: Express): Promise<Server> {
   } else {
     logger.info('MLOps cron jobs disabled in development mode');
   }
+
+  // Wire strategy router routes
+  app.use('/api/health', healthRoutes);
+  app.use('/api/errors', errorRoutes);
+  app.use('/api/portfolio', portfolioRouter);
+  app.use('/api/chart-data', chartDataRoutes);
+  app.use('/api/router', strategyRouterRoutes);
+
+  // Regime detection endpoint
+  app.get('/api/regime/state', (req, res) => {
+    try {
+      const state = bocpdDetector.getCurrentRegime();
+      res.json(state);
+    } catch (error) {
+      console.error('[Regime] Error:', error);
+      res.status(500).json({ error: 'Failed to get regime state' });
+    }
+  });
+
+  // Feature ranking endpoint
+  app.get('/api/features/ranking', (req, res) => {
+    try {
+      // Simulate some features for demo
+      featureGating.simulateFeatures();
+      featureGating.addReturn(Math.random() * 0.02 - 0.01);
+
+      const ranking = featureGating.getFeatureRanking();
+      res.json(ranking);
+    } catch (error) {
+      console.error('[Features] Error:', error);
+      res.status(500).json({ error: 'Failed to get feature ranking' });
+    }
+  });
+
+  // Execution sizing endpoint
+  app.get('/api/exec/sizing/last', (req, res) => {
+    try {
+      // Import here to avoid circular dependency
+      const { executionRouter } = require('./services/ExecutionRouter');
+
+      // Simulate a sizing calculation for demo
+      const snapshot = executionRouter.computeUncertaintyScaledSize(
+        'BTCUSDT',
+        1000, // Base size
+        Math.random() * 0.2 // Random uncertainty 0-20%
+      );
+
+      res.json(snapshot);
+    } catch (error) {
+      console.error('[Execution] Error:', error);
+      res.status(500).json({ error: 'Failed to get sizing snapshot' });
+    }
+  });
+
+  // Promotion status endpoint
+  app.get('/api/promotion/status', (req, res) => {
+    try {
+      // Simulate some policy performance for demo
+      promotionService.simulatePolicyReturns('challenger_1', 60, 'good');
+      promotionService.simulatePolicyReturns('challenger_2', 55, 'neutral');
+      promotionService.simulatePolicyReturns('baseline', 100, 'neutral');
+
+      const policies = promotionService.getPoliciesStatus();
+      const champion = promotionService.getChampion();
+
+      res.json({
+        champion,
+        policies,
+        totalPolicies: policies.length
+      });
+    } catch (error) {
+      console.error('[Promotion] Error:', error);
+      res.status(500).json({ error: 'Failed to get promotion status' });
+    }
+  });
+
+  // PBT lineage endpoint
+  app.get('/api/pbt/lineage', (req, res) => {
+    try {
+      // Run a few generations for demo
+      pbtManager.evolvePopulation();
+      pbtManager.evolvePopulation();
+
+      const lineage = pbtManager.getLineage();
+      res.json(lineage);
+    } catch (error) {
+      console.error('[PBT] Error:', error);
+      res.status(500).json({ error: 'Failed to get PBT lineage' });
+    }
+  });
+
+  // Portfolio optimization endpoint
+  app.post('/api/portfolio/optimize', (req, res) => {
+    try {
+      const { portfolioService } = require('./services/portfolio');
+      const { symbols, cvarBudget, volTarget } = req.body;
+
+      if (!symbols || !Array.isArray(symbols) || symbols.length === 0) {
+        return res.status(400).json({ error: 'symbols array is required' });
+      }
+
+      if (typeof cvarBudget !== 'number' || typeof volTarget !== 'number') {
+        return res.status(400).json({ error: 'cvarBudget and volTarget must be numbers' });
+      }
+
+      const result = portfolioService.optimizePortfolio({
+        symbols,
+        cvarBudget,
+        volTarget
+      });
+
+      res.json(result);
+    } catch (error) {
+      console.error('[Portfolio] Error:', error);
+      res.status(500).json({ error: 'Failed to optimize portfolio' });
+    }
+  });
 
   return httpServer;
 }

@@ -627,3 +627,244 @@ export class StevieRLAgent {
 }
 
 export const stevieRL = new StevieRLAgent();
+import { logger } from '../utils/logger';
+
+export interface RLMetrics {
+  episodeReturn: number;
+  cvarAt5: number;
+  transactionCosts: number;
+  maxDrawdown: number;
+  sharpeRatio: number;
+  episodeLength: number;
+}
+
+export interface QuantileCritic {
+  quantiles: number[];
+  values: number[];
+  losses: number[];
+}
+
+export interface TrainingConfig {
+  lambda_tc: number;    // Transaction cost penalty
+  gamma_dd: number;     // Drawdown penalty
+  cvar_threshold: number; // CVaR threshold
+  num_quantiles: number;  // For distributional critic
+  huber_kappa: number;   // Huber loss parameter
+}
+
+export class RiskAwarePPO {
+  private config: TrainingConfig;
+  private episodeReturns: number[] = [];
+  private transactionCosts: number[] = [];
+  private drawdowns: number[] = [];
+  private equityCurve: number[] = [];
+  private lastEquity: number = 100000; // Start with $100k
+  private peakEquity: number = 100000;
+  private currentDrawdown: number = 0;
+  private metrics: RLMetrics[] = [];
+
+  constructor(config: Partial<TrainingConfig> = {}) {
+    this.config = {
+      lambda_tc: config.lambda_tc || 0.1,
+      gamma_dd: config.gamma_dd || 2.0,
+      cvar_threshold: config.cvar_threshold || -0.05, // -5% daily CVaR
+      num_quantiles: config.num_quantiles || 51,
+      huber_kappa: config.huber_kappa || 1.0,
+      ...config
+    };
+    
+    logger.info('[RiskAwarePPO] Initialized with config:', this.config);
+  }
+
+  computeShapedReward(
+    logEquityChange: number,
+    transactionCost: number,
+    equityLevel: number
+  ): number {
+    // Update equity tracking
+    this.lastEquity = equityLevel;
+    this.equityCurve.push(equityLevel);
+    
+    // Update peak and drawdown
+    if (equityLevel > this.peakEquity) {
+      this.peakEquity = equityLevel;
+      this.currentDrawdown = 0;
+    } else {
+      this.currentDrawdown = (this.peakEquity - equityLevel) / this.peakEquity;
+    }
+    
+    // Compute drawdown increment (penalty for new drawdown)
+    const ddIncrement = Math.max(0, this.currentDrawdown - (this.drawdowns.slice(-1)[0] || 0));
+    
+    // Shaped reward: r = dlog_equity - λ*TC - γ*DD_increment
+    const reward = logEquityChange - this.config.lambda_tc * transactionCost - this.config.gamma_dd * ddIncrement;
+    
+    // Track metrics
+    this.transactionCosts.push(transactionCost);
+    this.drawdowns.push(this.currentDrawdown);
+    
+    logger.debug(`[RiskAwarePPO] Reward components: equity=${logEquityChange.toFixed(4)}, tc=${transactionCost.toFixed(4)}, dd=${ddIncrement.toFixed(4)}, final=${reward.toFixed(4)}`);
+    
+    return reward;
+  }
+
+  computeQuantileLoss(
+    predicted_quantiles: number[],
+    target_return: number
+  ): number {
+    if (predicted_quantiles.length !== this.config.num_quantiles) {
+      throw new Error(`Expected ${this.config.num_quantiles} quantiles, got ${predicted_quantiles.length}`);
+    }
+    
+    let totalLoss = 0;
+    const quantileLevels = this.generateQuantileLevels();
+    
+    for (let i = 0; i < this.config.num_quantiles; i++) {
+      const tau = quantileLevels[i]; // Quantile level (0 to 1)
+      const predicted = predicted_quantiles[i];
+      const error = target_return - predicted;
+      
+      // Quantile Huber loss
+      const indicator = error < 0 ? 1 : 0;
+      const huberLoss = Math.abs(error) < this.config.huber_kappa 
+        ? 0.5 * error * error 
+        : this.config.huber_kappa * Math.abs(error) - 0.5 * this.config.huber_kappa * this.config.huber_kappa;
+      
+      const quantileLoss = (tau - indicator) * huberLoss;
+      totalLoss += quantileLoss;
+    }
+    
+    return totalLoss / this.config.num_quantiles;
+  }
+
+  computeCVaR(returns: number[], alpha: number = 0.05): number {
+    if (returns.length === 0) return 0;
+    
+    const sortedReturns = [...returns].sort((a, b) => a - b);
+    const cutoffIndex = Math.floor(returns.length * alpha);
+    const tailReturns = sortedReturns.slice(0, cutoffIndex + 1);
+    
+    return tailReturns.reduce((sum, r) => sum + r, 0) / tailReturns.length;
+  }
+
+  trainStep(dryRun: boolean = false): RLMetrics {
+    // Simulate a training episode
+    const episodeLength = 100 + Math.floor(Math.random() * 200); // 100-300 steps
+    const episodeReturns: number[] = [];
+    const episodeTCs: number[] = [];
+    let totalTC = 0;
+    
+    // Simulate episode
+    for (let step = 0; step < episodeLength; step++) {
+      const logEquityChange = (Math.random() - 0.5) * 0.02; // ±1% returns
+      const transactionCost = Math.random() * 0.001; // 0-0.1% TC
+      
+      const shapedReward = this.computeShapedReward(
+        logEquityChange,
+        transactionCost,
+        this.lastEquity * (1 + logEquityChange)
+      );
+      
+      episodeReturns.push(shapedReward);
+      episodeTCs.push(transactionCost);
+      totalTC += transactionCost;
+    }
+    
+    // Compute metrics
+    const episodeReturn = episodeReturns.reduce((sum, r) => sum + r, 0);
+    const cvarAt5 = this.computeCVaR(episodeReturns, 0.05);
+    const maxDrawdown = Math.max(...this.drawdowns.slice(-episodeLength));
+    const sharpeRatio = this.computeSharpeRatio(episodeReturns);
+    
+    const metrics: RLMetrics = {
+      episodeReturn,
+      cvarAt5,
+      transactionCosts: totalTC,
+      maxDrawdown,
+      sharpeRatio,
+      episodeLength
+    };
+    
+    this.metrics.push(metrics);
+    
+    // Check CVaR constraint
+    const cvarViolation = cvarAt5 < this.config.cvar_threshold;
+    
+    if (dryRun) {
+      logger.info(`[RiskAwarePPO] Dry run episode: return=${episodeReturn.toFixed(4)}, CVaR@5%=${cvarAt5.toFixed(4)}, maxDD=${maxDrawdown.toFixed(4)}, Sharpe=${sharpeRatio.toFixed(2)}`);
+    } else {
+      logger.info(`[RiskAwarePPO] Training step: CVaR@5%=${cvarAt5.toFixed(4)} (threshold=${this.config.cvar_threshold}), violation=${cvarViolation}`);
+    }
+    
+    return metrics;
+  }
+
+  getRecentMetrics(count: number = 10): RLMetrics[] {
+    return this.metrics.slice(-count);
+  }
+
+  private generateQuantileLevels(): number[] {
+    const levels: number[] = [];
+    for (let i = 0; i < this.config.num_quantiles; i++) {
+      levels.push((i + 0.5) / this.config.num_quantiles); // 0.01, 0.03, ..., 0.99
+    }
+    return levels;
+  }
+
+  private computeSharpeRatio(returns: number[]): number {
+    if (returns.length < 2) return 0;
+    
+    const mean = returns.reduce((sum, r) => sum + r, 0) / returns.length;
+    const variance = returns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / (returns.length - 1);
+    const std = Math.sqrt(variance);
+    
+    return std === 0 ? 0 : mean / std;
+  }
+
+  // Mock distributional critic for testing
+  predictQuantiles(state: number[]): number[] {
+    // Simulate quantile predictions (would be neural network output)
+    const quantiles: number[] = [];
+    const mean = Math.random() * 0.02 - 0.01; // ±1% expected return
+    const std = 0.01 + Math.random() * 0.02; // 1-3% volatility
+    
+    for (let i = 0; i < this.config.num_quantiles; i++) {
+      const tau = (i + 0.5) / this.config.num_quantiles;
+      // Approximate normal quantile (simplified)
+      const z = this.inverseNormalCDF(tau);
+      quantiles.push(mean + std * z);
+    }
+    
+    return quantiles.sort((a, b) => a - b); // Ensure monotonicity
+  }
+
+  private inverseNormalCDF(p: number): number {
+    // Approximation of inverse normal CDF (Beasley-Springer-Moro algorithm simplified)
+    if (p <= 0) return -Infinity;
+    if (p >= 1) return Infinity;
+    
+    const a = [0, -3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02, 1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00];
+    const b = [0, -5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02, 6.680131188771972e+01, -1.328068155288572e+01];
+    
+    const c = [0, -7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00, -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00];
+    const d = [0, 7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00, 3.754408661907416e+00];
+    
+    let x: number;
+    
+    if (p < 0.02425) {
+      const q = Math.sqrt(-2 * Math.log(p));
+      x = (((((c[1] * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) * q + c[6]) / ((((d[1] * q + d[2]) * q + d[3]) * q + d[4]) * q + 1);
+    } else if (p < 0.97575) {
+      const q = p - 0.5;
+      const r = q * q;
+      x = (((((a[1] * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * r + a[6]) * q / (((((b[1] * r + b[2]) * r + b[3]) * r + b[4]) * r + b[5]) * r + 1);
+    } else {
+      const q = Math.sqrt(-2 * Math.log(1 - p));
+      x = -(((((c[1] * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) * q + c[6]) / ((((d[1] * q + d[2]) * q + d[3]) * q + d[4]) * q + 1);
+    }
+    
+    return x;
+  }
+}
+
+export const riskAwarePPO = new RiskAwarePPO();

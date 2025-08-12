@@ -3,7 +3,7 @@
  * Intelligent order routing based on market conditions and risk assessment
  */
 
-import { logger } from "../utils/logger";
+import { logger } from '../utils/logger';
 import type { Position, Trade, MarketBar } from "@shared/schema";
 import { marketBars } from "@shared/schema";
 import { db } from "../db";
@@ -32,14 +32,37 @@ export interface OrderRequest {
   urgency: 'LOW' | 'MEDIUM' | 'HIGH';
 }
 
+export interface ExecutionContext {
+  symbol: string;
+  side: 'BUY' | 'SELL';
+  quantity: number;
+  price?: number;
+  strategy?: string;
+}
+
+export interface SizingSnapshot {
+  symbol: string;
+  baseSize: number;
+  uncertaintyWidth: number;
+  finalSize: number;
+  timestamp: Date;
+  confidence: number;
+}
+
 export class ExecutionRouter {
   private static instance: ExecutionRouter;
-  
+  private executionLog: any[] = [];
+  private lastSizing: SizingSnapshot | null = null;
+
   public static getInstance(): ExecutionRouter {
     if (!ExecutionRouter.instance) {
       ExecutionRouter.instance = new ExecutionRouter();
     }
     return ExecutionRouter.instance;
+  }
+
+  constructor() {
+    logger.info('[ExecutionRouter] Initialized');
   }
 
   /**
@@ -53,7 +76,7 @@ export class ExecutionRouter {
     toxicityFlag: boolean;
   }> {
     const recent = new Date(Date.now() - 30 * 60 * 1000); // Last 30 minutes
-    
+
     const recentBars = await db
       .select()
       .from(marketBars)
@@ -72,8 +95,8 @@ export class ExecutionRouter {
     }
 
     const latestBar = recentBars[0];
-    const spread = latestBar.high && latestBar.low 
-      ? (latestBar.high - latestBar.low) / latestBar.close 
+    const spread = latestBar.high && latestBar.low
+      ? (latestBar.high - latestBar.low) / latestBar.close
       : 0.001;
 
     // Calculate volatility from recent bars
@@ -81,13 +104,13 @@ export class ExecutionRouter {
       .slice(1)
       .map((bar, i) => Math.log(bar.close / recentBars[i].close))
       .filter(r => !isNaN(r));
-    
-    const volatility = returns.length > 1 
+
+    const volatility = returns.length > 1
       ? Math.sqrt(returns.reduce((sum, r) => sum + r * r, 0) / returns.length) * Math.sqrt(24 * 60) // Annualized
       : 0.02;
 
     const avgVolume = recentBars.reduce((sum, bar) => sum + (bar.volume || 0), 0) / recentBars.length;
-    
+
     // Simple toxicity detection based on unusual price/volume patterns
     const toxicityFlag = spread > 0.01 || volatility > 0.5 || avgVolume < 100;
 
@@ -126,7 +149,7 @@ export class ExecutionRouter {
     if (market.toxicityFlag) baseProbability *= 0.8;
     if (market.spread > 0.005) baseProbability *= 0.9; // Wide spreads reduce fill probability
     if (market.volatility > 0.1) baseProbability *= 0.85; // High volatility reduces fills
-    
+
     // Adjust for urgency
     switch (urgency) {
       case 'HIGH':
@@ -156,7 +179,7 @@ export class ExecutionRouter {
       });
 
       const market = await this.analyzeMarketConditions(request.symbol);
-      
+
       // Risk assessment
       const riskAssessment = {
         toxicityFlag: market.toxicityFlag,
@@ -207,7 +230,7 @@ export class ExecutionRouter {
       }
 
       const expectedFillProbability = this.calculateFillProbability(orderType, market, request.urgency);
-      
+
       // Determine confidence level
       let confidence: 'LOW' | 'MEDIUM' | 'HIGH' = 'MEDIUM';
       if (expectedFillProbability > 0.9) confidence = 'HIGH';
@@ -232,7 +255,7 @@ export class ExecutionRouter {
 
     } catch (error) {
       logger.error('[ExecutionRouter] Routing failed', error);
-      
+
       // Fallback to safe conservative execution
       return {
         orderType: 'MAKER',
@@ -261,7 +284,7 @@ export class ExecutionRouter {
     lastUpdate: Date;
   }> {
     const market = await this.analyzeMarketConditions(symbol);
-    
+
     let marketHealth: 'HEALTHY' | 'CAUTION' | 'TOXIC' = 'HEALTHY';
     if (market.toxicityFlag) marketHealth = 'TOXIC';
     else if (market.spread > 0.005 || market.volatility > 0.1) marketHealth = 'CAUTION';
@@ -276,6 +299,86 @@ export class ExecutionRouter {
       currentSpread: market.spread,
       volatility: market.volatility,
       lastUpdate: new Date()
+    };
+  }
+
+  getExecutionHistory(): any[] {
+    return this.executionLog.slice(-100); // Return last 100 executions
+  }
+
+  computeUncertaintyScaledSize(
+    symbol: string,
+    baseSize: number,
+    uncertaintyWidth: number = 0.1
+  ): SizingSnapshot {
+    // Sigmoid function: size = baseSize * sigmoid(-uncertaintyWidth)
+    // Higher uncertainty -> smaller size
+    const scalingFactor = this.sigmoid(-uncertaintyWidth * 10); // Scale for reasonable range
+    const finalSize = baseSize * scalingFactor;
+
+    // Confidence based on inverse of uncertainty
+    const confidence = Math.max(0, Math.min(1, 1 - uncertaintyWidth));
+
+    const snapshot: SizingSnapshot = {
+      symbol,
+      baseSize,
+      uncertaintyWidth,
+      finalSize,
+      timestamp: new Date(),
+      confidence
+    };
+
+    this.lastSizing = snapshot;
+
+    logger.info(`[ExecutionRouter] Uncertainty sizing: ${symbol} base=${baseSize.toFixed(4)} uncertainty=${uncertaintyWidth.toFixed(4)} final=${finalSize.toFixed(4)} confidence=${confidence.toFixed(3)}`);
+
+    return snapshot;
+  }
+
+  getLastSizing(): SizingSnapshot | null {
+    return this.lastSizing;
+  }
+
+  private sigmoid(x: number): number {
+    return 1 / (1 + Math.exp(-x));
+  }
+
+  // Mock conformal predictor uncertainty for demo
+  private getConformalUncertainty(symbol: string): number {
+    // Simulate varying uncertainty levels
+    const baseUncertainty = 0.05 + Math.random() * 0.15; // 5-20%
+
+    // Add symbol-specific factors
+    if (symbol.includes('BTC')) return baseUncertainty * 0.8; // BTC is more predictable
+    if (symbol.includes('ETH')) return baseUncertainty * 0.9;
+    return baseUncertainty; // Default uncertainty
+  }
+
+  executeWithSizing(context: ExecutionContext): any {
+    // Get uncertainty from conformal predictor (mocked for now)
+    const uncertaintyWidth = this.getConformalUncertainty(context.symbol);
+
+    // Compute uncertainty-scaled size
+    const sizing = this.computeUncertaintyScaledSize(
+      context.symbol,
+      context.quantity,
+      uncertaintyWidth
+    );
+
+    // Create execution with adjusted size
+    const adjustedContext = {
+      ...context,
+      quantity: sizing.finalSize
+    };
+
+    const execution = this.routeExecution(adjustedContext as OrderRequest);
+
+    // Log the sizing decision
+    logger.info(`[ExecutionRouter] Executed ${context.symbol} ${context.side} - Original size: ${context.quantity}, Uncertainty: ${uncertaintyWidth.toFixed(4)}, Final size: ${sizing.finalSize.toFixed(4)}`);
+
+    return {
+      ...execution,
+      sizingInfo: sizing
     };
   }
 }

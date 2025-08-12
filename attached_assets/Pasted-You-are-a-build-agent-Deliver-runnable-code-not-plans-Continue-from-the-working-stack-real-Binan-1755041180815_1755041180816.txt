@@ -1,0 +1,242 @@
+You are a build agent. Deliver runnable code, not plans.
+Continue from the working stack (real Binance OHLCV + WS, persistence, health, DB-backtests, StrategyRouter, BOCPD, feature gating, sizing, PBT, SPA, portfolio optimizer). Implement real-time execution wiring, dashboards, provenance, and SRE-grade safety/observability.
+Rules: TypeScript strict; minimal deps; modify real files; add tests. After changes:
+
+bash
+Copy
+Edit
+npm ci
+npm run type-check
+npm run build
+npm test
+npm start & sleep 2
+Paste actual logs and curl/jq outputs for each acceptance. If anything fails, fix and re-run until green.
+
+TASK 1 — ExecutionRouter consumes StrategyRouter (paper mode end-to-end)
+Goal: choose a policy via StrategyRouter, convert to orders, size with uncertainty, and execute in paper mode.
+
+server/services/ExecutionRouter.ts
+
+plan(context): calls StrategyRouter choose(context) → returns {policyId, signal} (e.g., long/flat/sizeTarget).
+
+size(signal, uncertaintyWidth): apply existing sigmoid sizing 
+𝑏
+𝑎
+𝑠
+𝑒
+∗
+𝑠
+𝑖
+𝑔
+𝑚
+𝑜
+𝑖
+𝑑
+(
+−
+𝑤
+𝑖
+𝑑
+𝑡
+ℎ
+)
+base∗sigmoid(−width).
+
+execute(plan): calls existing paper order route (/api/trading/paper/order internal) and records an execution record (symbol, policyId, requestedSize, finalSize, fillPrice, ts).
+
+Add route: POST /api/exec/plan-and-execute {symbol} → runs plan→size→execute and returns execution record.
+
+Persist execution records (execution_logs table if not present; otherwise reuse an audit table in shared/schema.ts & storage.ts).
+
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s -X POST localhost:5000/api/exec/plan-and-execute \
+  -H "Content-Type: application/json" \
+  -d '{"symbol":"BTCUSDT"}' | jq
+curl -s localhost:5000/api/trading/positions | jq '.[0]'
+Expect an execution record with policyId and a changed (paper) position when signal is buy.
+
+TASK 2 — Safety rails: kill-switches, exposure caps, circuit breakers
+Goal: guardrails block dangerous actions automatically.
+
+server/services/RiskGuards.ts
+
+Global exposure cap: notional across all positions ≤ ENV MAX_NOTIONAL (default $250k paper).
+
+Symbol cap: per-symbol notional ≤ SYMBOL_NOTIONAL_CAP.
+
+Drawdown breaker: if rolling max drawdown over last N trades > MAX_DD, break for 15m.
+
+Rapid-fire throttle: limit orders/minute per symbol.
+
+Integrate into ExecutionRouter.execute(); if blocked, return {blocked:true, reason}.
+
+/api/guards/state → current limits & breaker status.
+
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/guards/state | jq
+# Try to place excessive orders and show guard blocking with reason.
+TASK 3 — Provenance & audit trail (end-to-end explainability)
+Goal: every decision is reconstructable.
+
+server/middleware/provenance.ts:
+
+For /api/exec/plan-and-execute, capture: input context (regime, features, embeddings), StrategyRouter choice & posterior snapshot, uncertainty width, guard outcomes, order request, fill, and resulting position.
+
+Write a single audit object to DB (audit_logs table) with a content hash of inputs.
+
+Route: GET /api/audit/latest?limit=5 → last N audits.
+
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/audit/latest?limit=2 | jq '.[0]'
+# Show that the object includes context, policy, guard, and order/position outcomes.
+TASK 4 — Health++ and SRE telemetry
+Goal: /api/health reflects live dependencies; add Prometheus metrics.
+
+In server/routes.ts:
+
+Extend health JSON with: db.latencyMs, ws.clients, router.decisionsLastMin, exec.blockedLastMin.
+
+server/monitoring/metrics.ts:
+
+Expose /metrics with Prometheus counters/gauges (e.g., router_decisions_total, exec_blocked_total, price_stream_connected (0/1), ohlcv_last_sync_timestamp_seconds).
+
+Wire middleware to increment metrics.
+
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/health | jq
+curl -s localhost:5000/metrics | head -n 20
+TASK 5 — Client dashboards (router, regime, lineage, promotions, risk)
+Goal: add minimal UI cards that read new APIs.
+
+client/src/pages/dashboard/*:
+
+Router Card: current policy choice + posterior summary (/api/router/choose dry-run endpoint or a new /api/router/snapshot).
+
+Regime Card: /api/regime/state.
+
+PBT Lineage Card: /api/pbt/lineage.
+
+Promotion Card: /api/promotion/status.
+
+Risk/Safety Card: /api/guards/state + /api/exec/sizing/last.
+
+Use existing design system; read-only; lazy load; refresh every 5s.
+
+Acceptance (paste screenshots or JSON dumps):
+
+bash
+Copy
+Edit
+# If headless, at least paste API JSON used by the cards:
+curl -s localhost:5000/api/router/snapshot | jq
+curl -s localhost:5000/api/pbt/lineage | jq '.[0:2]'
+TASK 6 — Data quality: schema validation & spike guards
+Goal: prevent garbage data from poisoning signals.
+
+server/services/DataQuality.ts:
+
+Schema guard for OHLCV: nondecreasing timestamps, finite numbers, nonnegative volume.
+
+Spike guard: z-score cap for candle changes; if outlier, quarantine candle and fetch replacement.
+
+Integrate in marketRoutes fetch path and in backtest loadCandles.
+
+/api/data-quality/stats → counters for quarantined items.
+
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/data-quality/stats | jq
+# Simulate a bad candle input in a unit test; show quarantine count increments.
+npm test -- -t data_quality
+TASK 7 — Backpressure & resilience on WS price stream
+Goal: never crash on bursty WS traffic.
+
+In server/services/priceStream.ts:
+
+Add heartbeat/pong handling, bounded queue, drop-policy when overwhelmed, and reconnect jitter.
+
+Expose /api/ws/status → {connected, backlogSize, lastBeatAt}.
+
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/ws/status | jq
+# Show logs demonstrating reconnect and bounded backlog.
+TASK 8 — Canary live toggle with laddered promotion
+Goal: groundwork for eventual live trading, but still safe.
+
+server/services/Canary.ts:
+
+States: disabled → canary (1% weight) → partial (10–25%) → live (100%).
+
+Conditions to advance: min fills, PnL > threshold, CVaR < cap, breaker clear.
+
+/api/canary/state GET/POST to view/tweak state; no real exchange orders yet (paper only), but the ladder state should reflect readiness.
+
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/canary/state | jq
+TASK 9 — CI guard: latency budget & route contracts
+Goal: prevent regressions in latency and API shape.
+
+Add tests/perf_contract.spec.ts:
+
+Run /api/market/ohlcv, /api/exec/plan-and-execute, /api/health; assert p95 latency under modest thresholds and response shape (zod validation or TS types).
+
+Wire npm test to fail if thresholds exceeded (allow an ENV to relax on CI if needed).
+
+Acceptance:
+
+bash
+Copy
+Edit
+npm test -- -t perf_contract
+TASK 10 — Feature flags & config surface
+Goal: safely toggle components.
+
+Lightweight flags: server/services/flags.ts with ENV + in-DB overrides.
+
+Add GET /api/flags and POST /api/flags (auth-guarded in dev).
+
+Gate: ExecutionRouter (on/off), StrategyRouter (on/off), BOCPD (on/off), DataQuality (strict/relaxed).
+
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/flags | jq
+curl -s -X POST localhost:5000/api/flags -H "Content-Type: application/json" \
+  -d '{"ExecutionRouter":false}' | jq
+FINAL RETURN (paste only)
+List of files changed/created.
+
+Diffs or full contents of the new/updated files.
+
+Build/test/start logs.
+
+curl outputs for each task’s acceptance steps.

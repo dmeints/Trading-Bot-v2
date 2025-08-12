@@ -91,7 +91,7 @@ mode = "sequential"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "node start-dev.js"
+args = "node server/index.js"
 
 [agent]
 integrations = ["javascript_websocket==1.0.0", "javascript_slack==1.0.0", "javascript_log_in_with_replit==1.0.0", "javascript_database==1.0.0", "javascript_openai==1.0.0"]

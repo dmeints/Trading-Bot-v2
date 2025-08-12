@@ -135,11 +135,11 @@ export default function AdvancedOrderPanel() {
       <CardContent className="space-y-4">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-2 bg-gray-700">
-            <TabsTrigger value="buy" className="data-[state=active]:bg-green-600">
+            <TabsTrigger value="buy" className="data-[state=active]:bg-green-600" data-testid="button-buy">
               <TrendingUp className="w-4 h-4 mr-1" />
               Buy
             </TabsTrigger>
-            <TabsTrigger value="sell" className="data-[state=active]:bg-red-600">
+            <TabsTrigger value="sell" className="data-[state=active]:bg-red-600" data-testid="button-sell">
               <TrendingDown className="w-4 h-4 mr-1" />
               Sell
             </TabsTrigger>
@@ -356,6 +356,7 @@ export default function AdvancedOrderPanel() {
                     ? 'bg-green-600 hover:bg-green-700' 
                     : 'bg-red-600 hover:bg-red-700'
                 } text-white transition-colors`}
+                data-testid="button-submit"
               >
                 {isLoading ? 'Placing Order...' : `Place ${orderType.toUpperCase()} ${activeTab.toUpperCase()} Order`}
               </Button>

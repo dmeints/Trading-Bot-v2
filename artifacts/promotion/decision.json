@@ -1,0 +1,25 @@
+{
+  "allow": false,
+  "reasons": [
+    "CI_lower_bound_too_low"
+  ],
+  "inputs": {
+    "drope": null,
+    "kl": {
+      "pi": [
+        0.51,
+        0.49
+      ],
+      "base": [
+        0.5,
+        0.5
+      ],
+      "eps": 0.1
+    },
+    "conformal": {
+      "cvar05": 0.01,
+      "abstentionRate": 0.2
+    }
+  },
+  "ciLow": -0.05
+}

@@ -1,6 +1,5 @@
-
 /* Runs UI checks + E2E in a loop until all green or max retries reached */
-import { spawnSync } from "child_process";
+const { spawnSync } = require("child_process");
 
 const run = (cmd, args) => {
   console.log(`\n$ ${cmd} ${args.join(" ")}`);

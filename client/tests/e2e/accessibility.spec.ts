@@ -3,7 +3,11 @@ import { runA11y } from "./axe";
 import fs from "fs";
 
 const inventoryPath = "tools/interaction_inventory.json";
-const routes: string[] = fs.existsSync(inventoryPath) ? JSON.parse(fs.readFileSync(inventoryPath,"utf8")).map((i:any)=>i.route).filter((v:string,i:number,a:string[])=>a.indexOf(v)===i) : ["/trading","/portfolio","/health","/simulation"];
+const routes: string[] = fs.existsSync(inventoryPath) 
+  ? JSON.parse(fs.readFileSync(inventoryPath,"utf8"))
+      .map((i:any)=>i.route)
+      .filter((v:string,i:number,a:string[])=>a.indexOf(v)===i) 
+  : ["/trading","/portfolio","/analytics","/health"];
 
 test.describe("WCAG 2.2 essentials", () => {
   test("tap targets >= 24x24 on mobile for primary controls", async ({ page, browserName }) => {
@@ -13,11 +17,11 @@ test.describe("WCAG 2.2 essentials", () => {
       await page.goto(route);
       // Primary controls from inventory or common testids
       const selectors = [
-        "[data-testid='submit-order']",
-        "[data-testid='buy']",
-        "[data-testid='sell']",
-        "[data-testid='save']",
-        "[data-testid='cancel']",
+        "[data-testid='button-buy']",
+        "[data-testid='button-sell']",
+        "[data-testid='button-save']",
+        "[data-testid='button-cancel']",
+        "[data-testid='button-submit']",
         "[data-testid='place-order']"
       ];
       for (const sel of selectors) {

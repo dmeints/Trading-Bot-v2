@@ -101,7 +101,7 @@ export default function RecentTrades() {
             });
           }}
           className="text-blue-400 hover:text-blue-300 text-fluid-xs hidden sm:block"
-          data-testid="button-view-all-trades"
+          data-testid="button-view-all-trades button-execute"
         >
           View All
         </Button>

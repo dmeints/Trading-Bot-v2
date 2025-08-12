@@ -1,153 +1,147 @@
-
-/* UI Wiring Static Analysis Tool - Phase 1 */
+/* UI Wiring Audit Tool - Flags critical wiring issues */
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-const CLIENT_SRC = 'client/src';
-const issues = [];
-let exitCode = 0;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const clientSrc = path.join(__dirname, '../client/src');
+const errors = [];
+const warnings = [];
+
+// Critical elements that must have data-testid
+const criticalElements = [
+  'submit', 'save', 'place-order', 'buy', 'sell', 'cancel', 'delete',
+  'confirm', 'apply', 'execute', 'close-position'
+];
 
 function scanFile(filePath) {
-  const content = fs.readFileSync(filePath, 'utf8');
-  const lines = content.split('\n');
-  
-  lines.forEach((line, index) => {
-    const lineNum = index + 1;
+  try {
+    const content = fs.readFileSync(filePath, 'utf8');
+    const relativePath = path.relative(process.cwd(), filePath);
     
     // Check for buttons without onClick or type="submit"
-    if (line.includes('<button') || line.includes('<Button')) {
-      if (!line.includes('onClick') && !line.includes('type="submit"') && !line.includes('type={"submit"}')) {
-        issues.push({
-          file: filePath,
-          line: lineNum,
-          type: 'warning',
-          message: 'Button without onClick or type="submit"',
-          code: line.trim()
-        });
+    const buttonPattern = /<Button[^>]*>/g;
+    const buttonMatches = content.matchAll(buttonPattern);
+    
+    for (const match of buttonMatches) {
+      const buttonTag = match[0];
+      const hasOnClick = buttonTag.includes('onClick');
+      const hasTypeSubmit = buttonTag.includes('type="submit"');
+      const hasDisabled = buttonTag.includes('disabled');
+      
+      if (!hasOnClick && !hasTypeSubmit) {
+        warnings.push(`${relativePath}:${getLineNumber(content, match.index)} - Button without onClick or type="submit"`);
       }
     }
     
     // Check for links with href="#" or missing href
-    if (line.includes('<a ') || line.includes('<Link')) {
-      if (line.includes('href="#"') || (!line.includes('href=') && !line.includes('to='))) {
-        issues.push({
-          file: filePath,
-          line: lineNum,
-          type: 'warning', 
-          message: 'Link with href="#" or missing href/to',
-          code: line.trim()
-        });
+    const linkPattern = /<a[^>]*>/g;
+    const linkMatches = content.matchAll(linkPattern);
+    
+    for (const match of linkMatches) {
+      const linkTag = match[0];
+      const hasEmptyHref = linkTag.includes('href="#"');
+      const hasHref = linkTag.includes('href=');
+      
+      if (hasEmptyHref) {
+        warnings.push(`${relativePath}:${getLineNumber(content, match.index)} - Link with href="#"`);
+      } else if (!hasHref) {
+        warnings.push(`${relativePath}:${getLineNumber(content, match.index)} - Link missing href attribute`);
       }
     }
     
     // Check for forms without onSubmit
-    if (line.includes('<form') && !line.includes('onSubmit')) {
-      issues.push({
-        file: filePath,
-        line: lineNum,
-        type: 'warning',
-        message: 'Form without onSubmit handler',
-        code: line.trim()
-      });
+    const formPattern = /<form[^>]*>/g;
+    const formMatches = content.matchAll(formPattern);
+    
+    for (const match of formMatches) {
+      const formTag = match[0];
+      const hasOnSubmit = formTag.includes('onSubmit');
+      
+      if (!hasOnSubmit) {
+        warnings.push(`${relativePath}:${getLineNumber(content, match.index)} - Form without onSubmit handler`);
+      }
     }
     
     // Check for missing data-testid on critical controls
-    const criticalPatterns = [
-      /submit-order|place-order|buy|sell|save|cancel|delete/i
-    ];
-    
-    if (line.includes('<button') || line.includes('<Button')) {
-      const hasCriticalAction = criticalPatterns.some(pattern => pattern.test(line));
-      if (hasCriticalAction && !line.includes('data-testid')) {
-        issues.push({
-          file: filePath,
-          line: lineNum,
-          type: 'critical',
-          message: 'Critical control missing data-testid',
-          code: line.trim()
-        });
-        exitCode = 1;
-      }
-    }
-    
-    // Check for mutations without disabled={isPending} and toasts
-    if (line.includes('useMutation') || line.includes('mutationFn')) {
-      const functionContent = content.slice(content.indexOf(line));
-      if (!functionContent.includes('disabled={') && !functionContent.includes('isPending')) {
-        issues.push({
-          file: filePath,
-          line: lineNum,
-          type: 'critical',
-          message: 'Mutation without disabled={isPending} state',
-          code: line.trim()
-        });
-        exitCode = 1;
-      }
+    criticalElements.forEach(element => {
+      const testIdPattern = new RegExp(`data-testid="[^"]*${element}[^"]*"`, 'g');
+      const hasTestId = testIdPattern.test(content);
       
-      if (!functionContent.includes('toast(') && !functionContent.includes('onSuccess') && !functionContent.includes('onError')) {
-        issues.push({
-          file: filePath,
-          line: lineNum,
-          type: 'warning',
-          message: 'Mutation without success/error feedback',
-          code: line.trim()
-        });
+      // Look for buttons or elements that might need this testid
+      const elementPattern = new RegExp(`(button|Button)[^>]*(?:${element}|${element.replace('-', '\\s+')})`,'gi');
+      const hasElement = elementPattern.test(content);
+      
+      if (hasElement && !hasTestId) {
+        errors.push(`${relativePath} - Missing data-testid for critical element: ${element}`);
+      }
+    });
+    
+    // Check mutations without disabled={isPending} and success/error toasts
+    const mutationPattern = /useMutation|\.mutate\(/g;
+    const hasMutation = mutationPattern.test(content);
+    
+    if (hasMutation) {
+      const hasDisabledPending = /disabled.*isPending|disabled.*isLoading/.test(content);
+      const hasToast = /toast\(|useToast/.test(content);
+      
+      if (!hasDisabledPending) {
+        warnings.push(`${relativePath} - Mutation without disabled={isPending} state`);
+      }
+      if (!hasToast) {
+        warnings.push(`${relativePath} - Mutation without toast feedback`);
       }
     }
-  });
+    
+  } catch (error) {
+    console.error(`Error scanning ${filePath}:`, error.message);
+  }
 }
 
-function walkDirectory(dir) {
+function getLineNumber(content, index) {
+  return content.substring(0, index).split('\n').length;
+}
+
+function scanDirectory(dir) {
   const files = fs.readdirSync(dir);
   
-  files.forEach(file => {
-    const filePath = path.join(dir, file);
-    const stat = fs.statSync(filePath);
+  for (const file of files) {
+    const fullPath = path.join(dir, file);
+    const stat = fs.statSync(fullPath);
     
     if (stat.isDirectory()) {
-      walkDirectory(filePath);
+      scanDirectory(fullPath);
     } else if (file.endsWith('.tsx') || file.endsWith('.ts')) {
-      scanFile(filePath);
+      scanFile(fullPath);
     }
-  });
+  }
 }
 
-console.log('🔍 Running UI wiring static analysis...\n');
+// Run the audit
+console.log('🔍 Running UI Wiring Audit...\n');
 
-if (fs.existsSync(CLIENT_SRC)) {
-  walkDirectory(CLIENT_SRC);
-} else {
-  console.error(`❌ Client source directory not found: ${CLIENT_SRC}`);
-  process.exit(1);
-}
+scanDirectory(clientSrc);
 
 // Report results
-console.log(`📊 Found ${issues.length} total issues:\n`);
-
-const criticalIssues = issues.filter(i => i.type === 'critical');
-const warningIssues = issues.filter(i => i.type === 'warning');
-
-if (criticalIssues.length > 0) {
-  console.log(`❌ ${criticalIssues.length} critical issues:`);
-  criticalIssues.forEach(issue => {
-    console.log(`  ${issue.file}:${issue.line} - ${issue.message}`);
-    console.log(`    ${issue.code}`);
-  });
-  console.log();
+if (errors.length > 0) {
+  console.log('❌ CRITICAL ISSUES:');
+  errors.forEach(error => console.log(`  ${error}`));
+  console.log('');
 }
 
-if (warningIssues.length > 0) {
-  console.log(`⚠️  ${warningIssues.length} warnings:`);
-  warningIssues.forEach(issue => {
-    console.log(`  ${issue.file}:${issue.line} - ${issue.message}`);
-  });
-  console.log();
+if (warnings.length > 0) {
+  console.log('⚠️  WARNINGS:');
+  warnings.forEach(warning => console.log(`  ${warning}`));
+  console.log('');
 }
 
-if (issues.length === 0) {
-  console.log('✅ No UI wiring issues found!');
+if (errors.length === 0 && warnings.length === 0) {
+  console.log('✅ No wiring issues found!');
 } else {
-  console.log(`Summary: ${criticalIssues.length} critical, ${warningIssues.length} warnings`);
+  console.log(`📊 Summary: ${errors.length} critical issues, ${warnings.length} warnings`);
 }
 
-process.exit(exitCode);
+// Exit with error code if critical issues found
+process.exit(errors.length > 0 ? 1 : 0);

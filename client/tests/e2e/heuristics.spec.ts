@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-const routes = ["/trading","/portfolio","/health","/simulation"];
+const routes = ["/trading","/portfolio","/analytics","/health"];
 
 test.describe("NN/g heuristics & nav patterns", () => {
   for (const route of routes) {
@@ -16,8 +16,8 @@ test.describe("NN/g heuristics & nav patterns", () => {
       expect(await errorRegion.count(), "Missing error region").toBeGreaterThan(0);
 
       // Consistency: primary labels should exist and match across pages if present
-      const buy = await page.locator("text=Buy, [data-testid='buy']").count();
-      const sell = await page.locator("text=Sell, [data-testid='sell']").count();
+      const buy = await page.locator("text=Buy, [data-testid='button-buy']").count();
+      const sell = await page.locator("text=Sell, [data-testid='button-sell']").count();
       // presence optional per page, but if present must not conflict with other primary labels
       expect(buy >= 0 && sell >= 0).toBeTruthy();
     });

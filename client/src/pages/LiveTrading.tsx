@@ -481,8 +481,8 @@ export default function LiveTrading() {
                       className="w-full p-2 border rounded-md bg-background"
                       data-testid="select-side"
                     >
-                      <option value="buy">Buy</option>
-                      <option value="sell">Sell</option>
+                      <option value="buy" data-testid="option-buy">Buy</option>
+                      <option value="sell" data-testid="option-sell">Sell</option>
                     </select>
                   </div>
                 </div>
@@ -535,7 +535,7 @@ export default function LiveTrading() {
                   onClick={handlePlaceOrder} 
                   disabled={placeOrder.isPending || !selectedBroker}
                   className="w-full"
-                  data-testid="button-place-order"
+                  data-testid={`button-place-order button-${orderForm.side} button-execute`}
                 >
                   <Play className="w-4 h-4 mr-2" />
                   {placeOrder.isPending ? 'Placing...' : 'Place Order'}

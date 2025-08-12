@@ -1,56 +1,82 @@
 [
   {
-    "route": "/",
-    "component": "App",
-    "selector": "[data-testid='navigation-menu']",
-    "type": "navigation",
-    "intendedAction": "navigate between pages",
-    "handler": "wouter navigation",
-    "wired": true
+    "route": "/trading",
+    "component": "QuickTradePanel",
+    "selector": "[data-testid='button-buy']",
+    "type": "button",
+    "intendedAction": "execute buy order",
+    "handler": "handleTrade('buy')",
+    "wired": true,
+    "notes": "Has proper disabled state with isPending"
   },
   {
     "route": "/trading",
-    "component": "TradingPage",
-    "selector": "[data-testid='order-entry-form']",
-    "type": "form",
-    "intendedAction": "place trading order",
-    "handler": "onSubmit",
-    "wired": true
+    "component": "QuickTradePanel", 
+    "selector": "[data-testid='button-sell']",
+    "type": "button",
+    "intendedAction": "execute sell order",
+    "handler": "handleTrade('sell')",
+    "wired": true,
+    "notes": "Has proper disabled state with isPending"
   },
   {
     "route": "/trading",
     "component": "OrderTicket",
-    "selector": "[data-testid='submit-order']",
-    "type": "button",
+    "selector": "form",
+    "type": "form",
     "intendedAction": "place order",
-    "handler": "onSubmit",
-    "wired": true
+    "handler": "onSubmit -> m.mutate",
+    "wired": true,
+    "notes": "Uses mutation with bracket orders"
+  },
+  {
+    "route": "/trading",
+    "component": "QuickTradePanel",
+    "selector": "[data-testid='input-trade-amount']",
+    "type": "input",
+    "intendedAction": "set trade amount",
+    "handler": "setAmount",
+    "wired": true,
+    "notes": "Has proper validation"
+  },
+  {
+    "route": "/trading",
+    "component": "TradingChart",
+    "selector": ".timeframe-button",
+    "type": "button",
+    "intendedAction": "change chart timeframe",
+    "handler": "setTimeframe",
+    "wired": true,
+    "notes": "Multiple timeframe options"
+  },
+  {
+    "route": "/trading",
+    "component": "ChartDrawingTools",
+    "selector": ".tool-button",
+    "type": "button",
+    "intendedAction": "select drawing tool",
+    "handler": "onToolSelect",
+    "wired": true,
+    "notes": "Visual feedback for selected tool"
   },
   {
     "route": "/portfolio",
     "component": "PositionsTable",
-    "selector": "[data-testid='close-position-button']",
-    "type": "button", 
-    "intendedAction": "close trading position",
-    "handler": "closePosition",
-    "wired": true
-  },
-  {
-    "route": "/ai-chat",
-    "component": "AIChat",
-    "selector": "[data-testid='send-message']",
+    "selector": "[data-testid^='close-position-']",
     "type": "button",
-    "intendedAction": "send AI message",
-    "handler": "sendMessage", 
-    "wired": true
+    "intendedAction": "close position",
+    "handler": "closePosition",
+    "wired": true,
+    "notes": "Dynamic testid per position"
   },
   {
-    "route": "/settings",
-    "component": "SettingsPage",
-    "selector": "[data-testid='risk-tolerance-slider']",
-    "type": "input",
-    "intendedAction": "adjust risk settings",
-    "handler": "onRiskChange",
-    "wired": true
+    "route": "*",
+    "component": "MobileBottomNav",
+    "selector": "[data-testid='bottom-nav']",
+    "type": "navigation",
+    "intendedAction": "mobile navigation",
+    "handler": "wouter Link",
+    "wired": true,
+    "notes": "Fixed bottom navigation for mobile"
   }
 ]

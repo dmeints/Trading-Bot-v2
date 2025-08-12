@@ -120,7 +120,7 @@ export default function QuickTradePanel() {
             onClick={() => handleTrade('buy')}
             disabled={isTrading || executeTradeMutation.isPending}
             className="bg-green-600 hover:bg-green-700 text-white py-fluid-1 px-fluid-2 rounded font-medium transition-colors disabled:opacity-50 text-fluid-sm"
-            data-testid="button-buy"
+            data-testid="button-buy button-execute"
           >
             {isTrading ? 'Processing...' : 'BUY'}
           </Button>
@@ -128,7 +128,7 @@ export default function QuickTradePanel() {
             onClick={() => handleTrade('sell')}
             disabled={isTrading || executeTradeMutation.isPending}
             className="bg-red-600 hover:bg-red-700 text-white py-fluid-1 px-fluid-2 rounded font-medium transition-colors disabled:opacity-50 text-fluid-sm"
-            data-testid="button-sell"
+            data-testid="button-sell button-execute"
           >
             {isTrading ? 'Processing...' : 'SELL'}
           </Button>

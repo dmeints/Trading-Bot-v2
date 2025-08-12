@@ -70,6 +70,7 @@ export default function TradeConfirmationModal({
                     ? 'bg-green-600/20 text-green-400' 
                     : 'bg-red-600/20 text-red-400'
                 }`}
+                data-testid={`button-${tradeDetails.side}`}
               >
                 {tradeDetails.side.toUpperCase()} {tradeDetails.symbol}
               </Badge>
@@ -147,6 +148,7 @@ export default function TradeConfirmationModal({
             variant="outline"
             onClick={onClose}
             className="bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600"
+            data-testid="button-cancel"
           >
             Cancel
           </Button>
@@ -158,6 +160,7 @@ export default function TradeConfirmationModal({
                 ? 'bg-green-600 hover:bg-green-700' 
                 : 'bg-red-600 hover:bg-red-700'
             } text-white`}
+            data-testid={`button-confirm button-execute button-${tradeDetails.side}`}
           >
             {isConfirming ? 'Executing...' : 'Confirm Trade'}
           </Button>

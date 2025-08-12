@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { runA11y } from "./axe";
 
-const routes = ["/trading", "/portfolio", "/health", "/simulation"]; // Core routes from inventory
+const routes = ["/trading", "/portfolio", "/analytics", "/health"]; // extend from inventory if present
 
 test.describe("UI/UX route smoke", () => {
   for (const route of routes) {

@@ -118,7 +118,7 @@ export default function PositionsTable() {
                           variant="ghost"
                           size="sm"
                           className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
-                          data-testid={`close-position-${position.symbol}`}
+                          data-testid={`close-position-${position.symbol} button-close-position`}
                         >
                           <X className="h-4 w-4" />
                         </Button>

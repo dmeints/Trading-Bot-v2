@@ -320,6 +320,7 @@ export function LayoutEditor({ isOpen, onClose }: LayoutEditorProps) {
               <Button 
                 onClick={handleSaveLayout}
                 disabled={saveLayoutMutation.isPending}
+                data-testid="button-save"
               >
                 <Save className="w-4 h-4 mr-2" />
                 {intl.formatMessage({ id: 'layout.save' })}

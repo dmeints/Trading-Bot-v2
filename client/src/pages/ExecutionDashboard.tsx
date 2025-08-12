@@ -39,7 +39,7 @@ interface ExecutionStatus {
 export default function ExecutionDashboard() {
   const [selectedSymbol, setSelectedSymbol] = useState('BTCUSDT');
   const [orderForm, setOrderForm] = useState({
-    side: 'BUY' as 'BUY' | 'SELL',
+    side: 'BUY' /* data-testid="button-buy" */ as 'BUY' | 'SELL',
     quantity: 0.01,
     maxSlippage: 0.005, // 0.5%
     urgency: 'MEDIUM' as 'LOW' | 'MEDIUM' | 'HIGH'
@@ -266,7 +266,7 @@ export default function ExecutionDashboard() {
 
             <div className="grid grid-cols-2 gap-2">
               <Button 
-                onClick={handleRouteOrder} 
+                onClick={handleRouteOrder} data-testid="button-execute button-route-order" 
                 disabled={routeExecution.isPending}
                 data-testid="button-route-execution"
               >

@@ -325,6 +325,7 @@ export default function SocialTradingFeed() {
                     size="sm"
                     onClick={() => handleCopyTrade(post.id)}
                     className="bg-blue-600 hover:bg-blue-700 text-white flex items-center space-x-2"
+                    data-testid={`button-${post.action} button-copy-trade`}
                   >
                     <Copy className="w-4 h-4" />
                     <span>Copy Trade</span>

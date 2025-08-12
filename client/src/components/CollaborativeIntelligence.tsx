@@ -310,6 +310,7 @@ export function CollaborativeIntelligence() {
                           <Badge 
                             variant={signal.action === 'buy' ? 'default' : signal.action === 'sell' ? 'destructive' : 'secondary'}
                             className="flex items-center space-x-1"
+                            data-testid={`button-${signal.action}`}
                           >
                             {signal.action === 'buy' ? (
                               <TrendingUp className="h-3 w-3" />

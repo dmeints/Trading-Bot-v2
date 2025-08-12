@@ -37,7 +37,7 @@ import { webhookTester } from "./services/webhookTester";
 import { policyEngine } from "./engine/policy";
 import { rlEngine } from "./engine/rl";
 import { lazyInitService } from "./services/lazyInit";
-import { runSMABacktest } from "./services/backtestEngine";
+import { backtestEngine } from "./services/backtestEngine";
 import { ensembleOrchestrator } from "./services/ensembleAI";
 import { env } from "./config/env";
 import { logger } from "./utils/logger";

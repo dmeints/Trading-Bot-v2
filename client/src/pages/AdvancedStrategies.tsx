@@ -186,8 +186,52 @@ function AdvancedStrategiesContent() {
 
         {/* Strategies Tab */}
         <TabsContent value="strategies" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {strategies.map((strategy) => (
+          {strategies.length === 0 ? (
+            <Card className="p-8 text-center">
+              <div className="space-y-4">
+                <div className="flex justify-center">
+                  <BarChart3 className="w-12 h-12 text-muted-foreground" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-foreground">No Strategies Available</h3>
+                  <p className="text-muted-foreground">
+                    {strategiesLoading ? 
+                      "Loading strategies..." : 
+                      "Strategies will appear here once they are configured and activated."
+                    }
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+                  <Card className="p-4 border-dashed">
+                    <div className="text-center space-y-2">
+                      <Target className="w-8 h-8 mx-auto text-blue-500" />
+                      <h4 className="font-medium">Momentum Strategy</h4>
+                      <p className="text-sm text-muted-foreground">Trend following with ML signals</p>
+                      <Badge variant="outline">Coming Soon</Badge>
+                    </div>
+                  </Card>
+                  <Card className="p-4 border-dashed">
+                    <div className="text-center space-y-2">
+                      <Zap className="w-8 h-8 mx-auto text-yellow-500" />
+                      <h4 className="font-medium">Mean Reversion</h4>
+                      <p className="text-sm text-muted-foreground">Statistical arbitrage model</p>
+                      <Badge variant="outline">Coming Soon</Badge>
+                    </div>
+                  </Card>
+                  <Card className="p-4 border-dashed">
+                    <div className="text-center space-y-2">
+                      <Shield className="w-8 h-8 mx-auto text-green-500" />
+                      <h4 className="font-medium">Risk Parity</h4>
+                      <p className="text-sm text-muted-foreground">Balanced risk allocation</p>
+                      <Badge variant="outline">Coming Soon</Badge>
+                    </div>
+                  </Card>
+                </div>
+              </div>
+            </Card>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {strategies.map((strategy) => (
               <Card key={strategy.id} className="p-4">
                 <div className="flex justify-between items-start mb-3">
                   <div>
@@ -250,13 +294,20 @@ function AdvancedStrategiesContent() {
                   Configure
                 </Button>
               </Card>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </TabsContent>
 
         {/* Signals Tab */}
         <TabsContent value="signals" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-4">
+          {signalsLoading ? (
+            <div className="flex items-center justify-center min-h-96">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            </div>
+          ) : (
+            <>
+              <div className="grid gap-4 md:grid-cols-4">
             <Card className="p-4">
               <div className="flex items-center justify-between">
                 <div className="text-sm text-muted-foreground">Active Signals</div>
@@ -318,6 +369,8 @@ function AdvancedStrategiesContent() {
               )}
             </div>
           </Card>
+            </>
+          )}
         </TabsContent>
 
         {/* Risk Management Tab */}

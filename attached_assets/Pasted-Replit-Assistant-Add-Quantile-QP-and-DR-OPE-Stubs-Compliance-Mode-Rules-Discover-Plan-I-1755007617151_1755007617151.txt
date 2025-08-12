@@ -1,0 +1,249 @@
+Replit Assistant — Add Quantile, QP, and DR-OPE Stubs (Compliance Mode)
+
+Rules:
+
+Discover → Plan → Implement → Verify.
+
+No mocks in live paths; fixtures allowed only under tests.
+
+If paths differ, print OLD→NEW mapping and adapt.
+
+After each step: print manifest, diff summary, commands run, and test outputs.
+
+Stop on any failed acceptance; propose fix, then continue.
+
+Idempotent: re-runs don’t duplicate files or regress.
+
+Phase 0 — Repo discovery (no changes)
+Print repo map for server/brain, server/strategy, shared, tools, tests, and package scripts.
+
+Confirm target paths exist or propose OLD→NEW mapping if your repo differs.
+
+Show a ≤6-step checklist to complete this task; stop & show.
+
+Phase 1 — Create core stubs
+1) Quantile regression (pinball loss)
+File: server/brain/models/quantile.ts
+
+ts
+Copy
+Edit
+// Quantile regression (pinball loss) with simple SGD; supports q05/q50/q95 online/mini-batch.
+// This is a lightweight stub: replace with your preferred optimizer later.
+export type QRConfig = { dim: number; lr: number; l2?: number; taus?: number[] };
+export class QuantileRegressor {
+  beta: Record<number, Float64Array>; // tau -> weights
+  cfg: QRConfig;
+  constructor(cfg: QRConfig){
+    this.cfg = { ...cfg, taus: cfg.taus ?? [0.05, 0.5, 0.95] };
+    this.beta = Object.fromEntries(this.cfg.taus!.map(t => [t, new Float64Array(cfg.dim)]));
+  }
+  predict(x: number[]): Record<number, number> {
+    const out: Record<number, number> = {};
+    for (const tau of this.cfg.taus!) {
+      const b = this.beta[tau]; let s=0;
+      for (let i=0;i<b.length;i++) s += b[i] * (x[i] ?? 0);
+      out[tau] = s;
+    }
+    return out;
+  }
+  partialFit(X: number[][], y: number[]): void {
+    const { lr, l2=0 } = this.cfg;
+    for (let n=0;n<X.length;n++){
+      const x = X[n], yi = y[n];
+      for (const tau of this.cfg.taus!){
+        const b = this.beta[tau];
+        // residual
+        let yhat=0; for (let i=0;i<b.length;i++) yhat += b[i]*(x[i]??0);
+        const u = yi - yhat;
+        // subgradient of pinball loss
+        const gscale = (u>=0 ? (tau-1) : tau); // derivative wrt yhat is -(tau - 1_{u<0}); we update weights opposite sign
+        for (let i=0;i<b.length;i++){
+          const grad = gscale * (x[i] ?? 0) + 2*l2*b[i];
+          b[i] -= lr * grad;
+        }
+      }
+    }
+  }
+}
+export function cvarLower(qs: Record<number, number>, alpha=0.05): number {
+  // crude CVaR proxy: use lower quantile as a conservative stand-in (upgrade later with tail averaging)
+  const key = Object.keys(qs).map(parseFloat).sort((a,b)=>a-b).find(k => k>=alpha) ?? alpha;
+  return qs[key];
+}
+2) Execution QP (projected gradient)
+File: server/brain/exec/qp.ts
+
+ts
+Copy
+Edit
+// Fast projected-gradient QP: min 0.5*Δw^T(Σ+κD)Δw - q^TΔw  s.t. L1/box/impact caps.
+// This is a stub: simple iterations + clamping. Replace with better solver as needed.
+export type QPCfg = { kappa: number; step: number; iters: number; l1Cap: number; boxCap: number; slipCapBps?: number };
+export type QPInput = {
+  Sigma: number[][];           // risk matrix
+  Ddiag?: number[];            // impact diagonal (same length as w)
+  q: number[];                 // linear term
+  slipForecast?: (dw:number[])=>number; // bps; optional
+};
+export function solveQP(x0: number[], input: QPInput, cfg: QPCfg): { dw:number[]; iters:number; slipBps:number }{
+  const n = x0.length;
+  let x = x0.slice();
+  const { Sigma, Ddiag=[], q, slipForecast } = input;
+  const { kappa, step, iters, l1Cap, boxCap, slipCapBps=9999 } = cfg;
+  const grad = (v:number[]): number[] => {
+    const Av = new Array(n).fill(0);
+    for (let i=0;i<n;i++){
+      let s=0;
+      for (let j=0;j<n;j++) s += (Sigma[i][j]||0) * v[j];
+      Av[i] = s + (kappa*(Ddiag[i]||0))*v[i];
+    }
+    return Av.map((a,i)=> a - q[i]);
+  };
+  for (let it=0; it<iters; it++){
+    // gradient step
+    const g = grad(x);
+    for (let i=0;i<n;i++) x[i] -= step * g[i];
+    // box projection
+    for (let i=0;i<n;i++) x[i] = Math.max(Math.min(x[i], boxCap), -boxCap);
+    // L1 projection (simple shrink to meet cap)
+    const l1 = x.reduce((a,b)=>a+Math.abs(b),0);
+    if (l1 > l1Cap){
+      const scale = l1Cap / (l1 || 1);
+      for (let i=0;i<n;i++) x[i] *= scale;
+    }
+    // impact/slippage guard
+    const slip = slipForecast ? slipForecast(x) : 0;
+    if (slip > slipCapBps){
+      const s = (slipCapBps / (slip || 1));
+      for (let i=0;i<n;i++) x[i] *= s;
+    }
+  }
+  const slipBps = input.slipForecast ? input.slipForecast(x) : 0;
+  return { dw: x, iters, slipBps };
+}
+3) Doubly-Robust Off-Policy Evaluation (DR-OPE)
+File: server/brain/safe/ope_dr.ts
+
+ts
+Copy
+Edit
+// Doubly-Robust OPE: V_DR = mean[ ρ_i * (r_i - Q_b(s_i,a_i)) + V_b(s_i) ]
+// Assumes you can provide behavior policy probs π_b(a|s), candidate π(a|s), and baseline Q_b / V_b estimates.
+export type DRInput = {
+  rewards: number[];            // r_i
+  pb: number[];                 // π_b(a_i|s_i)
+  p: number[];                  // π(a_i|s_i) for candidate
+  Qb: number[];                 // Q_b(s_i, a_i)
+  Vb: number[];                 // V_b(s_i)
+};
+export function doublyRobust(input: DRInput): { vdr:number; isVar:number }{
+  const n = input.rewards.length || 1;
+  let sum=0, m2=0;
+  for (let i=0;i<n;i++){
+    const w = Math.max(1e-9, input.p[i]) / Math.max(1e-9, input.pb[i]);   // importance ratio ρ_i
+    const term = w * (input.rewards[i] - input.Qb[i]) + input.Vb[i];
+    const delta = term - sum/(i||1);
+    sum += term;
+    m2 += delta * (term - sum/(i+1));
+  }
+  const vdr = sum / n;
+  const varIS = m2 / Math.max(1, n-1);
+  return { vdr, isVar: varIS };
+}
+Phase 2 — Minimal unit tests
+server/brain/models/quantile.spec.ts
+
+ts
+Copy
+Edit
+import { describe,it,expect } from "vitest";
+import { QuantileRegressor, cvarLower } from "./quantile";
+describe("QuantileRegressor", ()=>{
+  it("learns simple linear quantiles", ()=>{
+    const qr = new QuantileRegressor({ dim: 1, lr: 0.01, taus:[0.05,0.5,0.95] });
+    const X = Array.from({length:500}, (_,i)=>[i/100]);
+    const y = X.map(([x])=> 2*x + 0.5);
+    for (let k=0;k<20;k++) qr.partialFit(X,y);
+    const { 0.05: q05, 0.5: q50, 0.95: q95 } = qr.predict([1]);
+    expect(q05).toBeLessThan(q50); expect(q50).toBeLessThan(q95);
+    expect(cvarLower({0.05:q05,0.5:q50,0.95:q95},0.05)).toBeCloseTo(q05, 6);
+  });
+});
+server/brain/exec/qp.spec.ts
+
+ts
+Copy
+Edit
+import { describe,it,expect } from "vitest";
+import { solveQP } from "./qp";
+describe("QP projected gradient", ()=>{
+  it("respects box and L1 caps and reduces objective proxy", ()=>{
+    const Sigma = [[1,0],[0,1]], q=[0.5,0.2];
+    const { dw, slipBps } = solveQP([0,0], { Sigma, q }, { kappa:0, step:0.2, iters:50, l1Cap:0.8, boxCap:0.6, slipCapBps:9999 });
+    expect(Math.abs(dw[0])<=0.6 && Math.abs(dw[1])<=0.6).toBe(true);
+    expect(Math.abs(dw[0])+Math.abs(dw[1])<=0.8+1e-9).toBe(true);
+    expect(slipBps).toBeDefined();
+  });
+});
+server/brain/safe/ope_dr.spec.ts
+
+ts
+Copy
+Edit
+import { describe,it,expect } from "vitest";
+import { doublyRobust } from "./ope_dr";
+describe("DR-OPE", ()=>{
+  it("reduces variance vs plain IS in simple case", ()=>{
+    const n=200;
+    const rewards = Array.from({length:n}, (_,i)=> Math.sin(i/10)+1);
+    const pb = Array.from({length:n}, ()=> 0.5);
+    const p  = Array.from({length:n}, ()=> 0.55);
+    const Qb = Array.from({length:n}, ()=> 0.9);
+    const Vb = Array.from({length:n}, ()=> 1.0);
+    const { vdr, isVar } = doublyRobust({ rewards, pb, p, Qb, Vb });
+    expect(isVar).toBeGreaterThanOrEqual(0);
+    expect(typeof vdr).toBe("number");
+  });
+});
+Phase 3 — Wire into policy (thin hook)
+Ensure your policy path (e.g., server/brain/policy/mixture.ts or server/strategy/stevie.ts) can accept:
+
+q05 from QuantileRegressor.predict() or your ConformalPredictor (use q05 as edge input)
+
+solveQP() output for Δw and route selection
+
+If missing, create a tiny adapter server/brain/policy/edge_adapter.ts:
+
+ts
+Copy
+Edit
+export function edgeFromQuantiles(qs: Record<number, number>): number {
+  return Math.max(0, qs[0.05] ?? 0); // conservative lower-quantile edge
+}
+Acceptance: sizing uses q05 (or conformal q05), QP clamps orders to caps, policy can call both.
+
+Phase 4 — Scripts & Verification
+Append to package.json
+
+json
+Copy
+Edit
+{
+  "scripts": {
+    "brain:test:math": "vitest run server/brain/models/*.spec.ts server/brain/exec/*.spec.ts server/brain/safe/*.spec.ts"
+  }
+}
+Run & print outputs
+
+arduino
+Copy
+Edit
+pnpm run brain:test:math
+pnpm run audit:mock
+pnpm run bench:entropy || true
+pnpm run audit:cross || true
+pnpm run audit:drift || true
+Acceptance: all tests pass; no mock fingerprints; no regressions; manifest + diffs shown.
+
+If anything fails, stop, print the reason, and propose a minimal fix. After this lands, your policy can size directly off quantile math, route via the QP optimizer, and gate promotions with DR-OPE—tight, auditable, and upgradeable.

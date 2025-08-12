@@ -1,0 +1,200 @@
+Replit Assistant — Repository Cleanup, De-duplication, and Bootstrap Hardening (Compliance Mode)
+Operating rules
+
+Discover → Plan → Implement (phases) → Verify → Report.
+
+No mocks in live paths. Use fixtures only in *.spec.ts / __tests__/.
+
+Idempotent. If paths differ from this prompt, print OLD→NEW mapping and adapt.
+
+After each phase: print manifest, diff summary, commands run, key outputs.
+
+Stop on any failed acceptance; propose a minimal fix, then continue.
+
+Phase 0 — Repo discovery (no changes)
+Print repo map for server/, client/, shared/, tools/, tests, and package scripts.
+
+Confirm presence/paths of:
+
+server/index.ts (single place calling listen()), server/routes.ts, server/ws.ts (or equivalent)
+
+Any WebSocket server inits, Vite config, build scripts
+
+Test suites (Vitest/Playwright), ESLint config, tsconfig
+
+If names differ, print OLD→NEW mapping you will use.
+
+Show a ≤6-item checklist plan and pause briefly before making changes.
+
+Phase 1 — Automated inventory & dead-code scan (no writes yet)
+Run the following and persist raw outputs under artifacts/cleanup/:
+
+Unused/duplicate code:
+
+pnpm dlx knip --reporter markdown
+
+pnpm dlx ts-prune
+
+pnpm dlx depcheck
+
+hash-based duplicate finder (same content in different files)
+
+Mock/placeholder sniff: grep for lorem|mock|fake|placeholder|todo:later|console\.log\(|Math\.random\( in src, server, shared.
+
+WS/HTTP problems: grep for new WebSocketServer({ port: and multiple .listen( calls.
+
+Write:
+
+artifacts/cleanup/knip.md
+
+artifacts/cleanup/ts-prune.txt
+
+artifacts/cleanup/depcheck.txt
+
+artifacts/cleanup/mocks.txt
+
+artifacts/cleanup/ws_listen_matches.txt
+
+artifacts/cleanup/duplicates.json (list of file pairs with identical hashes)
+
+Acceptance (P1): all artifacts exist and list candidates; no code changes yet.
+
+Phase 2 — Bootstrap hardening (single truth for HTTP + WS)
+Goal: exactly one server.listen(). WS attaches to that HTTP server; no { port: ... } WS inits anywhere.
+
+Do:
+
+Ensure server/index.ts creates the HTTP server, registers routes, attaches WS via a helper (e.g., createWSS({ server, path:'/ws' })), and calls listen(PORT).
+
+Remove { reusePort: true } and any conflicting options.
+
+Add clear logs: "trying to listen on", "Serving on port", and WS "attached at /ws".
+
+Ensure server/routes.ts only registers routes/middleware (no createServer(), no listen()).
+
+Ensure server/ws.ts (or equivalent) creates one WebSocketServer with { server, path:'/ws' } and guards against double init.
+
+Delete/disable any other WS inits binding a direct port.
+
+Acceptance (P2):
+
+rg "new WebSocketServer\\({\\s*port:" returns zero matches (non-test code).
+
+rg -n "listen\\(" shows exactly one real server listen() (non-test).
+
+Boot logs show the three messages above in order.
+
+Phase 3 — Remove dead code, mocks, and duplicates
+Do (surgical, with diffs):
+
+Delete files reported as unreferenced by knip/ts-prune (except type roots and env.d.ts).
+
+Remove mock/placeholder code in live paths; move any required fixtures under __tests__/fixtures/.
+
+Consolidate duplicate files (identical hash) into a single module; update imports.
+
+Replace stray console.log in live paths with structured logger or remove if noise.
+
+Purge commented-out large blocks and unused exports.
+
+Acceptance (P3):
+
+Re-run knip/ts-prune; unreferenced count reduced to zero or noted with reasons.
+
+artifacts/cleanup/mocks.txt shrinks to zero live-path matches (tests may remain).
+
+App compiles & tests still pass.
+
+Phase 4 — Config consolidation & efficiency
+Do:
+
+Ensure a single env schema (e.g., shared/env.ts with zod) validates all required keys at boot; remove ad-hoc process.env.X usages.
+
+Merge duplicate config files; centralize constants (e.g., endpoints, timeouts).
+
+Turn on stricter TypeScript where safe: "noUncheckedIndexedAccess": true, "exactOptionalPropertyTypes": true in incremental PRs; if noisy, leave TODOs with file lists.
+
+Frontend: run pnpm dlx vite-bundle-visualizer (or rollup-plugin-visualizer) and tree-shake obvious dead imports. Lazy-load heavy routes if not already.
+
+Backend: ensure tsconfig.json excludes tests from build; enable "moduleResolution": "bundler" if using Vite on server.
+
+Acceptance (P4):
+
+Single env validation module used by server entry; missing envs fail fast with a helpful message.
+
+ESLint + TypeScript pass cleanly.
+
+Bundle report written to artifacts/cleanup/bundle.html (or similar), and any large offenders called out.
+
+Phase 5 — CI guardrails (prevent regressions)
+Add scripts to package.json:
+
+json
+Copy
+Edit
+{
+  "scripts": {
+    "audit:dead": "knip --strict",
+    "audit:types": "tsc -p tsconfig.json --noEmit",
+    "audit:lint": "eslint .",
+    "audit:ws": "rg -n \"new WebSocketServer\\({\\s*port:\" || true",
+    "audit:listen": "rg -n \"listen\\(\" | rg -v __tests__",
+    "audit:mocks": "rg -n \"(lorem|mock|fake|placeholder)\" src server shared || true",
+    "audit:dep": "depcheck || true"
+  }
+}
+Optional GitHub Actions/CI step: run the audits; fail if:
+
+audit:ws returns any match
+
+audit:listen shows more than one non-test call site
+
+audit:dead non-zero exit
+
+Type or lint errors
+
+Acceptance (P5): CI/audit scripts added; running them prints clean passes.
+
+Phase 6 — Verification suite & report
+Run:
+
+arduino
+Copy
+Edit
+pnpm run audit:types
+pnpm run audit:lint
+pnpm run audit:dead
+pnpm run audit:dep
+pnpm run audit:mocks
+pnpm run audit:ws
+pnpm run audit:listen
+pnpm -w vitest run || true
+Produce artifacts/cleanup/report.md summarizing:
+
+What was removed/merged (files & reasons)
+
+Current listeners & WS attach proof (log excerpts)
+
+Dead code/mocks before→after counts
+
+Next recommended cleanups (strict TS toggles deferred, any TODOs)
+
+Final acceptance (global):
+
+Exactly one HTTP listen(); zero WS { port: … } in live code.
+
+Knip/ts-prune report no unreferenced live files.
+
+Mock/placeholder strings absent from live paths.
+
+Typecheck + ESLint pass.
+
+App boots and prints:
+trying to listen on <PORT> → Serving on port <PORT> → [ws] attached at /ws.
+
+artifacts/cleanup/* contains all audit outputs and report.md.
+
+Notes / Edge cases
+If any “unused” file is actually a dynamic import / plugin entrypoint, annotate with a brief comment // knip:ignore <reason> and include it in the report.
+
+For monorepo workspaces, run knip/ts-prune per package; include workspace manifests in the report.

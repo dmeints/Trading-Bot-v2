@@ -1,0 +1,206 @@
+You are a build agent. Deliver runnable code, not plans.
+Repo context: This project already has Express (server), React/Vite (client), Drizzle + Neon (Postgres), and WebSocket plumbing. Some market data is simulated. Your job is to replace simulations with real integrations and add paper-trading + reproducible backtests.
+
+Non-negotiable constraints:
+
+Update files in this repo; TypeScript strict; no any unless justified with a comment.
+
+Minimal deps (prefer native fetch/axios we already use).
+
+After changes, run: npm ci && npm run type-check && npm run build && npm test
+
+Then run: npm run dev and show server logs.
+
+Prove each task with the exact curl commands below and paste the actual JSON responses.
+
+If anything fails: stop, show the error, apply a fix, and re-run until green.
+
+TASK A — Real OHLCV via Binance (replace simulated candles)
+Goal: /api/market/ohlcv must return real candles from Binance public REST and persist to DB.
+
+Create server/services/exchanges/binance.ts:
+
+ts
+Copy
+Edit
+// server/services/exchanges/binance.ts
+import axios from 'axios';
+
+export type BinanceInterval = '1m'|'5m'|'15m'|'1h'|'4h'|'1d'|'1w';
+
+export interface Candle {
+  timestamp: number; open: number; high: number; low: number; close: number; volume: number;
+}
+
+function mapTimeframe(tf: string): BinanceInterval {
+  const m: Record<string, BinanceInterval> = { '1m':'1m','5m':'5m','15m':'15m','1H':'1h','4H':'4h','1D':'1d','1W':'1w' };
+  return m[tf] ?? '1h';
+}
+
+export async function getOHLCV(symbol: string, timeframe: string, limit = 100): Promise<Candle[]> {
+  const interval = mapTimeframe(timeframe);
+  const url = 'https://api.binance.com/api/v3/klines';
+  const { data } = await axios.get(url, { params: { symbol, interval, limit }, timeout: 10000 });
+  // data: [ openTime, open, high, low, close, volume, closeTime, ... ]
+  return (data as any[]).map(row => ({
+    timestamp: row[0],
+    open: parseFloat(row[1]),
+    high: parseFloat(row[2]),
+    low: parseFloat(row[3]),
+    close: parseFloat(row[4]),
+    volume: parseFloat(row[5]),
+  }));
+}
+Update server/routes/marketRoutes.ts:
+
+Replace the simulated candle generator with a call to getOHLCV above.
+
+After fetching, persist to DB via existing storage methods (e.g., storage.storeMarketBars(...)) if present; otherwise just return JSON (don’t block the endpoint if persistence is not wired yet).
+
+Keep the same query params: symbol, timeframe, limit.
+
+Add a tiny unit test: server/__tests__/binance_map.spec.ts that asserts the mapper returns numeric fields and ascending timestamps (mock axios response).
+
+Acceptance (paste outputs):
+
+bash
+Copy
+Edit
+curl "http://localhost:5000/api/market/ohlcv?symbol=BTCUSDT&timeframe=1m&limit=10"
+curl "http://localhost:5000/api/market/ohlcv?symbol=ETHUSDT&timeframe=1h&limit=5"
+Expect real Binance candle values (timestamps should match Binance epoch milliseconds).
+
+TASK B — Live price WebSocket stream (Binance → server → clients)
+Goal: Provide real-time price ticks via Binance WS and broadcast through our existing server WS.
+
+Create server/services/priceStream.ts:
+
+ts
+Copy
+Edit
+// server/services/priceStream.ts
+import WebSocket from 'ws';
+import { getWSS } from '../ws';
+import { logger } from '../utils/logger';
+
+export class PriceStream {
+  private ws?: WebSocket;
+  private url: string;
+  private symbol: string;
+  private connected = false;
+  constructor(symbol = 'btcusdt') {
+    this.symbol = symbol.toLowerCase();
+    this.url = `wss://stream.binance.com:9443/ws/${this.symbol}@trade`;
+  }
+  start() {
+    if (this.ws) return;
+    this.ws = new WebSocket(this.url);
+    this.ws.on('open', () => { this.connected = true; logger.info(`[PriceStream] connected ${this.symbol}`); });
+    this.ws.on('message', (buf) => {
+      try {
+        const msg = JSON.parse(buf.toString());
+        const price = parseFloat(msg.p);
+        const payload = { type: 'tick', symbol: this.symbol.toUpperCase(), price, ts: msg.T };
+        const wss = getWSS();
+        if (wss) {
+          wss.clients.forEach(client => {
+            try { client.send(JSON.stringify(payload)); } catch {}
+          });
+        }
+      } catch (e) { /* ignore parse error */ }
+    });
+    this.ws.on('close', () => { this.connected = false; this.ws = undefined; setTimeout(() => this.start(), 2000); });
+    this.ws.on('error', () => { /* handled by close + reconnect */ });
+  }
+  isConnected() { return this.connected; }
+}
+
+export const priceStream = new PriceStream('btcusdt');
+Initialize it once the HTTP server is up: in server/index.ts, after server.listen(...), call priceStream.start() (import from ./services/priceStream).
+
+Extend /api/health in server/routes.ts to include services.priceStream = 'connected' | 'disconnected' using priceStream.isConnected().
+
+Acceptance (paste outputs):
+
+bash
+Copy
+Edit
+curl "http://localhost:5000/api/health"
+# Expect services.priceStream === "connected"
+(And visually confirm the UI shows live price ticks if it subscribes; otherwise just rely on health + server logs.)
+
+TASK C — Paper trading endpoints (positions & trades)
+Goal: Place paper orders, persist to DB, list positions/trades.
+
+Update server/routes/trading.ts (or create if missing) with:
+
+POST /api/trading/paper/order { symbol, side: 'buy'|'sell', size: number }
+
+Use last known price: if we cache the last WS price, use it; otherwise the latest close from /api/market/ohlcv service.
+
+Write a trade row and adjust/create position row via storage.createTrade, storage.createPosition (or equivalent DB calls already present in storage.ts).
+
+Basic validations: positive size; known symbol; cap max notional (e.g., $100k) for safety.
+
+GET /api/trading/positions → returns current positions for the authenticated user (or a dev user if auth is bypassed in dev).
+
+GET /api/trading/trades → recent trades.
+
+Acceptance (paste outputs):
+
+bash
+Copy
+Edit
+curl -X POST http://localhost:5000/api/trading/paper/order \
+  -H "Content-Type: application/json" \
+  -d '{"symbol":"BTCUSDT","side":"buy","size":0.002}'
+curl http://localhost:5000/api/trading/positions
+curl http://localhost:5000/api/trading/trades
+TASK D — Deterministic SMA crossover backtest using real DB candles
+Goal: Run a reproducible backtest over the persisted OHLCV (from Task A).
+
+Update server/services/backtestEngine.ts to read candles from DB (via storage.getMarketBars(symbol, timeframe, ...)) rather than simulated data.
+
+Implement strategy: SMA(fast) vs SMA(slow). Enter long when SMA_fast > SMA_slow, flat otherwise (no short for now). Transaction fee = 0.1% per trade.
+
+Metrics: PnL, Sharpe, Max Drawdown. Provide a stable seed for any randomness (should be none).
+
+Add a route in server/routes/backtestRoutes.ts:
+
+POST /api/backtest/run with { symbol, timeframe, from, to, fast: number, slow: number } → returns metrics and a list of trades.
+
+Acceptance (paste outputs):
+
+bash
+Copy
+Edit
+curl -X POST http://localhost:5000/api/backtest/run \
+  -H "Content-Type: application/json" \
+  -d '{"symbol":"BTCUSDT","timeframe":"1m","from":"2024-01-01","to":"2024-01-03","fast":20,"slow":50}'
+Expect a JSON object with metrics and trades array.
+
+Small hygiene items (do these as part of the work)
+/api/health: include database: 'connected'|'error', priceStream, and a lastOHLCVSync ISO timestamp (when Task A last persisted candles).
+
+.env.example: ensure DATABASE_URL is present; no secrets required for public Binance endpoints.
+
+Docs: Update any README or status docs that still claim simulated OHLCV is live.
+
+Final proof checklist (paste everything)
+npm ci && npm run type-check && npm run build && npm test → all green.
+
+npm run dev → server logs show listening and PriceStream connected.
+
+The three Acceptance blocks above: paste each curl command and the returned JSON.
+
+A short note of any migrations or schema writes you had to add (if any).
+
+Do not return explanations or plans — return:
+
+The updated file list (paths),
+
+The relevant diffs or file bodies for the files you created/changed,
+
+The terminal logs/outputs proving each acceptance step,
+
+And confirmation that type-check, build, and tests are passing.

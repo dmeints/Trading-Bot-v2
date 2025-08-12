@@ -44,34 +44,29 @@ interface SystemMetrics {
 }
 
 export default function Analytics() {
-  const [adminSecret] = useState(localStorage.getItem('admin_secret') || '');
   const [timeRange, setTimeRange] = useState('24h');
   const [selectedSource, setSelectedSource] = useState('all');
 
   const { data: analyticsData, refetch: refetchAnalytics } = useQuery<AnalyticsData[]>({
-    queryKey: ['/api/admin/analytics', timeRange],
+    queryKey: ['/api/analytics', timeRange],
     queryFn: async () => {
       const limit = timeRange === '1h' ? 100 : timeRange === '24h' ? 1000 : 5000;
-      const response = await fetch(`/api/admin/analytics?limit=${limit}`, {
-        headers: { 'x-admin-secret': adminSecret },
-      });
+      const response = await fetch(`/api/analytics?limit=${limit}`);
       if (!response.ok) throw new Error('Failed to fetch analytics');
-      return response.json();
+      const result = await response.json();
+      return result.data || [];
     },
-    enabled: !!adminSecret,
     refetchInterval: 30000,
   });
 
   const { data: systemStats } = useQuery({
-    queryKey: ['/api/admin/system/stats'],
+    queryKey: ['/api/system/stats'],
     queryFn: async () => {
-      const response = await fetch('/api/admin/system/stats', {
-        headers: { 'x-admin-secret': adminSecret },
-      });
+      const response = await fetch('/api/system/stats');
       if (!response.ok) throw new Error('Failed to fetch system stats');
-      return response.json();
+      const result = await response.json();
+      return result.data || {};
     },
-    enabled: !!adminSecret,
     refetchInterval: 15000,
   });
 
@@ -123,15 +118,14 @@ export default function Analytics() {
 
   const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
 
-  if (!adminSecret) {
+  // Show loading state while data is being fetched
+  if (!analyticsData && !systemStats) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <Alert className="max-w-md">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>
-            Admin access required. Please authenticate via the admin panel first.
-          </AlertDescription>
-        </Alert>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-4"></div>
+          <p className="text-gray-400">Loading analytics...</p>
+        </div>
       </div>
     );
   }

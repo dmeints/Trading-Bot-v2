@@ -5,8 +5,8 @@ import { setupAuth, isAuthenticated } from "./replitAuth";
 import { xApiEmergencyProtection, xApiManualOverride, getXApiUsageStats } from "./middleware/xApiProtection.js";
 import { xApiCache } from "./services/xApiCache.js";
 import { SentimentAnalyzer } from "./services/sentimentAnalyzer.js";
-import { 
-  getAllApiStats, 
+import {
+  getAllApiStats,
   getApiStats,
   emergencyDisableApi,
   redditApiGuard,
@@ -41,7 +41,7 @@ import { runSMABacktest } from "./services/backtestEngine";
 import { ensembleOrchestrator } from "./services/ensembleAI";
 import { env } from "./config/env";
 import { logger } from "./utils/logger";
-import type { RequestWithId } from "./middleware/requestId";
+import type { RequestWithId } from "./routes/middleware/requestId";
 // import { healthRoutes } from "./routes/healthRoutes"; // Fixed: will use dynamic import
 // import { health } from "./routes/health"; // Fixed: health route now imported dynamically
 import { bench } from "./routes/bench";
@@ -73,7 +73,7 @@ import connectorsRouter from './routes/connectors';
 import comprehensiveFeaturesRouter from './routes/comprehensive-features';
 import { transferLearningRouter } from './routes/transferLearning.js';
 import healthRoutes from './routes/health.js';
-import { registerBacktestRoutes as backtestRoutes } from './routes/backtestRoutes.js';
+import backtestRoutes from './routes/backtestRoutes.js';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Development bypass function
@@ -149,7 +149,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Register comprehensive new API routes for live paper trading
   registerMarketRoutes(app, isAuthenticated);
-  registerStrategyRoutes(app, isAuthenticated); 
+  registerStrategyRoutes(app, isAuthenticated);
   // Backtest routes with deterministic validation
   app.use('/api/backtest', registerBacktestRoutes);
   app.use('/api/backtests', registerBacktestRoutes); // Alternative endpoint for consistency
@@ -161,7 +161,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Stevie Super-Training routes (v1.2 advanced RL system)
   app.use('/api/stevie/supertrain', stevieSupertainRoutes);
 
-  // Health & monitoring routes  
+  // Health & monitoring routes
   const { healthRoutes: healthCheckRoutes } = await import('./routes/healthRoutes');
   app.use('/api', healthCheckRoutes);
   app.use('/api/bench', bench);
@@ -224,9 +224,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error: any) {
       logger.error('[Analytics] Error:', error);
-      res.status(500).json({ 
-        error: 'Failed to fetch analytics', 
-        message: error.message 
+      res.status(500).json({
+        error: 'Failed to fetch analytics',
+        message: error.message
       });
     }
   });
@@ -259,9 +259,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error: any) {
       logger.error('[SystemStats] Error:', error);
-      res.status(500).json({ 
-        error: 'Failed to fetch system stats', 
-        message: error.message 
+      res.status(500).json({
+        error: 'Failed to fetch system stats',
+        message: error.message
       });
     }
   });
@@ -373,8 +373,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
-      res.json({ 
-        authenticated: true, 
+      res.json({
+        authenticated: true,
         user,
         isAdmin: req.session?.isAdmin || false
       });
@@ -456,8 +456,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { symbol } = req.params;
       const analyzer = new SentimentAnalyzer();
 
-      logger.warn('Manual X API override triggered by admin', { 
-        symbol, 
+      logger.warn('Manual X API override triggered by admin', {
+        symbol,
         admin: req.user?.claims?.sub,
         warning: 'This consumes precious X API quota!'
       });
@@ -521,7 +521,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { symbol } = req.params;
       const analyzer = new EnhancedSentimentAnalyzer();
 
-      logger.info('[Enhanced Sentiment] Request received with guardrails active', { 
+      logger.info('[Enhanced Sentiment] Request received with guardrails active', {
         symbol,
         userAgent: req.headers['user-agent'],
         ip: req.ip
@@ -1161,8 +1161,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(prediction);
     } catch (error) {
       console.error('RL prediction error:', error);
-      res.status(500).json({ 
-        error: error instanceof Error ? error.message : 'RL prediction failed' 
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'RL prediction failed'
       });
     }
   });
@@ -1176,8 +1176,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(info);
     } catch (error) {
       console.error('RL model info error:', error);
-      res.status(500).json({ 
-        error: error instanceof Error ? error.message : 'Failed to get model info' 
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Failed to get model info'
       });
     }
   });
@@ -1190,8 +1190,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(status);
     } catch (error) {
       console.error('Policy status error:', error);
-      res.status(500).json({ 
-        error: error instanceof Error ? error.message : 'Failed to get policy status' 
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Failed to get policy status'
       });
     }
   });
@@ -1203,8 +1203,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true, message: 'Emergency stop activated' });
     } catch (error) {
       console.error('Emergency stop error:', error);
-      res.status(500).json({ 
-        error: error instanceof Error ? error.message : 'Emergency stop failed' 
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Emergency stop failed'
       });
     }
   });
@@ -1212,30 +1212,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Simulation/Backtest routes
   app.get('/api/simulation/strategies', rateLimiters.general, isAuthenticated, async (req: any, res) => {
     try {
-      const strategies = [
-        { id: 'sma_crossover', name: 'SMA Crossover', description: 'Simple moving average crossover strategy' },
-        { id: 'momentum', name: 'Momentum', description: 'Price momentum-based strategy' }
-      ];
+      const strategies = backtestEngine.getAvailableStrategies();
       res.json(strategies);
     } catch (error) {
       console.error('Get strategies error:', error);
-      res.status(500).json({ 
-        error: error instanceof Error ? error.message : 'Failed to get strategies' 
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Failed to get strategies'
       });
     }
   });
 
   app.get('/api/simulation/event-templates', rateLimiters.general, isAuthenticated, async (req: any, res) => {
     try {
-      const templates = [
-        { id: 'market_crash', name: 'Market Crash', description: 'Simulate market crash conditions' },
-        { id: 'bull_run', name: 'Bull Run', description: 'Simulate bull market conditions' }
-      ];
+      const templates = backtestEngine.getSyntheticEventTemplates();
       res.json(templates);
     } catch (error) {
       console.error('Get event templates error:', error);
-      res.status(500).json({ 
-        error: error instanceof Error ? error.message : 'Failed to get event templates' 
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Failed to get event templates'
       });
     }
   });
@@ -1243,12 +1237,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/simulation/backtest', rateLimiters.trading, isAuthenticated, async (req: any, res) => {
     try {
       const config = req.body;
-      const result = await runSMABacktest(config);
+      const result = await backtestEngine.runBacktest(config);
       res.json(result);
     } catch (error) {
       console.error('Backtest error:', error);
-      res.status(500).json({ 
-        error: error instanceof Error ? error.message : 'Backtest failed' 
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Backtest failed'
       });
     }
   });
@@ -1256,15 +1250,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/simulation/export/:id', rateLimiters.general, isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const csvData = `date,price,signal,pnl\n${new Date().toISOString()},50000,buy,100\n`;
+      const csvData = await backtestEngine.exportBacktestCSV(id);
 
       res.setHeader('Content-Type', 'text/csv');
       res.setHeader('Content-Disposition', `attachment; filename="backtest_${id}_results.csv"`);
       res.send(csvData);
     } catch (error) {
       console.error('Export backtest error:', error);
-      res.status(500).json({ 
-        error: error instanceof Error ? error.message : 'Export failed' 
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Export failed'
       });
     }
   });
@@ -1294,15 +1288,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await exchangeService.initialize();
       const runId = await exchangeService.startPaperRun(config);
 
-      res.json({ 
+      res.json({
         success: true,
         runId,
         message: 'Paper run started successfully'
       });
     } catch (error) {
       console.error('Start paper run error:', error);
-      res.status(500).json({ 
-        error: error instanceof Error ? error.message : 'Failed to start paper run' 
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Failed to start paper run'
       });
     }
   });
@@ -1331,8 +1325,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(currentRun || { message: 'No active paper run' });
     } catch (error) {
       console.error('Get current paper run error:', error);
-      res.status(500).json({ 
-        error: error instanceof Error ? error.message : 'Failed to get current paper run' 
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Failed to get current paper run'
       });
     }
   });
@@ -1359,14 +1353,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const exchangeService = new ExchangeService(defaultConfig);
       await exchangeService.stopCurrentRun(reason);
 
-      res.json({ 
+      res.json({
         success: true,
         message: 'Paper run stopped successfully'
       });
     } catch (error) {
       console.error('Stop paper run error:', error);
-      res.status(500).json({ 
-        error: error instanceof Error ? error.message : 'Failed to stop paper run' 
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Failed to stop paper run'
       });
     }
   });
@@ -1395,8 +1389,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(history);
     } catch (error) {
       console.error('Get paper run history error:', error);
-      res.status(500).json({ 
-        error: error instanceof Error ? error.message : 'Failed to get paper run history' 
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Failed to get paper run history'
       });
     }
   });
@@ -1426,8 +1420,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(positionsArray);
     } catch (error) {
       console.error('Get paper run positions error:', error);
-      res.status(500).json({ 
-        error: error instanceof Error ? error.message : 'Failed to get paper run positions' 
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Failed to get paper run positions'
       });
     }
   });
@@ -1456,8 +1450,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(analysis);
     } catch (error) {
       console.error('Journal analysis error:', error);
-      res.status(500).json({ 
-        error: error instanceof Error ? error.message : 'Failed to analyze journal' 
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Failed to analyze journal'
       });
     }
   });
@@ -1480,8 +1474,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(performanceData);
     } catch (error) {
       console.error('Journal performance error:', error);
-      res.status(500).json({ 
-        error: error instanceof Error ? error.message : 'Failed to get performance data' 
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Failed to get performance data'
       });
     }
   });
@@ -1492,14 +1486,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('[API] Manual AI initialization requested');
       await lazyInitService.initializeAllServices();
       const status = lazyInitService.getStatus();
-      res.json({ 
-        message: 'AI services initialized successfully', 
-        status 
+      res.json({
+        message: 'AI services initialized successfully',
+        status
       });
     } catch (error) {
       console.error('Manual AI initialization error:', error);
-      res.status(500).json({ 
-        error: error instanceof Error ? error.message : 'AI initialization failed' 
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'AI initialization failed'
       });
     }
   });
@@ -1508,8 +1502,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/health', async (req, res) => {
     try {
       const lazyInitStatus = lazyInitService.getStatus();
-      const rlEngineStatus = lazyInitStatus.rlEngine ? 
-        (rlEngine.getModelInfo().loaded ? 'ready' : 'loaded_not_ready') : 
+      const rlEngineStatus = lazyInitStatus.rlEngine ?
+        (rlEngine.getModelInfo().loaded ? 'ready' : 'loaded_not_ready') :
         'not_initialized';
 
       res.json({
@@ -1716,13 +1710,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!config.startDate || !config.endDate || !config.initialCapital) {
         return res.status(400).json({ error: 'Missing required backtest parameters' });
       }
-      const result = await runSMABacktest({
-        symbol: config.symbol || 'BTCUSDT',
-        timeframe: config.timeframe || '1h', 
-        from: config.startDate,
-        to: config.endDate,
-        fast: config.fastPeriod || 10,
-        slow: config.slowPeriod || 20
+      const result = await backtestEngine.runBacktest({
+        ...config, userId, startDate: new Date(config.startDate), endDate: new Date(config.endDate)
       });
       res.json(result);
     } catch (error) {
@@ -1776,7 +1765,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/training-jobs', trainingJobsRouter);
 
   // Trading system routes
-  registerTradingRoutes(app, isAuthenticated);
+  registerTradingRoutes(app, requireAuth);
   app.use('/api/trading', tradingTestRoutes);
 
   // Feedback routes

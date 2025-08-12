@@ -79,35 +79,42 @@ export default function SimulationStudio() {
   const [progress, setProgress] = useState(0);
 
   // Query for available strategies
-  const { data: strategies = [] } = useQuery<string[]>({
+  const { data: strategiesResponse = null } = useQuery({
     queryKey: ['/api/strategies/list'],
     enabled: isAuthenticated,
     retry: 2,
     staleTime: 300000 // 5 minutes
   });
+  const strategies = strategiesResponse?.data || [];
 
   // Fetch real market event templates for simulation
-  const { data: eventTemplates = [] } = useQuery<SyntheticEvent[]>({
+  const { data: eventTemplatesResponse = null } = useQuery({
     queryKey: ['/api/market/event-templates'],
     enabled: isAuthenticated,
     retry: 2
   });
+  const eventTemplates = eventTemplatesResponse?.data || [];
 
   // Fetch real backtest results history
-  const { data: backtestHistory = [] } = useQuery<BacktestResult[]>({
+  const { data: backtestHistoryResponse = null } = useQuery({
     queryKey: ['/api/backtests/history'],
     enabled: isAuthenticated,
     retry: 2
   });
+  const backtestHistory = backtestHistoryResponse?.data || [];
 
   // Run backtest mutation
   const runBacktestMutation = useMutation({
     mutationFn: async (backtestConfig: BacktestConfig & { syntheticEvents: SyntheticEvent[] }): Promise<BacktestResult> => {
-      const response = await apiRequest('/api/simulation/backtest', {
-        method: 'POST',
-        data: backtestConfig
+      const response = await apiRequest('POST', '/api/backtest/run', {
+        symbol: backtestConfig.symbol,
+        startTime: backtestConfig.startDate.toISOString(),
+        endTime: backtestConfig.endDate.toISOString(),
+        initialBalance: backtestConfig.initialBalance,
+        timeframe: '1h'
       });
-      return response;
+      const data = await response.json();
+      return data as BacktestResult;
     },
     onSuccess: (result: BacktestResult) => {
       setSelectedResult(result);
@@ -115,9 +122,9 @@ export default function SimulationStudio() {
       setProgress(100);
       toast({
         title: "Backtest Complete",
-        description: `Strategy returned ${result.performance.totalReturn.toFixed(2)}% with ${result.performance.winRate.toFixed(1)}% win rate`,
+        description: `Strategy returned ${result.performance?.totalReturn?.toFixed(2)}% with ${result.performance?.winRate?.toFixed(1)}% win rate`,
       });
-      queryClient.invalidateQueries({ queryKey: ['/api/simulation/history'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/backtests/history'] });
     },
     onError: (error: any) => {
       setIsRunning(false);
@@ -133,7 +140,7 @@ export default function SimulationStudio() {
   // Export results mutation
   const exportMutation = useMutation({
     mutationFn: async (backtestId: string) => {
-      const response = await fetch(`/api/simulation/export/${backtestId}`);
+      const response = await fetch(`/api/backtest/export/${backtestId}`);
       const blob = await response.blob();
       return { blob, backtestId };
     },
@@ -154,80 +161,9 @@ export default function SimulationStudio() {
   const handleRunBacktest = () => {
     setIsRunning(true);
     setProgress(0);
+    setSelectedResult(null);
 
-    const executeRealBacktest = async () => {
-      try {
-        setProgress(10);
-
-        const backtestJob = await apiRequest('/api/backtests/submit', {
-          method: 'POST',
-          data: {
-            ...config,
-            syntheticEvents,
-            timestamp: new Date().toISOString()
-          }
-        });
-
-        const jobId = backtestJob?.id;
-        if (!jobId) throw new Error('Failed to create backtest job');
-
-        setProgress(25);
-
-        const progressInterval = setInterval(async () => {
-          try {
-            const status = await apiRequest(`/api/backtests/status/${jobId}`);
-            const realProgress = status?.progress || 0;
-
-            setProgress(Math.min(90, realProgress));
-
-            if (status?.status === 'completed') {
-              clearInterval(progressInterval);
-              setProgress(100);
-
-              const results = await apiRequest(`/api/backtests/results/${jobId}`);
-              if (results) {
-                setSelectedResult(results);
-                queryClient.invalidateQueries({ queryKey: ['/api/backtests/history'] });
-                toast({
-                  title: "Backtest Complete",
-                  description: `Strategy performance: ${results.performance?.totalReturn?.toFixed(2)}% return`,
-                });
-              } else {
-                throw new Error('Failed to fetch backtest results');
-              }
-            } else if (status?.status === 'failed') {
-              clearInterval(progressInterval);
-              setProgress(0);
-              toast({
-                title: "Backtest Failed",
-                description: status?.error || "Unknown error occurred during backtest execution",
-                variant: "destructive"
-              });
-            }
-          } catch (error) {
-            clearInterval(progressInterval);
-            console.error('Progress polling error:', error);
-            toast({
-              title: "Progress Error",
-              description: "Could not retrieve backtest status.",
-              variant: "destructive"
-            });
-          }
-        }, 2000);
-
-      } catch (error) {
-        console.error('Real backtest execution error:', error);
-        setProgress(0);
-        toast({
-          title: "Execution Error",
-          description: "Failed to start backtest. Please check configuration.",
-          variant: "destructive"
-        });
-      }
-    };
-
-    executeRealBacktest();
-
+    // Use the mutation instead of duplicate logic
     runBacktestMutation.mutate({
       ...config,
       syntheticEvents

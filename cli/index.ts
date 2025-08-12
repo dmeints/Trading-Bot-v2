@@ -15,6 +15,7 @@ import { temporalCommand } from './commands/temporal';
 import { universalCommand } from './commands/universal';
 import { aiChat } from './commands/aiChat';
 import { optuna } from './commands/optuna';
+import { scenarioCommand } from './commands/scenarioTest';
 
 const program = new Command();
 
@@ -33,6 +34,7 @@ program.addCommand(temporalCommand);
 program.addCommand(universalCommand);
 program.addCommand(aiChat);
 program.addCommand(optuna);
+program.addCommand(scenarioCommand);
 
 // Parse command line arguments
 program.parse();

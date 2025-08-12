@@ -8,6 +8,7 @@ import { logger } from "./utils/logger";
 import { createTradingConformalPredictor } from './brain/conformal';
 import { conformalRouter } from './routes/stevieCore';
 import { metaBrainRouter } from './routes/metaBrain';
+import scenarioCoverageRoutes from './routes/scenarioCoverage';
 
 const app = express();
 
@@ -109,3 +110,4 @@ logger.info('[Server] Initialized global conformal predictor for uncertainty qua
 
 app.use('/api/uncertainty', conformalRouter);
 app.use('/api/meta-brain', metaBrainRouter);
+app.use('/api/scenario-coverage', scenarioCoverageRoutes);

@@ -20,6 +20,7 @@ import {
   Settings
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 interface Strategy {
   id: string;
@@ -45,7 +46,7 @@ interface Signal {
   timeframe: string;
 }
 
-export default function AdvancedStrategies() {
+function AdvancedStrategiesContent() {
   const [selectedStrategy, setSelectedStrategy] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -128,10 +129,10 @@ export default function AdvancedStrategies() {
     },
   });
 
-  const strategies: Strategy[] = strategiesData?.data?.strategies || [];
-  const signals: Signal[] = signalsData?.data?.signals || [];
-  const signalSummary = signalsData?.data?.summary;
-  const riskMetrics = riskData?.data;
+  const strategies: Strategy[] = (strategiesData as any)?.data?.strategies || [];
+  const signals: Signal[] = (signalsData as any)?.data?.signals || [];
+  const signalSummary = (signalsData as any)?.data?.summary;
+  const riskMetrics = (riskData as any)?.data;
 
   const getPerformanceColor = (value: number, type: 'return' | 'sharpe' | 'drawdown') => {
     switch (type) {
@@ -394,25 +395,25 @@ export default function AdvancedStrategies() {
 
         {/* Portfolio Optimization Tab */}
         <TabsContent value="optimization" className="space-y-4">
-          {optimizationData && (
+          {optimizationData && (optimizationData as any)?.data && (
             <>
               <div className="grid gap-4 md:grid-cols-3">
                 <Card className="p-4">
                   <div className="text-sm text-muted-foreground">Expected Return</div>
                   <div className="text-2xl font-bold mt-2 text-green-600">
-                    {(optimizationData.data.optimization.expectedReturn * 100).toFixed(1)}%
+                    {(((optimizationData as any).data.optimization?.expectedReturn || 0) * 100).toFixed(1)}%
                   </div>
                 </Card>
                 <Card className="p-4">
                   <div className="text-sm text-muted-foreground">Expected Volatility</div>
                   <div className="text-2xl font-bold mt-2 text-orange-600">
-                    {(optimizationData.data.optimization.expectedVolatility * 100).toFixed(1)}%
+                    {(((optimizationData as any).data.optimization?.expectedVolatility || 0) * 100).toFixed(1)}%
                   </div>
                 </Card>
                 <Card className="p-4">
                   <div className="text-sm text-muted-foreground">Sharpe Ratio</div>
                   <div className="text-2xl font-bold mt-2 text-blue-600">
-                    {optimizationData.data.optimization.sharpeRatio.toFixed(2)}
+                    {((optimizationData as any).data.optimization?.sharpeRatio || 0).toFixed(2)}
                   </div>
                 </Card>
               </div>
@@ -420,7 +421,7 @@ export default function AdvancedStrategies() {
               <Card className="p-4">
                 <h3 className="font-semibold mb-4">Optimal Asset Allocation</h3>
                 <div className="space-y-3">
-                  {Object.entries(optimizationData.data.optimization.optimalWeights).map(([asset, weight]) => (
+                  {Object.entries((optimizationData as any).data.optimization?.optimalWeights || {}).map(([asset, weight]) => (
                     <div key={asset} className="flex items-center justify-between">
                       <span className="font-medium">{asset}</span>
                       <div className="flex items-center space-x-3 flex-1 ml-4">
@@ -438,29 +439,52 @@ export default function AdvancedStrategies() {
                   <div>
                     <div className="text-sm text-muted-foreground">Effective Assets</div>
                     <div className="text-xl font-bold">
-                      {optimizationData.data.diversification.effectiveAssets.toFixed(1)}
+                      {((optimizationData as any).data.diversification?.effectiveAssets || 0).toFixed(1)}
                     </div>
                   </div>
                   <div>
                     <div className="text-sm text-muted-foreground">Diversification Ratio</div>
                     <div className="text-xl font-bold">
-                      {optimizationData.data.diversification.diversificationRatio.toFixed(2)}
+                      {((optimizationData as any).data.diversification?.diversificationRatio || 0).toFixed(2)}
                     </div>
                   </div>
                 </div>
               </Card>
 
-              <Card className="p-4 bg-blue-50 border-blue-200">
-                <h3 className="font-semibold text-blue-900 mb-2">Recommendation</h3>
-                <p className="text-blue-800">{optimizationData.data.recommendation.reason}</p>
-                <Badge className="mt-2 bg-blue-600">
-                  {optimizationData.data.recommendation.action}
-                </Badge>
-              </Card>
+              {(optimizationData as any).data.recommendation && (
+                <Card className="p-4 bg-blue-50 border-blue-200">
+                  <h3 className="font-semibold text-blue-900 mb-2">Recommendation</h3>
+                  <p className="text-blue-800">{(optimizationData as any).data.recommendation.reason}</p>
+                  <Badge className="mt-2 bg-blue-600">
+                    {(optimizationData as any).data.recommendation.action}
+                  </Badge>
+                </Card>
+              )}
             </>
           )}
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+export default function AdvancedStrategies() {
+  return (
+    <ErrorBoundary fallback={(error: Error, retry: () => void) => (
+      <div className="p-6">
+        <div className="text-center">
+          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-foreground mb-2">Advanced Strategies Unavailable</h2>
+          <p className="text-muted-foreground mb-4">
+            There was an error loading the advanced strategies page. Please try refreshing the page.
+          </p>
+          <Button onClick={retry}>
+            Try Again
+          </Button>
+        </div>
+      </div>
+    )}>
+      <AdvancedStrategiesContent />
+    </ErrorBoundary>
   );
 }

@@ -1,7 +1,7 @@
 
 import { Router, Request, Response } from 'express';
-import { strategyRouter, Context } from '../services/StrategyRouter';
-import { logger } from '../utils/logger';
+import { strategyRouter, Context } from '../services/StrategyRouter.js';
+import { logger } from '../utils/logger.js';
 
 const router = Router();
 
@@ -42,22 +42,6 @@ router.post('/update', async (req: Request, res: Response) => {
   } catch (error) {
     logger.error('[StrategyRouter] Update error:', { error: String(error) });
     res.status(500).json({ error: 'Failed to update strategy' });
-  }
-});
-
-// GET /api/router/policies
-router.get('/policies', async (req: Request, res: Response) => {
-  try {
-    const policies = strategyRouter.getPolicies();
-    const result = Array.from(policies.entries()).map(([id, posterior]) => ({
-      policyId: id,
-      posterior
-    }));
-    
-    res.json(result);
-  } catch (error) {
-    logger.error('[StrategyRouter] Policies error:', { error: String(error) });
-    res.status(500).json({ error: 'Failed to get policies' });
   }
 });
 

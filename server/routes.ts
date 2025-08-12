@@ -83,6 +83,7 @@ import { featureGating } from '../tools/features/gating';
 import { pbtManager } from '../tools/pbt';
 import { promotionService } from './services/promotion';
 import eventsRoutes from './routes/events.js';
+import policiesRoutes from './routes/policies.js';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Development bypass function
@@ -1842,6 +1843,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/chart-data', chartDataRoutes);
   app.use('/api/router', strategyRouterRoutes);
   app.use('/api/events', eventsRoutes);
+  app.use('/api/policies', policiesRoutes);
 
   // Regime detection endpoint
   app.get('/api/regime/state', (req, res) => {

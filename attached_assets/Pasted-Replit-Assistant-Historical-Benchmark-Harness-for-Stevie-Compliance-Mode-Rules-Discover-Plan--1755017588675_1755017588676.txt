@@ -1,0 +1,318 @@
+Replit Assistant — Historical Benchmark Harness for Stevie (Compliance Mode)
+Rules
+
+Discover → Plan → Implement → Verify → Report.
+
+No network during any benchmark/backtest. If something’s missing, stop with unknown + reason.
+
+Keep changes idempotent; do not touch working live code paths.
+
+After each phase, print: manifest, diff summary, commands run, and sample outputs.
+
+Stop on failed acceptance; propose focused fix, then continue.
+
+Phase 0 — Repo discovery (no changes)
+Print repo map for server/, shared/, tools/, artifacts/, tests, and package scripts.
+
+Confirm presence/paths for bench runner (pnpm bench run), metrics artifacts (artifacts/*/metrics.json), and Stevie strategy entry.
+
+If names/paths differ from this prompt, print OLD→NEW mapping to be used.
+
+Show a ≤6-step checklist to complete this task; stop and show before coding.
+
+Phase 1 — Dataset freeze & manifest
+Create tools/bench/dataset_freeze.ts
+
+ts
+Copy
+Edit
+/**
+ * Creates/validates a frozen dataset manifest for historical benchmarks.
+ * Never hits external APIs. Sources: ./data/frozen/** or Postgres snapshot tables.
+ * Emits: artifacts/bench/manifest.json with SHA256 of each slice.
+ */
+import fs from "fs"; import path from "path"; import crypto from "crypto";
+import { Client } from "pg";
+
+type Slice = { symbol:string; timeframe:string; from:string; to:string; rows:number; sha256:string; source:"file"|"postgres"; path?:string; table?:string };
+type Manifest = { createdAt:string; slices:Slice[]; notes:string[] };
+
+function sha256(buf: Buffer){ return crypto.createHash("sha256").update(buf).digest("hex"); }
+
+async function fileSlice(sym:string, tf:string, from:string, to:string): Promise<Slice|null>{
+  const p = path.join("data","frozen", sym, `${tf}_${from}_${to}.json`);
+  if (!fs.existsSync(p)) return null;
+  const raw = fs.readFileSync(p); const j = JSON.parse(raw.toString());
+  return { symbol:sym, timeframe:tf, from, to, rows: j?.X?.length||0, sha256: sha256(raw), source:"file", path:p };
+}
+
+async function pgSlice(sym:string, tf:string, from:string, to:string): Promise<Slice|null>{
+  if (!process.env.DATABASE_URL) return null;
+  const table = `features_${sym.toLowerCase()}_${tf.replace(/[^a-z0-9]/gi,"")}`;
+  const client = new Client({ connectionString: process.env.DATABASE_URL }); await client.connect();
+  const q = `SELECT * FROM ${table} WHERE ts >= $1 AND ts < $2 ORDER BY ts ASC;`;
+  const res = await client.query(q, [from, to]); await client.end();
+  const buf = Buffer.from(JSON.stringify(res.rows));
+  return { symbol:sym, timeframe:tf, from, to, rows: res.rows.length, sha256: sha256(buf), source:"postgres", table };
+}
+
+(async ()=>{
+  const pairs = [
+    {sym:"BTCUSDT", tf:"5m"}, {sym:"BTCUSDT", tf:"15m"},
+    {sym:"ETHUSDT", tf:"5m"}, {sym:"ETHUSDT", tf:"15m"}
+  ];
+  const windows = [
+    {from:"2024-04-01", to:"2024-05-01"},
+    {from:"2024-05-01", to:"2024-06-01"},
+    {from:"2024-06-01", to:"2024-07-01"},
+    {from:"2024-07-01", to:"2024-08-01"}
+  ];
+  const slices: Slice[] = []; const notes: string[] = [];
+  for (const p of pairs){
+    for (const w of windows){
+      const f = await fileSlice(p.sym, p.tf, w.from, w.to);
+      if (f) { slices.push(f); continue; }
+      const pg = await pgSlice(p.sym, p.tf, w.from, w.to);
+      if (pg) { slices.push(pg); continue; }
+      notes.push(`missing_slice ${p.sym} ${p.tf} ${w.from}..${w.to}`);
+    }
+  }
+  fs.mkdirSync("artifacts/bench", { recursive: true });
+  const manifest: Manifest = { createdAt: new Date().toISOString(), slices, notes };
+  fs.writeFileSync("artifacts/bench/manifest.json", JSON.stringify(manifest, null, 2));
+  if (notes.length) {
+    console.error("Dataset freeze has gaps:", notes);
+    process.exit(1);
+  }
+  console.log("✓ dataset manifest -> artifacts/bench/manifest.json");
+})();
+Acceptance:
+
+Emits artifacts/bench/manifest.json with slices and SHA256 hashes.
+
+Fails (and stops) if any required slice is missing.
+
+Phase 2 — Baselines & benchmark runner
+Create server/strategy/baselines/buyhold.ts
+
+ts
+Copy
+Edit
+import { Action } from "../types"; // adjust import to your Action type
+export function decide_buyhold(ctx:any): Action {
+  // Always long 100% nominal, for benchmarking (respect per-symbol caps in your bench harness)
+  return { type:"ENTER_LONG", sizePct: 1.0, tpBps: 0, slBps: 0, timeStopSec: 0, reason:"buyhold" };
+}
+Create server/strategy/baselines/sma.ts
+
+ts
+Copy
+Edit
+import { Action } from "../types";
+export function decide_sma(ctx:any): Action {
+  const f = ctx.features || {};
+  const fast = f.sma_fast, slow = f.sma_slow; if (!isFinite(fast)||!isFinite(slow)) return { type:"HOLD", reason:"missing_sma" };
+  if (fast > slow) return { type:"ENTER_LONG", sizePct: 1.0, tpBps: 0, slBps: 0, timeStopSec: 0, reason:"sma_long" };
+  if (fast < slow) return { type:"EXIT", reason:"sma_exit" };
+  return { type:"HOLD", reason:"sma_hold" };
+}
+Create server/strategy/baselines/donchian.ts
+
+ts
+Copy
+Edit
+import { Action } from "../types";
+export function decide_donchian(ctx:any): Action {
+  const hh = ctx.features?.donchian_high ?? NaN;
+  const ll = ctx.features?.donchian_low ?? NaN;
+  const px = ctx.features?.price ?? NaN;
+  if (!isFinite(hh)||!isFinite(ll)||!isFinite(px)) return { type:"HOLD", reason:"missing_donchian" };
+  if (px >= hh) return { type:"ENTER_LONG", sizePct: 1.0, tpBps: 120, slBps: 70, timeStopSec: 3600, reason:"donchian_breakout" };
+  if (px <= ll) return { type:"EXIT", reason:"donchian_exit" };
+  return { type:"HOLD", reason:"donchian_hold" };
+}
+Create tools/bench/run_benchmark.ts
+
+ts
+Copy
+Edit
+/**
+ * Runs deterministic walk-forward benchmarks (no network) for:
+ *  - Stevie (current candidate config)
+ *  - Baselines: Buy&Hold, SMA(20/50), Donchian(20/55)
+ * Across symbols/timeframes/windows. Computes metrics + bootstrap CIs.
+ * Emits:
+ *  - artifacts/bench/summary.csv
+ *  - artifacts/bench/summary.json
+ *  - artifacts/bench/report.md
+ */
+import fs from "fs"; import path from "path"; import { spawnSync } from "node:child_process";
+
+type Pair = { symbol:string; timeframe:string };
+const PAIRS: Pair[] = [{symbol:"BTCUSDT", timeframe:"5m"},{symbol:"BTCUSDT", timeframe:"15m"},{symbol:"ETHUSDT","timeframe":"5m"} as any];
+const WINDOWS = [
+  { name:"W1", from:"2024-04-01", to:"2024-05-01" },
+  { name:"W2", from:"2024-05-01", to:"2024-06-01" },
+  { name:"W3", from:"2024-06-01", to:"2024-07-01" },
+  { name:"W4", from:"2024-07-01", to:"2024-08-01" }
+];
+const STRATS = [
+  { id:"stevie", args:["--strategy","stevie","--version","candidate"] },
+  { id:"buyhold", args:["--strategy","buyhold"] },
+  { id:"sma", args:["--strategy","sma","--fast","20","--slow","50"] },
+  { id:"donchian", args:["--strategy","donchian","--channel","20","--alt","55"] }
+];
+
+function runOnce(stratId:string, args:string[], symbol:string, timeframe:string, from:string, to:string){
+  const env = { ...process.env, NO_BACKTEST_NETWORK:"1", RNG_SEED:"1337" };
+  const cmd = ["bench","run", ...args, "--symbols", symbol, "--timeframe", timeframe, "--from", from, "--to", to, "--rng-seed", env.RNG_SEED!];
+  const r = spawnSync("pnpm", cmd, { encoding:"utf8", env });
+  const out = (r.stdout||"")+(r.stderr||"");
+  if (r.status!==0) return { ok:false, out };
+  const metricsPath = path.join("artifacts","latest","metrics.json");
+  if (!fs.existsSync(metricsPath)) return { ok:false, out:"metrics_missing" };
+  const m = JSON.parse(fs.readFileSync(metricsPath,"utf8"));
+  return { ok:true, m, out };
+}
+
+function rowOf(sid:string, p:Pair, w:any, m:any){
+  return {
+    strategy: sid,
+    symbol: p.symbol,
+    timeframe: p.timeframe,
+    window: w.name,
+    sharpe: +m?.headline?.sharpe || 0,
+    pf: +m?.headline?.profitFactor || 0,
+    mdd: +m?.headline?.maxDrawdownPct || 0,
+    win: +m?.headline?.winRatePct || 0,
+    ret: +m?.headline?.totalReturnPct || 0,
+    slipErrBps: +m?.slippage_error_bps || 0,
+    trades: +m?.tradeCount || 0,
+    score: +m?.headline?.cash_growth_score || 0
+  };
+}
+
+(async ()=>{
+  fs.mkdirSync("artifacts/bench",{recursive:true});
+  const rows:any[] = [];
+  for (const p of PAIRS){
+    for (const w of WINDOWS){
+      for (const s of STRATS){
+        const r = runOnce(s.id, s.args, p.symbol, p.timeframe, w.from, w.to);
+        if (!r.ok){ console.error("run_failed", s.id, p, w, r.out.slice(0,300)); process.exit(1); }
+        rows.push(rowOf(s.id, p, w, r.m));
+      }
+    }
+  }
+  // Bootstrap CI for Stevie vs baselines (per pair, pooled across windows)
+  function ciDelta(metric:"score"|"sharpe"|"pf"|"mdd"){ // 95% bootstrap
+    const res:any[] = [];
+    const groups = new Map<string, any[]>();
+    for (const r of rows){ if (!groups.has(r.symbol+"_"+r.timeframe)) groups.set(r.symbol+"_"+r.timeframe, []); groups.get(r.symbol+"_"+r.timeframe)!.push(r); }
+    for (const [k,arr] of groups){
+      const ste = arr.filter(r=>r.strategy==="stevie").map(r=>r[metric]);
+      for (const base of ["buyhold","sma","donchian"]){
+        const bb = arr.filter(r=>r.strategy===base).map(r=>r[metric]);
+        const n = Math.min(ste.length, bb.length); if (!n) continue;
+        const deltas = []; const N=1000;
+        for (let i=0;i<N;i++){
+          let s=0; for (let j=0;j<n;j++){ const idx = Math.floor(Math.random()*n); s += (ste[idx]-bb[idx]); }
+          deltas.push(s/n);
+        }
+        deltas.sort((a,b)=>a-b);
+        const ciLow = deltas[Math.floor(0.025*N)], ciHigh = deltas[Math.floor(0.975*N)];
+        res.push({ group:k, base, metric, meanDelta: deltas.reduce((a,b)=>a+b,0)/N, ciLow, ciHigh });
+      }
+    }
+    return res;
+  }
+
+  const ciScore = ciDelta("score");
+  const ciSharpe = ciDelta("sharpe");
+  const ciPF = ciDelta("pf");
+
+  // Write artifacts
+  const csvHead = Object.keys(rows[0]||{});
+  const csv = [csvHead.join(",")].concat(rows.map(r=> csvHead.map(k=> JSON.stringify(r[k]??"")).join(","))).join("\n");
+  fs.writeFileSync("artifacts/bench/summary.csv", csv);
+  fs.writeFileSync("artifacts/bench/summary.json", JSON.stringify({ rows, ci:{ score:ciScore, sharpe:ciSharpe, pf:ciPF }}, null, 2));
+  fs.writeFileSync("artifacts/bench/report.md", [
+    "# Stevie Historical Benchmark",
+    "",
+    "## Summary (per window/strategy) -> artifacts/bench/summary.csv",
+    "",
+    "## Stevie vs Baselines (95% bootstrap CI on deltas)",
+    "```json",
+    JSON.stringify({ ciScore, ciSharpe, ciPF }, null, 2),
+    "```"
+  ].join("\n"));
+  console.log("✓ wrote artifacts/bench/summary.csv, summary.json, report.md");
+})();
+Acceptance:
+
+Runs with NO_BACKTEST_NETWORK=1, exits non-zero on failure.
+
+Emits summary.csv, summary.json, and report.md.
+
+Includes bootstrap 95% CIs for Stevie’s score/Sharpe/PF deltas vs baselines.
+
+Phase 3 — Determinism & guard tests
+Create tools/__tests__/benchmark.spec.ts
+
+ts
+Copy
+Edit
+import { describe,it,expect } from "vitest";
+import fs from "fs";
+describe("benchmark determinism", ()=>{
+  it("produces identical CSV on repeated runs (same RNG_SEED)", ()=>{
+    const a = fs.readFileSync("artifacts/bench/summary.csv","utf8").slice(0,5000);
+    const b = fs.readFileSync("artifacts/bench/summary.csv","utf8").slice(0,5000);
+    expect(a).toEqual(b);
+  });
+  it("NO_BACKTEST_NETWORK is enforced", ()=>{
+    expect(process.env.NO_BACKTEST_NETWORK).toBeDefined();
+  });
+});
+Phase 4 — Scripts & run command
+Append to package.json:
+
+json
+Copy
+Edit
+{
+  "scripts": {
+    "bench:freeze": "tsx tools/bench/dataset_freeze.ts",
+    "bench:run": "tsx tools/bench/run_benchmark.ts",
+    "bench:test": "vitest run tools/__tests__/benchmark.spec.ts"
+  }
+}
+Run sequence (print outputs):
+
+pgsql
+Copy
+Edit
+NO_BACKTEST_NETWORK=1 pnpm run bench:freeze
+NO_BACKTEST_NETWORK=1 pnpm run bench:run
+pnpm run bench:test
+head -n 20 artifacts/bench/summary.csv
+sed -n '1,120p' artifacts/bench/report.md
+Acceptance gates (global)
+Dataset manifest exists with SHA256 for every slice; no missing notes.
+
+Benchmark run finishes and writes all artifacts.
+
+CIs computed for Stevie vs baselines by symbol/timeframe; printed in report.
+
+Determinism test passes with fixed seed; NO_BACKTEST_NETWORK is set throughout.
+
+No console errors, no mocks in live code.
+
+Optional (nice add-ons you can ask next)
+Add equity curve PNGs per strategy/window.
+
+Add cost ablation (fees/slippage +25%) rows in the same run.
+
+Emit a JUnit summary for CI dashboards.
+
+Gate promotion only if Stevie’s score delta CI_low > 0 and PF delta is non-negative vs both SMA and Donchian.

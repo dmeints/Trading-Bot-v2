@@ -143,7 +143,7 @@ export default function LiveTrading() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isLive }),
       });
-      
+
       if (!response.ok) throw new Error('Failed to toggle trading mode');
       return response.json();
     },
@@ -171,7 +171,7 @@ export default function LiveTrading() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(brokerConfig),
       });
-      
+
       if (!response.ok) throw new Error('Failed to add broker');
       return response.json();
     },
@@ -209,7 +209,7 @@ export default function LiveTrading() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...orderData, brokerId: selectedBroker }),
       });
-      
+
       if (!response.ok) throw new Error('Failed to place order');
       return response.json();
     },
@@ -237,7 +237,7 @@ export default function LiveTrading() {
       const response = await fetch(`/api/live/orders/${orderId}`, {
         method: 'DELETE',
       });
-      
+
       if (!response.ok) throw new Error('Failed to cancel order');
       return response.json();
     },
@@ -258,7 +258,7 @@ export default function LiveTrading() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
       });
-      
+
       if (!response.ok) throw new Error('Failed to execute emergency stop');
       return response.json();
     },
@@ -441,7 +441,7 @@ export default function LiveTrading() {
           <div className="grid gap-4 md:grid-cols-2">
             <Card className="p-4">
               <h3 className="font-semibold mb-4">Place Order</h3>
-              
+
               <div className="space-y-4">
                 <div>
                   <Label htmlFor="broker-select">Broker</Label>
@@ -535,7 +535,7 @@ export default function LiveTrading() {
                   onClick={handlePlaceOrder} 
                   disabled={placeOrder.isPending || !selectedBroker}
                   className="w-full"
-                  data-testid={`button-place-order button-${orderForm.side} button-execute button-cancel`}
+                  data-testid={`button-place-order`}
                 >
                   <Play className="w-4 h-4 mr-2" />
                   {placeOrder.isPending ? 'Placing...' : 'Place Order'}
@@ -545,7 +545,7 @@ export default function LiveTrading() {
 
             <Card className="p-4">
               <h3 className="font-semibold mb-4">Account Balances</h3>
-              
+
               {selectedBroker ? (
                 <div className="space-y-3">
                   {balances.map((balance) => (
@@ -578,7 +578,7 @@ export default function LiveTrading() {
         <TabsContent value="positions" className="space-y-4">
           <Card className="p-4">
             <h3 className="font-semibold mb-4">Open Positions</h3>
-            
+
             {positions.length === 0 ? (
               <div className="text-center text-muted-foreground py-8">
                 No open positions
@@ -610,7 +610,7 @@ export default function LiveTrading() {
         <TabsContent value="orders" className="space-y-4">
           <Card className="p-4">
             <h3 className="font-semibold mb-4">Recent Orders</h3>
-            
+
             {orders.length === 0 ? (
               <div className="text-center text-muted-foreground py-8">
                 No orders yet
@@ -663,7 +663,7 @@ export default function LiveTrading() {
           <div className="grid gap-4 md:grid-cols-2">
             <Card className="p-4">
               <h3 className="font-semibold mb-4">Add New Broker</h3>
-              
+
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -750,7 +750,7 @@ export default function LiveTrading() {
 
             <Card className="p-4">
               <h3 className="font-semibold mb-4">Connected Brokers</h3>
-              
+
               <div className="space-y-3">
                 {brokers.map((broker) => (
                   <div key={broker.brokerId} className="flex justify-between items-center p-3 border rounded-lg">

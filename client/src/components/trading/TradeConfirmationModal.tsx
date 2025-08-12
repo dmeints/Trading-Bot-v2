@@ -75,17 +75,17 @@ export default function TradeConfirmationModal({
                 {tradeDetails.side.toUpperCase()} {tradeDetails.symbol}
               </Badge>
             </div>
-            
+
             <div className="flex justify-between">
               <span className="text-gray-400">Order Type:</span>
               <span className="font-medium capitalize">{tradeDetails.orderType}</span>
             </div>
-            
+
             <div className="flex justify-between">
               <span className="text-gray-400">Amount:</span>
               <span className="font-medium">${(tradeDetails.amount || 0).toFixed(2)}</span>
             </div>
-            
+
             <div className="flex justify-between">
               <span className="text-gray-400">Price:</span>
               <span className="font-medium">${(tradeDetails.price || 0).toFixed(2)}</span>
@@ -95,22 +95,22 @@ export default function TradeConfirmationModal({
           {/* Cost Breakdown */}
           <div className="bg-gray-900 rounded-lg p-4 space-y-2">
             <h4 className="font-medium text-white mb-2">Cost Breakdown</h4>
-            
+
             <div className="flex justify-between text-sm">
               <span className="text-gray-400">Trade Amount:</span>
               <span>${(tradeDetails.amount || 0).toFixed(2)}</span>
             </div>
-            
+
             <div className="flex justify-between text-sm">
               <span className="text-gray-400">Estimated Fee:</span>
               <span>${(tradeDetails.estimatedFee || 0).toFixed(2)}</span>
             </div>
-            
+
             <div className="flex justify-between text-sm">
               <span className="text-gray-400">Estimated Slippage:</span>
               <span>{(tradeDetails.estimatedSlippage || 0).toFixed(3)}%</span>
             </div>
-            
+
             {tradeDetails.pnlImpact && (
               <div className="flex justify-between text-sm">
                 <span className="text-gray-400">P&L Impact:</span>
@@ -119,7 +119,7 @@ export default function TradeConfirmationModal({
                 </span>
               </div>
             )}
-            
+
             <div className="border-t border-gray-700 pt-2 mt-2">
               <div className="flex justify-between font-medium">
                 <span>Total Cost:</span>
@@ -148,7 +148,8 @@ export default function TradeConfirmationModal({
             variant="outline"
             onClick={onClose}
             className="bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600"
-            data-testid="button-cancel"
+            data-testid="cancel-order-button"
+            aria-label="Cancel order confirmation"
           >
             Cancel
           </Button>
@@ -161,6 +162,7 @@ export default function TradeConfirmationModal({
                 : 'bg-red-600 hover:bg-red-700'
             } text-white`}
             data-testid={`button-confirm button-execute button-${tradeDetails.side}`}
+            aria-label="Confirm and submit order"
           >
             {isConfirming ? 'Executing...' : 'Confirm Trade'}
           </Button>

@@ -58,7 +58,7 @@ interface TradeAnalysis {
 
 export default function TradeJournal() {
   const { isAuthenticated, isLoading } = useAuth();
-  
+
   const [dateRange, setDateRange] = useState({
     from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // 30 days ago
     to: new Date()
@@ -108,10 +108,10 @@ export default function TradeJournal() {
     const matchesSearch = searchTerm === '' || 
       trade.symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
       trade.reasoning?.toLowerCase().includes(searchTerm.toLowerCase());
-    
+
     const matchesStrategy = selectedStrategy === 'all' || 
       trade.tags?.includes(selectedStrategy);
-    
+
     return matchesSearch && matchesStrategy;
   });
 
@@ -159,10 +159,10 @@ export default function TradeJournal() {
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       <TopNavigation />
-      
+
       <div className="flex pt-16">
         <SidebarNavigation />
-        
+
         <main className="flex-1 p-6">
           <div className="max-w-7xl mx-auto">
             <div className="flex items-center justify-between mb-6">
@@ -319,12 +319,16 @@ export default function TradeJournal() {
                                 </div>
                                 <Badge 
                                   variant={trade.side === 'buy' ? 'default' : 'secondary'}
-                                  data-testid={`badge-${trade.side}`}
+                                  data-testid={`trade-side-badge-${trade.id}`}
+                                  aria-label={`Trade side: ${trade.side}`}
                                 >
                                   {trade.side.toUpperCase()}
                                 </Badge>
                                 {trade.aiRecommendation && (
-                                  <Badge variant="outline" className="border-purple-500 text-purple-400">
+                                  <Badge variant="outline" className="border-purple-500 text-purple-400"
+                                    data-testid={`trade-ai-badge-${trade.id}`}
+                                    aria-label="AI Recommended Trade"
+                                  >
                                     <Brain className="w-3 h-3 mr-1" />
                                     AI
                                   </Badge>
@@ -352,7 +356,10 @@ export default function TradeJournal() {
                             {trade.tags && trade.tags.length > 0 && (
                               <div className="mt-2 flex gap-1">
                                 {trade.tags.map((tag) => (
-                                  <Badge key={tag} variant="outline" className="text-xs">
+                                  <Badge key={tag} variant="outline" className="text-xs"
+                                    data-testid={`trade-tag-badge-${tag}-${trade.id}`}
+                                    aria-label={`Tag: ${tag}`}
+                                  >
                                     {tag}
                                   </Badge>
                                 ))}

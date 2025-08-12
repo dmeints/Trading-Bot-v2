@@ -1,0 +1,282 @@
+You are a build agent. Deliver runnable code, not plans.
+Continue from the working vertical (real Binance OHLCV+WS, persistence, health, backtest from DB). Implement the advanced “brain” features below with strict TypeScript, minimal deps, and tests.
+After each change, always run:
+
+bash
+Copy
+Edit
+npm ci
+npm run type-check
+npm run build
+npm test
+npm start & sleep 2
+Then paste the real terminal logs and curl outputs for each acceptance step. If anything fails, fix and re-run until green.
+
+TASK 1 — Contextual Bandit StrategyRouter (Thompson Sampling)
+Goal: pick the best policy for the current context and update its posterior with realized rewards.
+
+Create server/services/StrategyRouter.ts:
+
+Maintain a registry of policy IDs (e.g., p_sma, p_trend, p_meanrev) with Beta/Normal-Inverse-Gamma-style posteriors (keep it simple: Normal w/known variance or Bayesian linear bandit with diagonal covariance).
+
+Context vector: { regime, vol, trend, funding, sentiment }. Start with placeholders if a value is missing.
+
+choose(context): Thompson sample each policy’s expected reward given context; return { policyId, score, explorationBonus }.
+
+update(policyId, reward, context) updates the posterior.
+
+Add routes in server/routes/strategyRouter.ts:
+
+POST /api/router/choose { context } → returns { policyId, score, explorationBonus }.
+
+POST /api/router/update { policyId, reward, context } → returns posteror summary.
+
+Wire into server/routes.ts.
+
+Tests:
+
+tests/router_thompson.spec.ts: with synthetic rewards, verify that the router migrates probability mass toward the better policy over iterations.
+
+Acceptance (paste outputs):
+
+bash
+Copy
+Edit
+curl -s -X POST localhost:5000/api/router/choose \
+  -H "Content-Type: application/json" \
+  -d '{"context":{"regime":"bull","vol":0.2,"trend":1.1,"funding":0.01,"sentiment":0.3}}' | jq
+curl -s -X POST localhost:5000/api/router/update \
+  -H "Content-Type: application/json" \
+  -d '{"policyId":"p_sma","reward":0.004,"context":{"regime":"bull"}}' | jq
+npm test -- -t router_thompson
+TASK 2 — Bayesian Online Change-Point Detection (BOCPD) Regime Switch
+Goal: detect distribution shifts online and expose the current regime.
+
+Add server/services/regime/bo_cpd.ts with a lightweight BOCPD:
+
+Track returns/vol; compute run-length posterior with hazard h.
+
+On change-point, flip regime label among {bull,bear,sideways,volatile}.
+
+Export getCurrentRegime() and updateWithReturn(r).
+
+Wire a small cron or call from your market data loop to feed returns.
+
+Add route GET /api/regime/state → { regime, runLength, lastChangeAt }.
+
+Tests:
+
+tests/regime_bocpd.spec.ts — synthetic drift causes a regime flip.
+
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/regime/state | jq
+npm test -- -t regime_bocpd
+TASK 3 — Feature Gating (IC + HSIC-lite)
+Goal: rank feature streams by predictive power; auto-disable weak ones.
+
+Create tools/features/gating.ts:
+
+Compute rolling Information Coefficient (Pearson corr between feature at t and return t+1) with EWMA.
+
+Implement a HSIC-lite proxy: compute non-linear association via RBF kernel similarity on small batches; return a normalized score.
+
+Rank features by combined score; disable bottom decile.
+
+Add route GET /api/features/ranking → [ { feature, ic, hsic, score, disabled } ].
+
+Tests:
+
+tests/features_gating.spec.ts — synthetic features: one predictive, one noise → predictive ranks higher.
+
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/features/ranking | jq '.[0:5]'
+npm test -- -t features_gating
+TASK 4 — Uncertainty-Scaled Sizing (Conformal width → size)
+Goal: scale order size inversely with predictive uncertainty.
+
+In server/services/ExecutionRouter.ts (or similar), add:
+
+size = baseSize * sigmoid(-uncertaintyWidth), where uncertaintyWidth comes from your conformal predictor.
+
+Log {symbol, baseSize, uncertaintyWidth, finalSize} for each decision.
+
+Expose GET /api/exec/sizing/last → last computed sizing snapshot.
+
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/exec/sizing/last | jq
+# Show logs where uncertainty up → size down
+TASK 5 — Risk-Aware PPO (reward shaping + distributional critic)
+Goal: penalize drawdown & transaction cost; learn quantiles for downside awareness.
+
+In server/services/stevieRL.ts (or wherever RL lives):
+
+Reward per step: r = dlog_equity - λ*TC - γ*DD_increment.
+
+Distributional critic (quantile regression): output K quantiles; compute Huber quantile loss.
+
+Log CVaR@5% during training; keep it below a threshold.
+
+Add test stub:
+
+tests/rl_reward_shape.spec.ts — verify reward shaping arithmetic and critic loss shape (mocked).
+
+Acceptance:
+
+bash
+Copy
+Edit
+npm run stevie:train -- --dryRun  # or equivalent
+# Paste logs showing CVaR@5% metric and training steps
+npm test -- -t rl_reward_shape
+TASK 6 — Population-Based Training (PBT) & Champion/Challenger with SPA
+Goal: evolve policies and promote only with statistical proof.
+
+tools/pbt.ts: run K worker configs, every M epochs:
+
+Exploit top K% (copy weights/hparams), explore by jittering losers.
+
+Persist lineage in JSON (.data/pbt/lineage.json).
+
+server/services/promotion.ts:
+
+Compute Hansen SPA (or Deflated Sharpe) on out-of-sample segment between champion vs challenger paper PnL series.
+
+Promotion requires p < 0.05.
+
+Routes:
+
+GET /api/promotion/status → list of policies with p-values and current champion.
+
+GET /api/pbt/lineage → lineage graph data.
+
+Tests:
+
+tests/promotion_spa.spec.ts — synthetic outperformer gets promoted.
+
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/promotion/status | jq
+curl -s localhost:5000/api/pbt/lineage | jq '.[0:3]'
+npm test -- -t promotion_spa
+TASK 7 — CVaR Budgeter & Vol Targeting
+Goal: portfolio weights satisfy a CVaR budget and a vol target.
+
+server/services/portfolio.ts:
+
+Estimate asset vol/CVaR from recent returns (historical simulation).
+
+Solve for w with projected gradient:
+
+sum(w_i * CVaR_i) <= B and portfolio vol ≈ target σ*.
+
+Return {weights, achievedVol, cvarBudgetUsed}.
+
+Routes:
+
+POST /api/portfolio/optimize { symbols, cvarBudget, volTarget } → solution.
+
+Tests:
+
+tests/portfolio_constraints.spec.ts — verify constraints satisfied within tolerance.
+
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s -X POST localhost:5000/api/portfolio/optimize \
+  -H "Content-Type: application/json" \
+  -d '{"symbols":["BTCUSDT","ETHUSDT"],"cvarBudget":0.05,"volTarget":0.02}' | jq
+npm test -- -t portfolio_constraints
+TASK 8 — Event RAG → Context (LLM as curator, not oracle)
+Goal: turn news/macro into embeddings/features injected into the router context.
+
+server/services/events.ts:
+
+Ingest recent news/macro text (use existing connectors or a local stub).
+
+Summarize and embed (if an embedding lib exists; if not, implement a placeholder hashing embed).
+
+Expose GET /api/events/embeddings and append an eventsEmbedding vector to the StrategyRouter context.
+
+Test:
+
+tests/events_embed.spec.ts — mock some texts → non-zero embedding → appears in router context.
+
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/events/embeddings | jq '.[0]'
+curl -s -X POST localhost:5000/api/router/choose -d '{"context":{"regime":"bear","eventsEmbedding":[0.1,0.0,0.2]}}' | jq
+npm test -- -t events_embed
+TASK 9 — Shadow Book Enforcement (policy maturity ladder)
+Goal: no new/modified policy goes live without N shadow fills.
+
+server/services/policyGuard.ts:
+
+Track policy states: shadow -> paper -> live.
+
+Configure thresholds: shadowFills >= N, paperPnL > min, maxDD < cap.
+
+Block live execution if not promoted; log reasons.
+
+Routes:
+
+GET /api/policies/status → list policy states and thresholds.
+
+Test:
+
+tests/policy_guard.spec.ts — simulated fills promote a policy stepwise.
+
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/policies/status | jq
+npm test -- -t policy_guard
+TASK 10 — Anti-Fabrication & Leakage Tests (CI guard)
+Goal: enforce data discipline.
+
+Add tests/anti_fabrication.spec.ts:
+
+Purged k-fold CV (prevent overlapping train/test windows).
+
+Time embargo around labels.
+
+SPA/DSr guard rails for reported Sharpe.
+
+Fail CI if violated.
+
+Acceptance:
+
+bash
+Copy
+Edit
+npm test -- -t anti_fabrication
+FINAL RETURN (paste only)
+List of files changed/created.
+
+Diffs or full contents for new/updated files.
+
+Build/test/start logs.
+
+curl outputs for each task’s acceptance steps.
+

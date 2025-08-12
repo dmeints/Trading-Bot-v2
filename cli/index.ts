@@ -43,3 +43,7 @@ program.addCommand(registerConformalTuningCommands(program));
 
 // Parse command line arguments
 program.parse();
+import { registerSafePromotionCommands } from './commands/safePromotion';
+
+// Register safe promotion commands
+registerSafePromotionCommands(program);

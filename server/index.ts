@@ -119,3 +119,7 @@ import burninDashboardRouter from './routes/burninDashboard';
 
 // Add burn-in dashboard routes
 app.use('/api/burnin-dashboard', burninDashboardRouter);
+import safePromotionRouter from './routes/safePromotion';
+
+// Register safe promotion routes
+app.use('/api/safe-promotion', safePromotionRouter);

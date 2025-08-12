@@ -115,3 +115,7 @@ app.use('/api/scenarios', scenarioCoverageRouter);
 app.use('/api/conformal-tuning', conformalTuningRouter);
 
 // Mount other routers
+import burninDashboardRouter from './routes/burninDashboard';
+
+// Add burn-in dashboard routes
+app.use('/api/burnin-dashboard', burninDashboardRouter);

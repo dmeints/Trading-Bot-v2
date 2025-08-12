@@ -1,65 +1,36 @@
 import type { Express } from "express";
-import { marketDataService } from "../services/marketData";
+import { getOHLCV } from "../services/exchanges/binance";
 
-// Helper function for timeframe conversion
-function getTimeframeMilliseconds(timeframe: string): number {
-  const timeframeMap: { [key: string]: number } = {
-    '1m': 60 * 1000,
-    '5m': 5 * 60 * 1000,
-    '15m': 15 * 60 * 1000,
-    '1H': 60 * 60 * 1000,
-    '4H': 4 * 60 * 60 * 1000,
-    '1D': 24 * 60 * 60 * 1000,
-    '1W': 7 * 24 * 60 * 60 * 1000
-  };
-  return timeframeMap[timeframe] || 60 * 60 * 1000;
-}
+let lastOHLCVSync = new Date().toISOString();
 
 export function registerMarketRoutes(app: Express, requireAuth: any) {
-  // OHLCV candlestick data endpoint
+  // OHLCV candlestick data endpoint - now using real Binance data
   app.get('/api/market/ohlcv', requireAuth, async (req, res) => {
     try {
-      const symbol = req.query.symbol as string || 'BTC/USD';
-      const timeframe = req.query.timeframe as string || '1H';
+      const symbol = req.query.symbol as string || 'BTCUSDT';
+      const timeframe = req.query.timeframe as string || '1h';
       const limit = parseInt(req.query.limit as string) || 100;
 
-      // Get current price as base
-      const currentPrice = await marketDataService.getPrice(symbol.split('/')[0]);
+      // Fetch real data from Binance
+      const candles = await getOHLCV(symbol, timeframe, limit);
 
-      // Generate realistic OHLCV data
-      const candles = [];
-      const timeframeMs = getTimeframeMilliseconds(timeframe);
-      const now = Date.now();
-      let basePrice = currentPrice * 0.995;
+      // Update sync timestamp
+      lastOHLCVSync = new Date().toISOString();
 
-      for (let i = limit - 1; i >= 0; i--) {
-        const timestamp = now - (i * timeframeMs);
-        const volatility = 0.002; // 0.2% volatility per candle
-        const trend = 0.0001; // Small upward trend
-        const change = (Math.random() - 0.5) * volatility + trend;
+      // TODO: Persist to DB via storage.storeMarketBars(...) when available
 
-        const open = basePrice;
-        const close = open * (1 + change);
-        const high = Math.max(open, close) * (1 + Math.random() * 0.001);
-        const low = Math.min(open, close) * (1 - Math.random() * 0.001);
-        const volume = 50 + Math.random() * 100;
-
-        candles.push({
-          timestamp,
-          open,
-          high,
-          low,
-          close,
-          volume
-        });
-
-        basePrice = close;
-      }
-
-      res.json({ success: true, data: candles, timestamp: new Date().toISOString() });
+      res.json({ 
+        success: true, 
+        data: candles, 
+        timestamp: new Date().toISOString(),
+        source: 'binance'
+      });
     } catch (error) {
       console.error('OHLCV fetch error:', error);
-      res.status(500).json({ error: 'Failed to fetch OHLCV data' });
+      res.status(500).json({ 
+        error: 'Failed to fetch OHLCV data',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   });
 
@@ -118,8 +89,11 @@ export function registerMarketRoutes(app: Express, requireAuth: any) {
   // Order book depth data
   app.get('/api/market/depth/:symbol', requireAuth, async (req, res) => {
     try {
-      const symbol = req.params.symbol || 'BTC';
-      const currentPrice = await marketDataService.getPrice(symbol);
+      const symbol = req.params.symbol || 'BTCUSDT';
+
+      // Get current price from Binance
+      const candles = await getOHLCV(symbol, '1m', 1);
+      const currentPrice = candles[0]?.close || 50000;
 
       // Generate realistic order book depth
       const bids = [];
@@ -165,3 +139,6 @@ export function registerMarketRoutes(app: Express, requireAuth: any) {
     }
   });
 }
+
+// Export for health check access
+export { lastOHLCVSync };

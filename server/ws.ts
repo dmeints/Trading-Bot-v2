@@ -1,73 +1,79 @@
-
 import { WebSocketServer } from 'ws';
-import type { Server as HTTPServer } from 'http';
+import { logger } from './utils/logger';
+import { priceStreamManager } from './services/priceStream';
 
-let wssSingleton: WebSocketServer | null = null;
+let wss: WebSocketServer | null = null;
 
-export function createWSS(opts: { server: HTTPServer; path?: string }) {
-  if (wssSingleton) {
-    console.warn('[ws] Reusing existing WebSocketServer (double init avoided).');
-    return wssSingleton;
-  }
-  
-  const { server, path = '/ws' } = opts;
-  const wss = new WebSocketServer({ server, path });
-
-  wss.on('listening', () => {
-    console.log(`[ws] WebSocket server attached at ${path}`);
-  });
-
-  wss.on('error', (err: any) => {
-    console.error('[ws] WebSocket server error:', err);
-    if (err.code === 'EADDRINUSE') {
-      console.error('[ws] EADDRINUSE: A rogue WebSocket server is binding directly to the port.');
-      console.error('[ws] Remove any WebSocketServer created with { port: ... } - use { server: httpServer } instead.');
-    }
-  });
+export function initWebSocketServer(server: any) {
+  wss = new WebSocketServer({ server });
 
   wss.on('connection', (ws, req) => {
-    console.log(`[ws] New WebSocket connection from ${req.socket.remoteAddress}`);
-    
+    const clientId = Math.random().toString(36).substr(2, 9);
+    logger.info(`WebSocket client connected: ${clientId}`);
+
+    // Start default price streams when first client connects
+    if (wss && wss.clients.size === 1) {
+      logger.info('Starting default price streams');
+      priceStreamManager.startStream('BTCUSDT');
+      priceStreamManager.startStream('ETHUSDT');
+    }
+
     ws.on('message', (message) => {
       try {
         const data = JSON.parse(message.toString());
-        console.log('[ws] Received message:', data);
-        
-        // Echo back for now - implement your WebSocket logic here
-        ws.send(JSON.stringify({
-          type: 'response',
-          data: 'Message received',
-          timestamp: new Date().toISOString()
-        }));
+        logger.info(`Message from ${clientId}:`, data);
+
+        // Handle price stream subscriptions
+        if (data.type === 'subscribe' && data.symbol) {
+          logger.info(`Client ${clientId} subscribing to ${data.symbol}`);
+          priceStreamManager.startStream(data.symbol);
+
+          ws.send(JSON.stringify({
+            type: 'subscription_confirmed',
+            symbol: data.symbol,
+            clientId
+          }));
+        }
+
+        // Handle price stream unsubscriptions  
+        else if (data.type === 'unsubscribe' && data.symbol) {
+          logger.info(`Client ${clientId} unsubscribing from ${data.symbol}`);
+          // Note: Don't stop stream immediately as other clients may be subscribed
+
+          ws.send(JSON.stringify({
+            type: 'unsubscription_confirmed',
+            symbol: data.symbol,
+            clientId
+          }));
+        }
+
+        // Echo back other messages
+        else {
+          ws.send(JSON.stringify({
+            type: 'echo',
+            data: data,
+            clientId
+          }));
+        }
       } catch (error) {
-        console.error('[ws] Error parsing message:', error);
-        ws.send(JSON.stringify({
-          type: 'error',
-          message: 'Invalid message format'
-        }));
+        logger.error(`Error processing message from ${clientId}:`, error);
       }
     });
 
     ws.on('close', () => {
-      console.log('[ws] WebSocket connection closed');
-    });
+      logger.info(`WebSocket client disconnected: ${clientId}`);
 
-    ws.on('error', (error) => {
-      console.error('[ws] WebSocket connection error:', error);
+      // Stop all streams when no clients are connected
+      if (wss && wss.clients.size === 0) {
+        logger.info('No clients connected, stopping all price streams');
+        priceStreamManager.stopAllStreams();
+      }
     });
-
-    // Send welcome message
-    ws.send(JSON.stringify({
-      type: 'welcome',
-      message: 'Connected to Skippy AI Trading System',
-      timestamp: new Date().toISOString()
-    }));
   });
 
-  wssSingleton = wss;
   return wss;
 }
 
-export function getWSS(): WebSocketServer | null {
-  return wssSingleton;
+export function getWSS() {
+  return wss;
 }

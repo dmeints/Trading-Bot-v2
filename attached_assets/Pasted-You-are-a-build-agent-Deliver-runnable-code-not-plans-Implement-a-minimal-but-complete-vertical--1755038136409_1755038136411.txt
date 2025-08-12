@@ -1,0 +1,146 @@
+You are a build agent. Deliver runnable code, not plans.
+Implement a minimal but complete vertical: clean run/build, persist real Binance OHLCV to Postgres, health telemetry, backtest reads DB with safe fallback, and two tests. Keep TypeScript strict, modify real files, and minimize dependencies.
+After changes, always run:
+
+bash
+Copy
+Edit
+npm ci
+npm run type-check
+npm run build
+npm test
+npm start & sleep 2
+Then paste the actual terminal logs and curl JSON outputs for each acceptance step. If anything fails, fix it and re-run until all green.
+
+TASK 0 — Run/Build configuration (dev + prod)
+Goal: Replit’s Run and Deploy both work; no server/index.js mismatch.
+
+Create tsconfig.server.json for server-only build:
+
+json
+Copy
+Edit
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": ".",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "allowImportingTsExtensions": true,
+    "sourceMap": true
+  },
+  "include": ["server/**/*", "shared/**/*"]
+}
+Update package.json scripts (keep existing, add):
+
+json
+Copy
+Edit
+{
+  "scripts": {
+    "build:server": "tsc -p tsconfig.server.json",
+    "build": "npm run build:server && vite build",
+    "start": "node dist/server/index.js"
+  }
+}
+In .replit, keep run = "npm run dev". In any workflow that calls node server/index.js, change to npm run start (prod) or npm run server (dev).
+Acceptance:
+
+Paste cat tsconfig.server.json and the updated package.json scripts block.
+
+Paste .replit workflow diffs where you changed node server/index.js.
+
+Paste logs from:
+
+bash
+Copy
+Edit
+npm ci && npm run type-check && npm run build && npm start & sleep 2
+curl -s http://localhost:5000/api/health | head -c 300; echo
+TASK 1 — Persist Binance OHLCV to DB
+Goal: /api/market/ohlcv returns real Binance candles and persists to market_bars.
+
+In server/routes/marketRoutes.ts, after calling getOHLCV(symbol, timeframe, limit), map candles to DB rows and call storage.storeMarketBars(...). The shared/schema.ts uses varchar for OHLCV numeric fields; store them as String(...). Include provider:'binance', a datasetId, and a minimal provenance.
+
+Export:
+
+ts
+Copy
+Edit
+let lastOHLCVSync = new Date().toISOString();
+export function getLastOHLCVSync(){ return lastOHLCVSync; }
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s "http://localhost:5000/api/market/ohlcv?symbol=BTCUSDT&timeframe=1m&limit=5" | jq '{src:.source,sample:.data[0]}'
+Expect src="binance" and numeric-like strings persisted in DB (you may show a DB query snippet or logs proving storeMarketBars was called).
+
+TASK 2 — Health telemetry
+Goal: /api/health includes priceStream connectivity and lastOHLCVSync.
+
+In server/routes.ts:
+
+ts
+Copy
+Edit
+import { priceStream } from './services/priceStream.js';
+import { getLastOHLCVSync } from './routes/marketRoutes';
+Add to the JSON payload:
+
+ts
+Copy
+Edit
+services: {
+  ...,
+  priceStream: priceStream.isConnected() ? 'connected' : 'disconnected',
+  lastOHLCVSync: getLastOHLCVSync()
+}
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s http://localhost:5000/api/health | jq '.services | {priceStream,lastOHLCVSync}'
+TASK 3 — Backtest reads DB (with safe fallback)
+Goal: The SMA backtest uses DB candles first; if insufficient, it fetches from Binance, persists, and proceeds.
+
+In server/services/backtestEngine.ts, implement a loadCandles(symbol,timeframe,from,to,fast,slow) that:
+
+Computes the needed candle count from the date range + buffer;
+
+Tries storage.getMarketBars(symbol,timeframe,needed);
+
+If not enough rows, calls getOHLCV(...), persists using the same mapper from Task 1, and returns those candles.
+
+Use loadCandles(...) in the SMA backtest logic.
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s -X POST http://localhost:5000/api/backtest/run \
+  -H "Content-Type: application/json" \
+  -d '{"symbol":"BTCUSDT","timeframe":"1m","from":"2024-01-01","to":"2024-01-02","fast":10,"slow":20}' \
+| jq '.metrics | {pnl:.pnl, sharpe:.sharpe, maxDD:.maxDrawdown}'
+Paste the JSON. If the DB was empty, paste a log snippet showing fallback → persist → proceed.
+
+TASK 4 — Minimal tests (unit + route)
+Goal: prevent regressions and prove the mapper/route behavior.
+
+tests/binance_map.spec.ts: mock a Binance kline response and assert the mapper produces ascending timestamps and numeric fields.
+
+tests/ohlcv_route.spec.ts: hit /api/market/ohlcv?symbol=BTCUSDT&timeframe=1m&limit=3 and assert { success:true, source:'binance', data:[...] } shape.
+Acceptance: paste npm test output with both tests passing.
+
+FINAL RETURN (paste only)
+List of files changed/created.
+
+Diffs or full contents for changed files (marketRoutes.ts, routes.ts, backtestEngine.ts, test files, config files).
+
+Terminal logs from: build, test, start.
+
+curl outputs for Tasks 1–3 as shown above.

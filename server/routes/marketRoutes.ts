@@ -1,7 +1,31 @@
 import type { Express } from "express";
 import { getOHLCV } from "../services/exchanges/binance";
+import { logger } from '../utils/logger';
+import { storage } from '../storage';
+import type { InsertMarketBar } from '@shared/schema';
 
 let lastOHLCVSync = new Date().toISOString();
+
+export function getLastOHLCVSync() {
+  return lastOHLCVSync;
+}
+
+function toBarsForDB(symbol: string, timeframe: string, candles: {timestamp:number,open:number,high:number,low:number,close:number,volume:number}[]): InsertMarketBar[] {
+  const ds = (ts:number) => `binance:${symbol}:${timeframe}:${new Date(ts).toISOString().slice(0,10)}`;
+  return candles.map(c => ({
+    symbol,
+    timeframe,
+    timestamp: new Date(c.timestamp),
+    open: String(c.open),
+    high: String(c.high),
+    low: String(c.low),
+    close: String(c.close),
+    volume: String(c.volume ?? 0),
+    provider: 'binance',
+    datasetId: ds(c.timestamp),
+    provenance: { source: 'binance', endpoint: 'klines', symbol, timeframe }
+  }));
+}
 
 export function registerMarketRoutes(app: Express, requireAuth: any) {
   // OHLCV candlestick data endpoint - now using real Binance data
@@ -14,20 +38,25 @@ export function registerMarketRoutes(app: Express, requireAuth: any) {
       // Fetch real data from Binance
       const candles = await getOHLCV(symbol, timeframe, limit);
 
-      // Update sync timestamp
-      lastOHLCVSync = new Date().toISOString();
+      // Persist to database
+      try {
+        const bars = toBarsForDB(symbol, timeframe, candles);
+        await storage.storeMarketBars(bars);
+        lastOHLCVSync = new Date().toISOString();
+      } catch (e) {
+        // Do not fail the endpoint on storage error; just log
+        logger.error('Failed to persist OHLCV:', { error: String(e) });
+      }
 
-      // TODO: Persist to DB via storage.storeMarketBars(...) when available
-
-      res.json({ 
-        success: true, 
-        data: candles, 
+      res.json({
+        success: true,
+        data: candles,
         timestamp: new Date().toISOString(),
         source: 'binance'
       });
     } catch (error) {
       console.error('OHLCV fetch error:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         error: 'Failed to fetch OHLCV data',
         details: error instanceof Error ? error.message : 'Unknown error'
       });

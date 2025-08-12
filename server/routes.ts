@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { xApiEmergencyProtection, xApiManualOverride, getXApiUsageStats } from "./middleware/xApiProtection.js";
 import { xApiCache } from "./services/xApiCache.js";
-import { SentimentAnalyzer } from "./services/sentimentAnalyzer.js";
+import { SentimentAnalyzer } from "./services/sentimentAnalyzer";
 import {
   getAllApiStats,
   getApiStats,
@@ -14,7 +14,7 @@ import {
   cryptoPanicApiGuard,
   recordApiUsage
 } from "./middleware/apiGuardrails.js";
-import { EnhancedSentimentAnalyzer } from "./services/enhancedSentimentAnalyzer.js";
+import { EnhancedSentimentAnalyzer } from "./services/enhancedSentimentAnalyzer";
 import { advancedFeaturesRouter } from "./routes/advancedFeatures";
 import layoutRoutes from "./routes/layoutRoutes";
 import experimentRoutes from "./routes/experimentRoutes";
@@ -74,6 +74,7 @@ import comprehensiveFeaturesRouter from './routes/comprehensive-features';
 import { transferLearningRouter } from './routes/transferLearning.js';
 import healthRoutes from './routes/health.js';
 import { registerBacktestRoutes } from './routes/backtestRoutes.js';
+import { getLastOHLCVSync } from "./routes/marketRoutes";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Development bypass function
@@ -1506,17 +1507,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         (rlEngine.getModelInfo().loaded ? 'ready' : 'loaded_not_ready') :
         'not_initialized';
 
+      // Dynamic import for priceStream to avoid circular dependency
+      let priceStreamStatus = 'unknown';
+      try {
+        const { priceStream } = await import('./services/priceStream.js');
+        priceStreamStatus = priceStream.isConnected() ? 'connected' : 'disconnected';
+      } catch (e) {
+        priceStreamStatus = 'error';
+      }
+
       res.json({
-        status: 'ok',
+        status: "healthy",
         timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        environment: env.NODE_ENV,
         services: {
-          database: 'connected',
-          ai_agents: lazyInitStatus.aiOrchestrator ? 'active' : 'not_initialized',
-          market_data: 'streaming',
-          rl_engine: rlEngineStatus,
-          policy_engine: 'active',
-        },
-        lazy_init_status: lazyInitStatus,
+          database: "connected",
+          api: "operational",
+          priceStream: priceStreamStatus,
+          lastOHLCVSync: getLastOHLCVSync()
+        }
       });
     } catch (error) {
       console.error('Health check error:', error);

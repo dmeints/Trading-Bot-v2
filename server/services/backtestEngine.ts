@@ -9,7 +9,68 @@ import { storage } from '../storage';
 import { marketDataService } from './marketData';
 import { logger } from '../utils/logger';
 import type { InsertBacktestResults } from '../../shared/schema';
-import { getOHLCV, type Candle } from "./exchanges/binance";
+import { getOHLCV } from "./exchanges/binance";
+import { calculateSMA } from '../utils/indicators';
+import type { InsertMarketBar } from '@shared/schema';
+
+
+function toBarsForDB(symbol: string, timeframe: string, candles: {timestamp:number,open:number,high:number,low:number,close:number,volume:number}[]): InsertMarketBar[] {
+  const ds = (ts:number) => `binance:${symbol}:${timeframe}:${new Date(ts).toISOString().slice(0,10)}`;
+  return candles.map(c => ({
+    symbol,
+    timeframe,
+    timestamp: new Date(c.timestamp),
+    open: String(c.open),
+    high: String(c.high),
+    low: String(c.low),
+    close: String(c.close),
+    volume: String(c.volume ?? 0),
+    provider: 'binance',
+    datasetId: ds(c.timestamp),
+    provenance: { source: 'binance', endpoint: 'klines', symbol, timeframe }
+  }));
+}
+
+async function loadCandles(symbol: string, timeframe: string, from: Date, to: Date, fast: number, slow: number) {
+  const ms: Record<string, number> = { 
+    '1m': 60000, '5m': 300000, '15m': 900000, 
+    '1h': 3600000, '4h': 14400000, '1d': 86400000 
+  };
+  const msPerCandle = ms[timeframe] ?? 3600000;
+  const needed = Math.ceil((+to - +from) / msPerCandle) + slow + 10;
+
+  try {
+    const rows = await storage.getMarketBars(symbol, timeframe, needed);
+    if (rows && rows.length >= slow + 10) {
+      logger.info(`Using ${rows.length} candles from database`);
+      return rows.map(r => ({ 
+        timestamp: +new Date(r.timestamp), 
+        open: +r.open, 
+        high: +r.high, 
+        low: +r.low, 
+        close: +r.close, 
+        volume: +(r.volume || 0) 
+      }));
+    }
+  } catch (e) {
+    logger.warn('Failed to load candles from database, falling back to Binance:', { error: String(e) });
+  }
+
+  // Fallback to Binance HTTP
+  logger.info('Loading candles from Binance API');
+  const candles = await getOHLCV(symbol, timeframe, Math.min(1000, needed));
+
+  // Try to persist the fetched candles
+  try {
+    await storage.storeMarketBars(toBarsForDB(symbol, timeframe, candles));
+    logger.info(`Persisted ${candles.length} candles to database`);
+  } catch (e) {
+    logger.warn('Failed to persist candles to database:', { error: String(e) });
+  }
+
+  return candles;
+}
+
 
 interface BacktestParams {
   symbol: string;
@@ -61,16 +122,16 @@ function calculateSMA(prices: number[], period: number): number[] {
 
 export async function runSMABacktest(params: BacktestParams): Promise<BacktestResult> {
   const { symbol, timeframe, from, to, fast, slow } = params;
+  const fromDate = new Date(from);
+  const toDate = new Date(to);
 
   // Validate parameters
   if (fast >= slow) {
     throw new Error('Fast SMA period must be less than slow SMA period');
   }
 
-  // Get historical data from Binance
-  // Note: For now we'll get recent data since Binance free tier has limitations
-  // TODO: Filter by date range when DB storage is implemented
-  const candles = await getOHLCV(symbol, timeframe, 1000);
+  // Get historical data (DB first, then Binance fallback)
+  const candles = await loadCandles(symbol, timeframe, fromDate, toDate, fast, slow);
 
   if (candles.length < slow) {
     throw new Error(`Insufficient data: need at least ${slow} candles, got ${candles.length}`);

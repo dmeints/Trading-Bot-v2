@@ -37,11 +37,11 @@ import { webhookTester } from "./services/webhookTester";
 import { policyEngine } from "./engine/policy";
 import { rlEngine } from "./engine/rl";
 import { lazyInitService } from "./services/lazyInit";
-import { backtestEngine } from "./services/backtestEngine";
+import { runSMABacktest } from "./services/backtestEngine";
 import { ensembleOrchestrator } from "./services/ensembleAI";
 import { env } from "./config/env";
 import { logger } from "./utils/logger";
-import type { RequestWithId } from "./routes/middleware/requestId";
+import type { RequestWithId } from "./middleware/requestId";
 // import { healthRoutes } from "./routes/healthRoutes"; // Fixed: will use dynamic import
 // import { health } from "./routes/health"; // Fixed: health route now imported dynamically
 import { bench } from "./routes/bench";
@@ -73,7 +73,7 @@ import connectorsRouter from './routes/connectors';
 import comprehensiveFeaturesRouter from './routes/comprehensive-features';
 import { transferLearningRouter } from './routes/transferLearning.js';
 import healthRoutes from './routes/health.js';
-import backtestRoutes from './routes/backtestRoutes.js';
+import { registerBacktestRoutes } from './routes/backtestRoutes.js';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Development bypass function
@@ -1434,9 +1434,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Get actual trades for analysis
       const trades = await storage.getUserTrades(userId, 100);
-      const winningTrades = trades.filter(t => parseFloat(t.pnl) > 0);
+      const winningTrades = trades.filter(t => parseFloat(t.pnl || '0') > 0);
       const winRate = trades.length > 0 ? (winningTrades.length / trades.length) * 100 : 0;
-      const avgReturn = trades.length > 0 ? trades.reduce((sum, trade) => sum + parseFloat(trade.pnl), 0) / trades.length : 0;
+      const avgReturn = trades.length > 0 ? trades.reduce((sum, trade) => sum + parseFloat(trade.pnl || '0'), 0) / trades.length : 0;
 
       const analysis = {
         winRate,
@@ -1464,9 +1464,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Generate cumulative P&L data
       let cumulativePnl = 0;
       const performanceData = trades.reverse().map(trade => {
-        cumulativePnl += parseFloat(trade.pnl);
+        cumulativePnl += parseFloat(trade.pnl || '0');
         return {
-          date: new Date(trade.executedAt).toISOString().split('T')[0],
+          date: new Date(trade.executedAt || new Date()).toISOString().split('T')[0],
           cumulative_pnl: cumulativePnl
         };
       });
@@ -1765,7 +1765,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/training-jobs', trainingJobsRouter);
 
   // Trading system routes
-  registerTradingRoutes(app, requireAuth);
+  registerTradingRoutes(app, isAuthenticated);
   app.use('/api/trading', tradingTestRoutes);
 
   // Feedback routes

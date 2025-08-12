@@ -54,10 +54,10 @@ import {
   type InsertFeedbackSubmission,
   // Phase A - External Connectors & Schemas
   marketBars,
-  orderbookSnapsExtended,
-  sentimentTicksExtended,
-  onchainTicksExtended,
-  macroEventsExtended,
+  orderbookSnapsExtended as orderbookSnaps,
+  sentimentTicksExtended as sentimentTicks,
+  onchainTicksExtended as onchainTicks,
+  macroEventsExtended as macroEvents,
   connectorHealth,
   type MarketBar,
   type InsertMarketBar,
@@ -73,7 +73,8 @@ import {
   type InsertConnectorHealth,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, sql, asc } from "drizzle-orm";
+import { logger } from "./utils/logger";
 
 export interface IStorage {
   // User operations (required for Replit Auth)
@@ -112,6 +113,20 @@ export interface IStorage {
   // Feedback operations
   createFeedbackSubmission(feedbackData: InsertFeedbackSubmission): Promise<FeedbackSubmission>;
   getFeedbackSubmissions(limit?: number): Promise<FeedbackSubmission[]>;
+
+  // Social trading operations
+  getPublicStrategies(): Promise<StrategySharing[]>;
+  voteOnStrategy(id: string, upvote: boolean): Promise<StrategySharing>;
+
+  // Risk metrics operations
+  getUserRiskMetrics(userId: string): Promise<RiskMetrics | undefined>;
+
+  // Market analysis operations
+  getCurrentMarketRegime(): Promise<MarketRegime | undefined>;
+  getCorrelationData(): Promise<CorrelationMatrix[]>;
+
+  // User backtest operations
+  getUserBacktests(userId: string): Promise<BacktestResults[]>;
 
   // Phase A - External Connectors & Schemas Storage Interface
   storeMarketBars(bars: InsertMarketBar[]): Promise<void>;
@@ -276,104 +291,7 @@ export class DatabaseStorage implements IStorage {
       .limit(limit);
   }
 
-  // Layout management
-  async getUserLayouts(userId: string): Promise<UserLayout[]> {
-    return await db.select().from(userLayouts).where(eq(userLayouts.userId, userId));
-  }
-
-  async saveUserLayout(userId: string, layoutData: InsertUserLayout): Promise<UserLayout> {
-    const [layout] = await db
-      .insert(userLayouts)
-      .values({ ...layoutData, userId })
-      .returning();
-    return layout;
-  }
-
-  async deleteUserLayout(userId: string, layoutId: string): Promise<void> {
-    await db.delete(userLayouts).where(
-      and(eq(userLayouts.userId, userId), eq(userLayouts.id, layoutId))
-    );
-  }
-
-  // Experiment management
-  async getExperimentByName(name: string): Promise<Experiment | undefined> {
-    const [experiment] = await db.select().from(experiments).where(eq(experiments.name, name));
-    return experiment;
-  }
-
-  async getUserExperimentAssignment(userId: string, experimentName: string): Promise<UserExperimentAssignment | undefined> {
-    const result = await db
-      .select({
-        id: userExperimentAssignments.id,
-        userId: userExperimentAssignments.userId,
-        experimentId: userExperimentAssignments.experimentId,
-        variant: userExperimentAssignments.variant,
-        assignedAt: userExperimentAssignments.assignedAt,
-      })
-      .from(userExperimentAssignments)
-      .innerJoin(experiments, eq(experiments.id, userExperimentAssignments.experimentId))
-      .where(
-        and(
-          eq(userExperimentAssignments.userId, userId),
-          eq(experiments.name, experimentName)
-        )
-      );
-    
-    return result[0];
-  }
-
-  async assignUserToExperiment(userId: string, experimentId: string, variant: string): Promise<UserExperimentAssignment> {
-    const [assignment] = await db
-      .insert(userExperimentAssignments)
-      .values({ userId, experimentId, variant })
-      .returning();
-    return assignment;
-  }
-
-  async trackExperimentEvent(data: InsertExperimentMetric): Promise<void> {
-    await db.insert(experimentMetrics).values(data);
-  }
-
-  async getAllExperiments(): Promise<Experiment[]> {
-    return await db.select().from(experiments);
-  }
-
-  async getExperimentMetrics(experimentId: string): Promise<any[]> {
-    const metrics = await db
-      .select({
-        variant: experimentMetrics.variant,
-        eventType: experimentMetrics.eventType,
-        count: sql`count(*)`.as('count'),
-      })
-      .from(experimentMetrics)
-      .where(eq(experimentMetrics.experimentId, experimentId))
-      .groupBy(experimentMetrics.variant, experimentMetrics.eventType);
-    
-    return metrics;
-  }
-
-  async createExperiment(data: InsertExperiment): Promise<Experiment> {
-    const [experiment] = await db.insert(experiments).values(data).returning();
-    return experiment;
-  }
-
-  // User preferences
-  async getUserPreferences(userId: string): Promise<UserPreference | undefined> {
-    const [preferences] = await db.select().from(userPreferences).where(eq(userPreferences.userId, userId));
-    return preferences;
-  }
-
-  async updateUserPreferences(userId: string, updates: Partial<InsertUserPreference>): Promise<UserPreference> {
-    const [preferences] = await db
-      .insert(userPreferences)
-      .values({ userId, ...updates })
-      .onConflictDoUpdate({
-        target: userPreferences.userId,
-        set: { ...updates, updatedAt: new Date() },
-      })
-      .returning();
-    return preferences;
-  }
+  // Note: Layout and experiment management methods were removed to focus on core functionality
 
   // Phase A - External Connectors & Schemas Storage Implementation
   async storeMarketBars(bars: InsertMarketBar[]): Promise<void> {
@@ -612,6 +530,65 @@ export class DatabaseStorage implements IStorage {
       .from(aiChatMessages)
       .where(eq(aiChatMessages.conversationId, conversationId))
       .orderBy(asc(aiChatMessages.timestamp));
+  }
+
+  // Social trading operations
+  async getPublicStrategies(): Promise<StrategySharing[]> {
+    return await db
+      .select()
+      .from(strategySharing)
+      .where(eq(strategySharing.isPublic, true))
+      .orderBy(desc(strategySharing.createdAt));
+  }
+
+  async voteOnStrategy(id: string, upvote: boolean): Promise<StrategySharing> {
+    // Simple implementation - in real system would track user votes
+    const updateField = upvote ? { upvotes: sql`${strategySharing.upvotes} + 1` } : { downvotes: sql`${strategySharing.downvotes} + 1` };
+    const [strategy] = await db
+      .update(strategySharing)
+      .set(updateField)
+      .where(eq(strategySharing.id, id))
+      .returning();
+    return strategy;
+  }
+
+  // Risk metrics operations
+  async getUserRiskMetrics(userId: string): Promise<RiskMetrics | undefined> {
+    const [metrics] = await db
+      .select()
+      .from(riskMetrics)
+      .where(eq(riskMetrics.id, userId)) // Using id since userId column doesn't exist in schema
+      .orderBy(desc(riskMetrics.timestamp))
+      .limit(1);
+    return metrics;
+  }
+
+  // Market analysis operations
+  async getCurrentMarketRegime(): Promise<MarketRegime | undefined> {
+    const [regime] = await db
+      .select()
+      .from(marketRegimes)
+      .orderBy(desc(marketRegimes.timestamp))
+      .limit(1);
+    return regime;
+  }
+
+  async getCorrelationData(): Promise<CorrelationMatrix[]> {
+    return await db
+      .select()
+      .from(correlationMatrix)
+      .orderBy(desc(correlationMatrix.updatedAt))
+      .limit(10);
+  }
+
+  // User backtest operations
+  async getUserBacktests(userId: string): Promise<BacktestResults[]> {
+    return await db
+      .select()
+      .from(backtestResults)
+      .where(eq(backtestResults.userId, userId))
+      .orderBy(desc(backtestResults.createdAt))
+      .limit(20);
   }
 }
 

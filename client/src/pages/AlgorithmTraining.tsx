@@ -83,37 +83,40 @@ export default function AlgorithmTraining() {
 
   // Fetch training sessions
   const { data: sessionsData, isLoading: sessionsLoading } = useQuery({
-    queryKey: ['/api/training/sessions'],
+    queryKey: ['/api/rl-training/status'],
     refetchInterval: 5000, // Refresh every 5 seconds
   });
 
   // Fetch backtest results
   const { data: backtestsData, isLoading: backtestsLoading } = useQuery({
-    queryKey: ['/api/training/backtests'],
+    queryKey: ['/api/backtests/history'],
     refetchInterval: 10000, // Refresh every 10 seconds
   });
 
   // Check if training is active
   const { data: trainingStatus } = useQuery({
-    queryKey: ['/api/training/is-training'],
+    queryKey: ['/api/rl-training/status'],
     refetchInterval: 2000, // Refresh every 2 seconds
   });
 
   // Start training mutation
   const startTraining = useMutation({
     mutationFn: async (config: any) => {
-      const response = await fetch('/api/training/start', {
+      const response = await fetch('/api/rl-training/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config),
+        body: JSON.stringify({
+          maxEpisodes: config.epochs || 100,
+          convergenceThreshold: 0.02,
+          parametersToOptimize: ['volPctBreakout', 'socialGo', 'costCapBps', 'baseRiskPct']
+        }),
       });
       
       if (!response.ok) throw new Error('Failed to start training');
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/training/sessions'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/training/is-training'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/rl-training/status'] });
       toast({
         title: "Training Started",
         description: "Algorithm training has been initiated successfully.",
@@ -151,17 +154,22 @@ export default function AlgorithmTraining() {
   // Run backtest mutation
   const runBacktest = useMutation({
     mutationFn: async (config: any) => {
-      const response = await fetch('/api/training/backtest', {
+      const response = await fetch('/api/backtests/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config),
+        body: JSON.stringify({
+          strategyId: config.strategyId,
+          startDate: config.startDate,
+          endDate: config.endDate,
+          initialCapital: config.initialCapital
+        }),
       });
       
       if (!response.ok) throw new Error('Failed to run backtest');
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/training/backtests'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/backtests/history'] });
       toast({
         title: "Backtest Completed",
         description: "Strategy backtesting has been completed successfully.",
@@ -176,9 +184,9 @@ export default function AlgorithmTraining() {
     },
   });
 
-  const sessions: TrainingSession[] = sessionsData?.data?.sessions || [];
-  const backtests: BacktestResult[] = backtestsData?.data?.backtests || [];
-  const isTrainingActive = trainingStatus?.data?.isTraining || false;
+  const sessions: TrainingSession[] = (sessionsData as any)?.data?.training?.sessions || [];
+  const backtests: BacktestResult[] = (backtestsData as any)?.data || [];
+  const isTrainingActive = (trainingStatus as any)?.data?.training?.isTraining || false;
 
   const handleStartTraining = () => {
     startTraining.mutate({
@@ -519,9 +527,98 @@ export default function AlgorithmTraining() {
         <TabsContent value="optimization" className="space-y-4">
           <Card className="p-4">
             <h3 className="font-semibold mb-4">Hyperparameter Optimization</h3>
-            <div className="text-center text-muted-foreground py-8">
-              <Settings className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>Advanced hyperparameter optimization coming soon</p>
+            
+            {/* Current optimization status */}
+            <div className="mb-6">
+              <h4 className="text-sm font-medium mb-3">Recent Optimizations</h4>
+              {(trainingStatus as any)?.data?.recentOptimizations?.length > 0 ? (
+                <div className="space-y-3">
+                  {((trainingStatus as any).data.recentOptimizations || []).map((opt: any, index: number) => (
+                    <div key={index} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                      <div>
+                        <div className="text-sm font-medium">{opt.parameter || 'Parameter'}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {new Date(opt.timestamp || Date.now()).toLocaleString()}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm">
+                          {opt.oldValue} → {opt.newValue}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Performance: {opt.performance ? `${(opt.performance * 100).toFixed(1)}%` : 'N/A'}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center text-muted-foreground py-6">
+                  <Settings className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">No optimization history available</p>
+                  <p className="text-xs">Start a training session to see optimization results</p>
+                </div>
+              )}
+            </div>
+
+            {/* Current algorithm configuration */}
+            <div className="mb-6">
+              <h4 className="text-sm font-medium mb-3">Current Algorithm Configuration</h4>
+              {(trainingStatus as any)?.data?.currentAlgorithmConfig ? (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {Object.entries((trainingStatus as any).data.currentAlgorithmConfig).map(([key, value]) => (
+                    <div key={key} className="p-3 bg-muted rounded-lg">
+                      <div className="text-xs text-muted-foreground">{key}</div>
+                      <div className="text-sm font-medium">{String(value)}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center text-muted-foreground py-4">
+                  <p className="text-sm">Configuration loading...</p>
+                </div>
+              )}
+            </div>
+
+            {/* Manual parameter adjustment */}
+            <div>
+              <h4 className="text-sm font-medium mb-3">Manual Parameter Adjustment</h4>
+              <div className="p-4 border rounded-lg">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <Label htmlFor="param-select" className="text-xs">Parameter</Label>
+                    <select 
+                      id="param-select"
+                      className="w-full mt-1 p-2 border rounded text-sm"
+                      defaultValue=""
+                    >
+                      <option value="">Select parameter</option>
+                      <option value="volPctBreakout">Volume Breakout %</option>
+                      <option value="socialGo">Social Sentiment Threshold</option>
+                      <option value="costCapBps">Cost Cap (BPS)</option>
+                      <option value="baseRiskPct">Base Risk %</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label htmlFor="param-value" className="text-xs">New Value</Label>
+                    <Input 
+                      id="param-value"
+                      type="number" 
+                      step="0.01"
+                      placeholder="Enter new value"
+                      className="mt-1"
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <Button size="sm" className="w-full">
+                      Update Parameter
+                    </Button>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Updates will take effect immediately and be included in the next training cycle
+                </p>
+              </div>
             </div>
           </Card>
         </TabsContent>
@@ -534,14 +631,14 @@ export default function AlgorithmTraining() {
                 <div className="text-sm text-muted-foreground">Total Sessions</div>
                 <Brain className="w-4 h-4 text-blue-600" />
               </div>
-              <div className="text-2xl font-bold mt-2">{sessionsData?.data?.summary?.total || 0}</div>
+              <div className="text-2xl font-bold mt-2">{(sessionsData as any)?.data?.summary?.total || 0}</div>
             </Card>
             <Card className="p-4">
               <div className="flex items-center justify-between">
                 <div className="text-sm text-muted-foreground">Completed</div>
                 <CheckCircle className="w-4 h-4 text-green-600" />
               </div>
-              <div className="text-2xl font-bold mt-2 text-green-600">{sessionsData?.data?.summary?.completed || 0}</div>
+              <div className="text-2xl font-bold mt-2 text-green-600">{(sessionsData as any)?.data?.summary?.completed || 0}</div>
             </Card>
             <Card className="p-4">
               <div className="flex items-center justify-between">
@@ -549,8 +646,8 @@ export default function AlgorithmTraining() {
                 <TrendingUp className="w-4 h-4 text-blue-600" />
               </div>
               <div className="text-2xl font-bold mt-2 text-blue-600">
-                {backtestsData?.data?.summary?.avgReturn ? 
-                  (backtestsData.data.summary.avgReturn * 100).toFixed(1) + '%' : '0%'}
+                {(backtestsData as any)?.data?.summary?.avgReturn ? 
+                  ((backtestsData as any).data.summary.avgReturn * 100).toFixed(1) + '%' : '0%'}
               </div>
             </Card>
             <Card className="p-4">
@@ -559,8 +656,8 @@ export default function AlgorithmTraining() {
                 <Target className="w-4 h-4 text-green-600" />
               </div>
               <div className="text-2xl font-bold mt-2 text-green-600">
-                {backtestsData?.data?.summary?.bestReturn ? 
-                  (backtestsData.data.summary.bestReturn * 100).toFixed(1) + '%' : '0%'}
+                {(backtestsData as any)?.data?.summary?.bestReturn ? 
+                  ((backtestsData as any).data.summary.bestReturn * 100).toFixed(1) + '%' : '0%'}
               </div>
             </Card>
           </div>

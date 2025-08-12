@@ -16,6 +16,7 @@ import { universalCommand } from './commands/universal';
 import { aiChat } from './commands/aiChat';
 import { optuna } from './commands/optuna';
 import { scenarioCommand } from './commands/scenarioTest';
+import { registerConformalTuningCommands } from './commands/conformalTuning';
 
 const program = new Command();
 
@@ -35,6 +36,10 @@ program.addCommand(universalCommand);
 program.addCommand(aiChat);
 program.addCommand(optuna);
 program.addCommand(scenarioCommand);
+
+// Register conformal tuning commands in CLI program
+program.addCommand(registerConformalTuningCommands(program));
+
 
 // Parse command line arguments
 program.parse();

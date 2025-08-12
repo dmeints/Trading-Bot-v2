@@ -6,9 +6,10 @@ import { registerRoutes } from "./routes";
 import { env } from "./config/env";
 import { logger } from "./utils/logger";
 import { createTradingConformalPredictor } from './brain/conformal';
-import { conformalRouter } from './routes/stevieCore';
-import { metaBrainRouter } from './routes/metaBrain';
-import scenarioCoverageRoutes from './routes/scenarioCoverage';
+import stevieCore from './routes/stevieCore';
+import metaBrainRouter from './routes/metaBrain';
+import scenarioCoverageRouter from './routes/scenarioCoverage';
+import conformalTuningRouter from './routes/conformalTuning';
 
 const app = express();
 
@@ -108,6 +109,9 @@ app.use((req, res, next) => {
 (global as any).conformalPredictor = createTradingConformalPredictor();
 logger.info('[Server] Initialized global conformal predictor for uncertainty quantification');
 
-app.use('/api/uncertainty', conformalRouter);
+app.use('/api/uncertainty', stevieCore);
 app.use('/api/meta-brain', metaBrainRouter);
-app.use('/api/scenario-coverage', scenarioCoverageRoutes);
+app.use('/api/scenarios', scenarioCoverageRouter);
+app.use('/api/conformal-tuning', conformalTuningRouter);
+
+// Mount other routers

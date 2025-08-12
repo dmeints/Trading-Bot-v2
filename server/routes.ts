@@ -72,6 +72,8 @@ import externalConnectorsRouter from './routes/externalConnectors';
 import connectorsRouter from './routes/connectors';
 import comprehensiveFeaturesRouter from './routes/comprehensive-features';
 import { transferLearningRouter } from './routes/transferLearning.js';
+import healthRoutes from './routes/health.js';
+import backtestRoutes from './routes/backtestRoutes.js';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Development bypass function
@@ -194,7 +196,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/analytics', async (req: any, res) => {
     try {
       const limit = parseInt(req.query.limit as string) || 100;
-      
+
       // Generate sample analytics data for demonstration
       const sampleData = Array.from({ length: Math.min(limit, 50) }, (_, i) => ({
         timestamp: new Date(Date.now() - i * 10 * 60 * 1000).toISOString(),

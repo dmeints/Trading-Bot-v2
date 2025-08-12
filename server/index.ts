@@ -1,4 +1,3 @@
-
 import express from "express";
 // @ts-ignore - Missing type definitions
 import compression from "compression";
@@ -105,8 +104,13 @@ app.use((req, res, next) => {
   // It is the only port that is not firewalled.
   const port = env.PORT;
   server.listen(port, "0.0.0.0", () => {
-    log(`serving on port ${port}`);
-    log('Server started successfully - AI services will initialize on first request');
+    logger.info(`[Server] HTTP server listening on port ${port}`);
+    logger.info(`[Server] WebSocket server ready`);
+    logger.info(`[Server] Environment: ${process.env.NODE_ENV || 'development'}`);
+
+    // Initialize price streaming
+    const { priceStream } = await import('./services/priceStream.js');
+    priceStream.start();
   });
 })();
 

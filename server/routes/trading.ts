@@ -369,4 +369,135 @@ router.post('/risk', async (req, res) => {
   }
 });
 
+// Paper trading endpoints
+router.post('/paper/order', async (req, res) => {
+  try {
+    const { symbol, side, size } = req.body;
+    
+    // Validation
+    if (!symbol || !side || !size) {
+      return res.status(400).json({ error: 'Missing required fields: symbol, side, size' });
+    }
+    
+    if (side !== 'buy' && side !== 'sell') {
+      return res.status(400).json({ error: 'Side must be "buy" or "sell"' });
+    }
+    
+    if (size <= 0) {
+      return res.status(400).json({ error: 'Size must be positive' });
+    }
+    
+    // Get current price
+    let price = 0;
+    try {
+      const { priceStream } = await import('../services/priceStream.js');
+      price = priceStream.getLastPrice();
+      
+      // Fallback to OHLCV if no live price
+      if (price === 0) {
+        const { getOHLCV } = await import('../services/exchanges/binance.js');
+        const candles = await getOHLCV(symbol, '1m', 1);
+        if (candles.length > 0) {
+          price = candles[0].close;
+        }
+      }
+    } catch (e) {
+      logger.warn('[Trading] Failed to get live price, using fallback');
+      price = 50000; // Fallback price
+    }
+    
+    if (price === 0) {
+      return res.status(400).json({ error: 'Unable to determine current price' });
+    }
+    
+    // Check notional cap
+    const notional = size * price;
+    if (notional > 100000) {
+      return res.status(400).json({ error: 'Notional value exceeds $100k limit' });
+    }
+    
+    // Create paper trade
+    const trade = {
+      id: `paper_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      symbol,
+      side,
+      size,
+      price,
+      notional,
+      timestamp: new Date().toISOString(),
+      status: 'filled'
+    };
+    
+    // Store in memory for now (should be DB in real implementation)
+    if (!global.paperTrades) global.paperTrades = [];
+    if (!global.paperPositions) global.paperPositions = new Map();
+    
+    global.paperTrades.push(trade);
+    
+    // Update position
+    const positionKey = symbol;
+    const currentPosition = global.paperPositions.get(positionKey) || { symbol, size: 0, avgPrice: 0 };
+    
+    if (side === 'buy') {
+      const newSize = currentPosition.size + size;
+      const newAvgPrice = newSize > 0 ? 
+        ((currentPosition.size * currentPosition.avgPrice) + (size * price)) / newSize : 0;
+      global.paperPositions.set(positionKey, { symbol, size: newSize, avgPrice: newAvgPrice });
+    } else {
+      const newSize = Math.max(0, currentPosition.size - size);
+      global.paperPositions.set(positionKey, { symbol, size: newSize, avgPrice: currentPosition.avgPrice });
+    }
+    
+    logger.info('[Trading] Paper order executed:', trade);
+    
+    res.json({
+      success: true,
+      trade,
+      position: global.paperPositions.get(positionKey)
+    });
+    
+  } catch (error) {
+    logger.error('[Trading] Paper order failed:', error);
+    res.status(500).json({ error: 'Failed to execute paper order' });
+  }
+});
+
+router.get('/positions', async (req, res) => {
+  try {
+    if (!global.paperPositions) global.paperPositions = new Map();
+    
+    const positions = Array.from(global.paperPositions.values())
+      .filter(pos => pos.size > 0);
+    
+    res.json({
+      success: true,
+      positions,
+      count: positions.length
+    });
+  } catch (error) {
+    logger.error('[Trading] Failed to get positions:', error);
+    res.status(500).json({ error: 'Failed to get positions' });
+  }
+});
+
+router.get('/trades', async (req, res) => {
+  try {
+    if (!global.paperTrades) global.paperTrades = [];
+    
+    const limit = parseInt(req.query.limit as string) || 50;
+    const trades = global.paperTrades
+      .slice(-limit)
+      .reverse();
+    
+    res.json({
+      success: true,
+      trades,
+      count: trades.length
+    });
+  } catch (error) {
+    logger.error('[Trading] Failed to get trades:', error);
+    res.status(500).json({ error: 'Failed to get trades' });
+  }
+});
+
 export default router;

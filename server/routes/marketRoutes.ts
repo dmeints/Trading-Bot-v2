@@ -22,40 +22,40 @@ export function registerMarketRoutes(app: Express, requireAuth: any) {
       const symbol = req.query.symbol as string || 'BTC/USD';
       const timeframe = req.query.timeframe as string || '1H';
       const limit = parseInt(req.query.limit as string) || 100;
-      
+
       // Get current price as base
       const currentPrice = await marketDataService.getPrice(symbol.split('/')[0]);
-      
+
       // Generate realistic OHLCV data
       const candles = [];
       const timeframeMs = getTimeframeMilliseconds(timeframe);
       const now = Date.now();
       let basePrice = currentPrice * 0.995;
-      
+
       for (let i = limit - 1; i >= 0; i--) {
         const timestamp = now - (i * timeframeMs);
         const volatility = 0.002; // 0.2% volatility per candle
         const trend = 0.0001; // Small upward trend
         const change = (Math.random() - 0.5) * volatility + trend;
-        
+
         const open = basePrice;
         const close = open * (1 + change);
         const high = Math.max(open, close) * (1 + Math.random() * 0.001);
         const low = Math.min(open, close) * (1 - Math.random() * 0.001);
         const volume = 50 + Math.random() * 100;
-        
+
         candles.push({
           timestamp,
           open,
-          high, 
+          high,
           low,
           close,
           volume
         });
-        
+
         basePrice = close;
       }
-      
+
       res.json({ success: true, data: candles, timestamp: new Date().toISOString() });
     } catch (error) {
       console.error('OHLCV fetch error:', error);
@@ -108,7 +108,7 @@ export function registerMarketRoutes(app: Express, requireAuth: any) {
           priceEffect: { min: -15, max: -2 }
         }
       ];
-      
+
       res.json({ success: true, data: templates, timestamp: new Date().toISOString() });
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch event templates' });
@@ -120,11 +120,11 @@ export function registerMarketRoutes(app: Express, requireAuth: any) {
     try {
       const symbol = req.params.symbol || 'BTC';
       const currentPrice = await marketDataService.getPrice(symbol);
-      
+
       // Generate realistic order book depth
       const bids = [];
       const asks = [];
-      
+
       // Generate bids (below current price)
       for (let i = 0; i < 20; i++) {
         const priceLevel = currentPrice * (1 - (i + 1) * 0.001);
@@ -135,7 +135,7 @@ export function registerMarketRoutes(app: Express, requireAuth: any) {
           total: bids.reduce((sum, bid) => sum + bid.size, 0) + size
         });
       }
-      
+
       // Generate asks (above current price)
       for (let i = 0; i < 20; i++) {
         const priceLevel = currentPrice * (1 + (i + 1) * 0.001);
@@ -146,9 +146,9 @@ export function registerMarketRoutes(app: Express, requireAuth: any) {
           total: asks.reduce((sum, ask) => sum + ask.size, 0) + size
         });
       }
-      
+
       const spread = asks[0].price - bids[0].price;
-      
+
       res.json({
         success: true,
         data: {

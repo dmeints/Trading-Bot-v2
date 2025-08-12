@@ -405,7 +405,7 @@ export function CollaborativeIntelligence() {
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-lg font-semibold text-green-600">
+                        <div className="text-lg font-semibold text-green-600" data-testid="badge-buy">
                           {(trader.tradingScore * 100).toFixed(0)}
                         </div>
                         <div className="text-xs text-gray-500">Trading Score</div>
@@ -427,7 +427,7 @@ export function CollaborativeIntelligence() {
               <CardContent>
                 <div className="space-y-4">
                   <div className="text-center">
-                    <div className="text-3xl font-bold text-green-600">Bullish</div>
+                    <div className="text-3xl font-bold text-green-600" data-testid="badge-buy">Bullish</div>
                     <div className="text-sm text-gray-600">Overall Market Sentiment</div>
                   </div>
                   <Progress value={72} className="h-3" />

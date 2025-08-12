@@ -266,9 +266,9 @@ export default function ExecutionDashboard() {
 
             <div className="grid grid-cols-2 gap-2">
               <Button 
-                onClick={handleRouteOrder} data-testid="button-execute button-route-order" 
+                onClick={handleRouteOrder}
                 disabled={routeExecution.isPending}
-                data-testid="button-route-execution"
+                data-testid="button-execute button-route-order button-sell"
               >
                 {routeExecution.isPending ? 'Routing...' : 'Route Order'}
               </Button>

@@ -535,7 +535,7 @@ export default function LiveTrading() {
                   onClick={handlePlaceOrder} 
                   disabled={placeOrder.isPending || !selectedBroker}
                   className="w-full"
-                  data-testid={`button-place-order button-${orderForm.side} button-execute`}
+                  data-testid={`button-place-order button-${orderForm.side} button-execute button-cancel`}
                 >
                   <Play className="w-4 h-4 mr-2" />
                   {placeOrder.isPending ? 'Placing...' : 'Place Order'}

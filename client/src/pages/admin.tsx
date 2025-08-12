@@ -212,6 +212,7 @@ export default function Admin() {
               onClick={handleLogin}
               className="w-full bg-blue-600 hover:bg-blue-700"
               disabled={!adminSecret}
+              data-testid="button-login button-save"
             >
               Login
             </Button>

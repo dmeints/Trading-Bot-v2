@@ -540,6 +540,7 @@ export default function SystemDashboard() {
                             variant="outline"
                             onClick={() => resolveAlert.mutate(alert.id)}
                             disabled={resolveAlert.isPending}
+                            data-testid="button-resolve button-execute"
                           >
                             Resolve
                           </Button>

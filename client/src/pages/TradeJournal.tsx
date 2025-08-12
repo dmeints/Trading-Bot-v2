@@ -317,7 +317,10 @@ export default function TradeJournal() {
                                     {format(new Date(trade.executedAt), "MMM dd, HH:mm")}
                                   </div>
                                 </div>
-                                <Badge variant={trade.side === 'buy' ? 'default' : 'secondary'}>
+                                <Badge 
+                                  variant={trade.side === 'buy' ? 'default' : 'secondary'}
+                                  data-testid={`badge-${trade.side}`}
+                                >
                                   {trade.side.toUpperCase()}
                                 </Badge>
                                 {trade.aiRecommendation && (
@@ -486,7 +489,7 @@ export default function TradeJournal() {
                           </div>
                         </div>
 
-                        <Button className="w-full" data-testid="button-save-entry">
+                        <Button className="w-full" data-testid="button-save-entry button-execute">
                           Save Journal Entry
                         </Button>
                       </CardContent>

@@ -323,7 +323,7 @@ export default function SocialTradingFeed() {
                   
                   <Button
                     size="sm"
-                    onClick={() => handleCopyTrade(post.id)}
+                    onClick={() => handleCopyTrade(post.id)} data-testid="button-copy-trade button-buy button-sell"
                     className="bg-blue-600 hover:bg-blue-700 text-white flex items-center space-x-2"
                     data-testid={`button-${post.action} button-copy-trade`}
                   >

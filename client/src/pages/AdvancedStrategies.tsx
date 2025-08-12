@@ -263,19 +263,19 @@ export default function AdvancedStrategies() {
               </div>
               <div className="text-2xl font-bold mt-2">{signalSummary?.total || 0}</div>
             </Card>
-            <Card className="p-4">
+            <Card className="p-4" data-testid="card-buy-signals">
               <div className="flex items-center justify-between">
                 <div className="text-sm text-muted-foreground">Buy Signals</div>
-                <TrendingUp className="w-4 h-4 text-green-600" />
+                <TrendingUp className="w-4 h-4 text-green-600" data-testid="icon-buy" />
               </div>
-              <div className="text-2xl font-bold mt-2 text-green-600">{signalSummary?.buy || 0}</div>
+              <div className="text-2xl font-bold mt-2 text-green-600" data-testid="count-buy">{signalSummary?.buy || 0}</div>
             </Card>
-            <Card className="p-4">
+            <Card className="p-4" data-testid="card-sell-signals">
               <div className="flex items-center justify-between">
                 <div className="text-sm text-muted-foreground">Sell Signals</div>
-                <TrendingDown className="w-4 h-4 text-red-600" />
+                <TrendingDown className="w-4 h-4 text-red-600" data-testid="icon-sell" />
               </div>
-              <div className="text-2xl font-bold mt-2 text-red-600">{signalSummary?.sell || 0}</div>
+              <div className="text-2xl font-bold mt-2 text-red-600" data-testid="count-sell">{signalSummary?.sell || 0}</div>
             </Card>
             <Card className="p-4">
               <div className="flex items-center justify-between">

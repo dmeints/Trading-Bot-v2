@@ -147,11 +147,11 @@ export function ExecutionRouter({ symbol, orderSize, side, onExecutionChange }: 
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="auto">Auto (Recommended)</SelectItem>
-                    <SelectItem value="maker">Maker (Patient)</SelectItem>
-                    <SelectItem value="IOC">IOC (Immediate)</SelectItem>
-                    <SelectItem value="FOK">FOK (All or Nothing)</SelectItem>
-                    <SelectItem value="adaptive">Adaptive</SelectItem>
+                    <SelectItem value="auto" data-testid="option-auto">Auto (Recommended)</SelectItem>
+                    <SelectItem value="maker" data-testid="option-buy" data-testid="option-maker">Maker (Patient)</SelectItem>
+                    <SelectItem value="IOC" data-testid="option-sell" data-testid="option-ioc">IOC (Immediate)</SelectItem>
+                    <SelectItem value="FOK" data-testid="option-fok">FOK (All or Nothing)</SelectItem>
+                    <SelectItem value="adaptive" data-testid="option-adaptive">Adaptive</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

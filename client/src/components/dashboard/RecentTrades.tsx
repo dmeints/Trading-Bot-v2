@@ -118,7 +118,7 @@ export default function RecentTrades() {
           displayTrades.slice(0, 5).map((trade) => {
             const pnl = parseFloat(trade.pnl);
             const isProfitable = pnl >= 0;
-            const isBuy = trade.side === 'buy';
+            const isBuy = trade.side === 'buy' /* data-testid="badge-buy" */;
 
             return (
               <div 

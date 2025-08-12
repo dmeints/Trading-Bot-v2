@@ -1,46 +1,22 @@
+import { spawn } from 'child_process';
+import path from 'path';
 
-const { spawn } = require('child_process');
-const path = require('path');
+console.log('🚀 Starting Skippy Trading Platform...');
 
-console.log('🚀 Starting Skippy AI Trading Platform...\n');
-
-// Start server
-const server = spawn('npx', ['tsx', 'server/index.ts'], {
-  stdio: ['inherit', 'pipe', 'pipe'],
-  env: {
-    ...process.env,
-    NODE_ENV: 'development',
-    PORT: '5000',
-    DATABASE_URL: process.env.DATABASE_URL || 'postgresql://localhost:5432/skippy_dev',
-    SESSION_SECRET: process.env.SESSION_SECRET || 'dev-session-secret-change-in-production',
-    REPLIT_DOMAINS: process.env.REPLIT_DOMAINS || 'replit.dev,replit.com'
-  }
+// Start both server and client concurrently
+const server = spawn('npm', ['run', 'server'], {
+  stdio: 'inherit',
+  shell: true,
+  cwd: process.cwd()
 });
 
-// Start client
 const client = spawn('npm', ['run', 'client'], {
-  stdio: ['inherit', 'pipe', 'pipe']
+  stdio: 'inherit',
+  shell: true,
+  cwd: process.cwd()
 });
 
-// Handle server output
-server.stdout.on('data', (data) => {
-  process.stdout.write(`[SERVER] ${data}`);
-});
-
-server.stderr.on('data', (data) => {
-  process.stderr.write(`[SERVER] ${data}`);
-});
-
-// Handle client output  
-client.stdout.on('data', (data) => {
-  process.stdout.write(`[CLIENT] ${data}`);
-});
-
-client.stderr.on('data', (data) => {
-  process.stderr.write(`[CLIENT] ${data}`);
-});
-
-// Handle process termination
+// Handle process cleanup
 process.on('SIGINT', () => {
   console.log('\n🛑 Shutting down Skippy...');
   server.kill('SIGTERM');
@@ -48,16 +24,12 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 
-server.on('close', (code) => {
-  if (code !== 0) {
-    console.error(`❌ Server exited with code ${code}`);
-  }
+server.on('error', (err) => {
+  console.error('❌ Server error:', err);
 });
 
-client.on('close', (code) => {
-  if (code !== 0) {
-    console.error(`❌ Client exited with code ${code}`);
-  }
+client.on('error', (err) => {
+  console.error('❌ Client error:', err);
 });
 
-console.log('✅ Both server and client starting...');
+console.log('✅ Skippy is starting up...');

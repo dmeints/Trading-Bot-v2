@@ -8,6 +8,7 @@ import { Suspense, lazy } from "react";
 import { IntlProvider } from "@/providers/IntlProvider";
 import { SkipLink } from "@/components/accessibility/SkipLink";
 import { LiveRegion } from "@/components/accessibility/LiveRegion";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 // Lazy load pages for better performance
 const Landing = lazy(() => import("@/pages/landing"));
@@ -109,7 +110,9 @@ function App() {
           <SkipLink />
           <LiveRegion message="" />
           <Toaster />
-          <Router />
+          <ErrorBoundary>
+            <Router />
+          </ErrorBoundary>
         </IntlProvider>
       </TooltipProvider>
     </QueryClientProvider>

@@ -19,7 +19,7 @@ externalPort = 80
 PORT = "5000"
 
 [workflows]
-runButton = "Start Skippy Fixed"
+runButton = "Start Skippy Fixed v2"
 
 [[workflows.workflow]]
 name = "Project"
@@ -68,6 +68,15 @@ args = "node start-dev.js"
 
 [[workflows.workflow]]
 name = "Start Skippy Fixed"
+author = 43736216
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "node start-dev.js"
+
+[[workflows.workflow]]
+name = "Start Skippy Fixed v2"
 author = 43736216
 mode = "sequential"
 

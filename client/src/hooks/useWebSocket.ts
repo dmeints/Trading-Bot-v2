@@ -81,7 +81,7 @@ export function useWebSocket({
           );
 
           console.log(`WebSocket reconnecting in ${delay}ms (attempt ${reconnectAttempt + 1}/${maxReconnectAttempts})`);
-          
+
           reconnectTimeoutRef.current = setTimeout(() => {
             setReconnectAttempt(prev => prev + 1);
             setReadyState(WebSocket.CONNECTING);
@@ -97,7 +97,7 @@ export function useWebSocket({
 
   const disconnect = () => {
     shouldReconnectRef.current = false;
-    
+
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;

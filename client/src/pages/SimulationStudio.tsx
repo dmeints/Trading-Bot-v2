@@ -57,7 +57,7 @@ interface SyntheticEvent {
   duration: number;
 }
 
-export default function SimulationStudio() {
+function SimulationStudioContent() {
   const { isAuthenticated, isLoading } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -697,6 +697,34 @@ export default function SimulationStudio() {
           </main>
         </div>
       </div>
+    </ErrorBoundary>
+  );
+}
+
+export default function SimulationStudio() {
+  return (
+    <ErrorBoundary
+      enableRetry={true}
+      fallback={(error, retry) => (
+        <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
+          <div className="text-center max-w-md">
+            <h1 className="text-xl font-bold text-white mb-4">
+              Simulation Studio Error
+            </h1>
+            <p className="text-gray-400 mb-6">
+              {error.message}
+            </p>
+            <button
+              onClick={retry}
+              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      )}
+    >
+      <SimulationStudioContent />
     </ErrorBoundary>
   );
 }

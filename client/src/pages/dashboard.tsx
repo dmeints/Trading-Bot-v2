@@ -10,8 +10,11 @@ import MarketOverview from '@/components/dashboard/MarketOverview';
 import TradingChart from '@/components/trading/TradingChart';
 import QuickTradePanel from '@/components/trading/QuickTradePanel';
 import AIRecommendations from '@/components/trading/AIRecommendations';
-import PortfolioSummary from '@/components/dashboard/PortfolioSummary';
-import RecentTrades from '@/components/dashboard/RecentTrades';
+import { PortfolioSummary } from '@/components/dashboard/PortfolioSummary';
+import { RecentTrades } from '@/components/dashboard/RecentTrades';
+import { RouterCard } from "@/components/dashboard/RouterCard";
+import { RegimeCard } from "@/components/dashboard/RegimeCard";
+import { RiskSafetyCard } from "@/components/dashboard/RiskSafetyCard";
 import { AdaptiveCard } from '@/components/ui/adaptive-card';
 import { StatusIndicator, DataFreshness, TradingStatus } from '@/components/ui/status-indicator';
 import { FeedbackWidget } from '@/components/ui/feedback-widget';
@@ -161,15 +164,15 @@ export default function Dashboard() {
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-white">
       <TopNavigation />
-      
+
       <div className="flex flex-1 min-h-0">
         <SidebarNavigation />
-        
+
         <main className="flex-1 lg:ml-64 min-h-0">
           <div className="h-full flex flex-col">
             <div className="flex-1 min-h-0 overflow-auto p-4 pt-20 lg:pt-6">
               <div className="dashboard-grid max-w-7xl mx-auto" data-testid="dashboard-grid">
-                
+
                 {/* Market Overview with Enhanced Status */}
                 <AdaptiveCard
                   title="Market Overview"
@@ -226,9 +229,9 @@ export default function Dashboard() {
                   <div className="mb-3 flex space-x-2">
                     {Object.entries(agentStatus).map(([type, status]) => (
                       <div key={type} className="flex items-center space-x-1">
-                        <StatusIndicator 
-                          status={status.status === 'active' ? 'online' : 'offline'} 
-                          size="sm" 
+                        <StatusIndicator
+                          status={status.status === 'active' ? 'online' : 'offline'}
+                          size="sm"
                         />
                         <span className="text-xs text-gray-400 capitalize">{type}</span>
                       </div>
@@ -258,11 +261,18 @@ export default function Dashboard() {
                 </AdaptiveCard>
 
               </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <RouterCard />
+                <RegimeCard />
+                <RiskSafetyCard />
+              </div>
+
             </div>
           </div>
         </main>
       </div>
-      
+
       <MobileBottomNav />
       <FeedbackWidget />
     </div>

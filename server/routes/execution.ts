@@ -202,3 +202,50 @@ router.post('/decide', async (req, res) => {
 });
 
 export { router as executionRoutes };
+import { Router } from 'express';
+import { ExecutionRouter } from '../services/ExecutionRouter';
+import { logger } from '../utils/logger';
+
+const router = Router();
+const executionRouter = ExecutionRouter.getInstance();
+
+// Plan and execute endpoint
+router.post('/plan-and-execute', async (req, res) => {
+  try {
+    const { symbol, baseSize = 1000 } = req.body;
+    
+    if (!symbol) {
+      return res.status(400).json({ error: 'Symbol is required' });
+    }
+
+    const executionRecord = await executionRouter.planAndExecute(symbol, baseSize);
+    res.json(executionRecord);
+  } catch (error) {
+    logger.error('[ExecutionRouter] Plan-and-execute error:', error);
+    res.status(500).json({ error: 'Execution failed' });
+  }
+});
+
+// Get execution records
+router.get('/records', (req, res) => {
+  try {
+    const records = executionRouter.getExecutionRecords();
+    res.json(records);
+  } catch (error) {
+    logger.error('[ExecutionRouter] Get records error:', error);
+    res.status(500).json({ error: 'Failed to get execution records' });
+  }
+});
+
+// Get sizing snapshot
+router.get('/sizing/last', (req, res) => {
+  try {
+    const sizing = executionRouter.getLastSizing();
+    res.json(sizing);
+  } catch (error) {
+    logger.error('[ExecutionRouter] Get sizing error:', error);
+    res.status(500).json({ error: 'Failed to get sizing snapshot' });
+  }
+});
+
+export default router;

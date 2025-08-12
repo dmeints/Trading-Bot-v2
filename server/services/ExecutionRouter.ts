@@ -49,9 +49,65 @@ export interface SizingSnapshot {
   confidence: number;
 }
 
-export class ExecutionRouter {
+export import { logger } from '../utils/logger';
+import { db } from '../db';
+import { marketBars } from '../../shared/schema';
+import { desc, gte } from 'drizzle-orm';
+
+interface ExecutionRecord {
+  id: string;
+  timestamp: Date;
+  symbol: string;
+  policyId: string;
+  requestedSize: number;
+  finalSize: number;
+  fillPrice: number;
+  side: 'buy' | 'sell' | 'hold';
+  context: any;
+  uncertaintyWidth: number;
+  confidence: number;
+}
+
+interface ExecutionContext {
+  symbol: string;
+  side: 'buy' | 'sell';
+  quantity: number;
+  urgency?: 'LOW' | 'MEDIUM' | 'HIGH';
+}
+
+interface SizingSnapshot {
+  symbol: string;
+  baseSize: number;
+  uncertaintyWidth: number;
+  finalSize: number;
+  timestamp: Date;
+  confidence: number;
+}
+
+interface OrderRequest {
+  symbol: string;
+  side: 'buy' | 'sell';
+  quantity: number;
+  urgency: 'LOW' | 'MEDIUM' | 'HIGH';
+}
+
+interface ExecutionDecision {
+  orderType: 'MAKER' | 'IOC' | 'FOK';
+  confidence: 'LOW' | 'MEDIUM' | 'HIGH';
+  expectedFillProbability: number;
+  reasoning: string;
+  blockedReason?: string;
+  riskAssessment: {
+    toxicityFlag: boolean;
+    spreadAnalysis: number;
+    volumeAnalysis: number;
+    marketImpact: number;
+  };
+}
+
+class ExecutionRouter {
   private static instance: ExecutionRouter;
-  private executionLog: any[] = [];
+  private executionLog: ExecutionRecord[] = [];
   private lastSizing: SizingSnapshot | null = null;
 
   public static getInstance(): ExecutionRouter {
@@ -380,6 +436,96 @@ export class ExecutionRouter {
       ...execution,
       sizingInfo: sizing
     };
+  }
+
+  /**
+   * Plan-and-execute: Router choice → sizing → paper execution
+   */
+  async planAndExecute(symbol: string, baseSize: number = 1000): Promise<ExecutionRecord> {
+    try {
+      // Import StrategyRouter
+      const { StrategyRouter } = await import('./StrategyRouter');
+      const router = new StrategyRouter();
+
+      // Create context for strategy router
+      const context = {
+        regime: 'bull', // Mock regime detection
+        vol: 0.02,
+        trend: 0.1,
+        funding: 0.0001,
+        sentiment: 0.3
+      };
+
+      // Plan: Get policy choice from StrategyRouter
+      const choice = router.choose(context);
+      logger.info(`[ExecutionRouter] Strategy choice: ${choice.policyId} (score: ${choice.score.toFixed(4)})`);
+
+      // Convert policy to signal
+      const signal = this.policyToSignal(choice);
+      
+      // Size with uncertainty
+      const uncertaintyWidth = this.getConformalUncertainty(symbol);
+      const sizing = this.computeUncertaintyScaledSize(symbol, baseSize * signal.sizeMultiplier, uncertaintyWidth);
+
+      // Execute in paper mode
+      const executionRecord: ExecutionRecord = {
+        id: `exec_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`,
+        timestamp: new Date(),
+        symbol,
+        policyId: choice.policyId,
+        requestedSize: baseSize * signal.sizeMultiplier,
+        finalSize: sizing.finalSize,
+        fillPrice: await this.getMockFillPrice(symbol),
+        side: signal.side,
+        context,
+        uncertaintyWidth,
+        confidence: sizing.confidence
+      };
+
+      // Store execution record
+      this.executionLog.push(executionRecord);
+
+      // Simulate paper position update
+      await this.updatePaperPosition(executionRecord);
+
+      logger.info(`[ExecutionRouter] Plan-and-execute complete: ${JSON.stringify(executionRecord)}`);
+      return executionRecord;
+
+    } catch (error) {
+      logger.error(`[ExecutionRouter] Plan-and-execute failed:`, error);
+      throw error;
+    }
+  }
+
+  private policyToSignal(choice: any): { side: 'buy' | 'sell' | 'hold', sizeMultiplier: number } {
+    // Simple policy mapping - extend based on actual policy logic
+    if (choice.score > 0.6) {
+      return { side: 'buy', sizeMultiplier: 1.0 };
+    } else if (choice.score < -0.6) {
+      return { side: 'sell', sizeMultiplier: 1.0 };
+    } else {
+      return { side: 'hold', sizeMultiplier: 0.0 };
+    }
+  }
+
+  private async getMockFillPrice(symbol: string): Promise<number> {
+    // Mock price - in real system, get from market data
+    const basePrices: Record<string, number> = {
+      'BTCUSDT': 43000,
+      'ETHUSDT': 2500,
+      'SOLUSDT': 100
+    };
+    const basePrice = basePrices[symbol] || 1000;
+    return basePrice * (1 + (Math.random() - 0.5) * 0.001); // Small random spread
+  }
+
+  private async updatePaperPosition(execution: ExecutionRecord): Promise<void> {
+    // Mock paper position update - in real system, integrate with trading engine
+    logger.info(`[ExecutionRouter] Updated paper position: ${execution.symbol} ${execution.side} ${execution.finalSize}`);
+  }
+
+  getExecutionRecords(): ExecutionRecord[] {
+    return this.executionLog.slice(-50); // Return last 50 executions
   }
 }
 

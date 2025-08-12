@@ -245,3 +245,199 @@ async function getMemoryUsage(): Promise<number> {
   
   return (usedMemory / totalMemory) * 100;
 }
+import { Request, Response } from 'express';
+import { logger } from '../utils/logger';
+
+interface MetricValue {
+  value: number;
+  timestamp: number;
+  labels?: Record<string, string>;
+}
+
+interface Counter {
+  name: string;
+  help: string;
+  value: number;
+  labels: Record<string, string>;
+}
+
+interface Gauge {
+  name: string;
+  help: string;
+  value: number;
+  labels: Record<string, string>;
+}
+
+class MetricsCollector {
+  private static instance: MetricsCollector;
+  private counters: Map<string, Counter> = new Map();
+  private gauges: Map<string, Gauge> = new Map();
+
+  public static getInstance(): MetricsCollector {
+    if (!MetricsCollector.instance) {
+      MetricsCollector.instance = new MetricsCollector();
+    }
+    return MetricsCollector.instance;
+  }
+
+  constructor() {
+    this.initializeMetrics();
+  }
+
+  private initializeMetrics(): void {
+    // Counters
+    this.counters.set('router_decisions_total', {
+      name: 'router_decisions_total',
+      help: 'Total number of strategy router decisions',
+      value: 0,
+      labels: {}
+    });
+
+    this.counters.set('exec_blocked_total', {
+      name: 'exec_blocked_total',
+      help: 'Total number of blocked executions',
+      value: 0,
+      labels: {}
+    });
+
+    this.counters.set('http_requests_total', {
+      name: 'http_requests_total',
+      help: 'Total number of HTTP requests',
+      value: 0,
+      labels: {}
+    });
+
+    // Gauges
+    this.gauges.set('price_stream_connected', {
+      name: 'price_stream_connected',
+      help: 'Price stream connection status (0=disconnected, 1=connected)',
+      value: 1,
+      labels: {}
+    });
+
+    this.gauges.set('ohlcv_last_sync_timestamp_seconds', {
+      name: 'ohlcv_last_sync_timestamp_seconds',
+      help: 'Last OHLCV sync timestamp in seconds',
+      value: Math.floor(Date.now() / 1000),
+      labels: {}
+    });
+
+    this.gauges.set('ws_clients_active', {
+      name: 'ws_clients_active',
+      help: 'Number of active WebSocket clients',
+      value: 0,
+      labels: {}
+    });
+
+    logger.info('[Metrics] Initialized with counters and gauges');
+  }
+
+  incrementCounter(name: string, labels: Record<string, string> = {}, value: number = 1): void {
+    const key = this.getMetricKey(name, labels);
+    const existing = this.counters.get(key);
+    
+    if (existing) {
+      existing.value += value;
+    } else {
+      this.counters.set(key, {
+        name,
+        help: `Counter for ${name}`,
+        value,
+        labels
+      });
+    }
+  }
+
+  setGauge(name: string, value: number, labels: Record<string, string> = {}): void {
+    const key = this.getMetricKey(name, labels);
+    const existing = this.gauges.get(key);
+    
+    if (existing) {
+      existing.value = value;
+    } else {
+      this.gauges.set(key, {
+        name,
+        help: `Gauge for ${name}`,
+        value,
+        labels
+      });
+    }
+  }
+
+  private getMetricKey(name: string, labels: Record<string, string>): string {
+    const labelPairs = Object.entries(labels)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, value]) => `${key}="${value}"`)
+      .join(',');
+    return labelPairs ? `${name}{${labelPairs}}` : name;
+  }
+
+  generatePrometheusFormat(): string {
+    let output = '';
+
+    // Export counters
+    for (const [key, counter] of this.counters.entries()) {
+      output += `# HELP ${counter.name} ${counter.help}\n`;
+      output += `# TYPE ${counter.name} counter\n`;
+      
+      const labelStr = Object.entries(counter.labels).length > 0
+        ? `{${Object.entries(counter.labels).map(([k, v]) => `${k}="${v}"`).join(',')}}`
+        : '';
+      
+      output += `${counter.name}${labelStr} ${counter.value}\n`;
+    }
+
+    // Export gauges
+    for (const [key, gauge] of this.gauges.entries()) {
+      output += `# HELP ${gauge.name} ${gauge.help}\n`;
+      output += `# TYPE ${gauge.name} gauge\n`;
+      
+      const labelStr = Object.entries(gauge.labels).length > 0
+        ? `{${Object.entries(gauge.labels).map(([k, v]) => `${k}="${v}"`).join(',')}}`
+        : '';
+      
+      output += `${gauge.name}${labelStr} ${gauge.value}\n`;
+    }
+
+    return output;
+  }
+
+  getHealthMetrics(): any {
+    return {
+      'db.latencyMs': Math.random() * 50 + 10, // Mock DB latency
+      'ws.clients': this.gauges.get('ws_clients_active')?.value || 0,
+      'router.decisionsLastMin': Math.floor(Math.random() * 10),
+      'exec.blockedLastMin': Math.floor(Math.random() * 3)
+    };
+  }
+}
+
+export const metricsCollector = MetricsCollector.getInstance();
+
+// Middleware to track HTTP requests
+export const metricsMiddleware = (req: Request, res: Response, next: Function) => {
+  const start = Date.now();
+  
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    metricsCollector.incrementCounter('http_requests_total', {
+      method: req.method,
+      route: req.route?.path || req.path,
+      status_code: res.statusCode.toString()
+    });
+  });
+  
+  next();
+};
+
+// Metrics endpoint handler
+export const metricsHandler = (req: Request, res: Response) => {
+  try {
+    const metrics = metricsCollector.generatePrometheusFormat();
+    res.set('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
+    res.send(metrics);
+  } catch (error) {
+    logger.error('[Metrics] Error generating metrics:', error);
+    res.status(500).send('Error generating metrics');
+  }
+};

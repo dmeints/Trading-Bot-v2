@@ -84,6 +84,8 @@ import { pbtManager } from '../tools/pbt';
 import { promotionService } from './services/promotion';
 import eventsRoutes from './routes/events.js';
 import policiesRoutes from './routes/policies.js';
+import { metricsHandler, metricsMiddleware, metricsCollector } from './monitoring/metrics';
+import { provenanceMiddleware } from './middleware/provenance';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Development bypass function
@@ -1277,7 +1279,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/paperrun/start', rateLimiters.trading, isAuthenticated, async (req: any, res) => {
     try {
       const config = req.body;
-      // Import ExchangeService dynamically to avoid initialization issues
+      // Import ExchangeService dynamically to avoid circular dependency
       const { default: ExchangeService } = await import('./services/exchangeService');
 
       const defaultConfig = {
@@ -1845,6 +1847,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/events', eventsRoutes);
   app.use('/api/policies', policiesRoutes);
 
+  // Metrics endpoint
+  app.get('/api/metrics', metricsHandler);
+
   // Regime detection endpoint
   app.get('/api/regime/state', (req, res) => {
     try {
@@ -1954,6 +1959,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: 'Failed to optimize portfolio' });
     }
   });
+
+  // Request ID middleware for tracking
+  app.use((req: any, res, next) => {
+    (req as any).id = Math.random().toString(36).substring(2, 15);
+    next();
+  });
+
+  // Metrics collection middleware
+  app.use(metricsMiddleware);
+
+  // Provenance tracking middleware
+  app.use(provenanceMiddleware);
 
   return httpServer;
 }

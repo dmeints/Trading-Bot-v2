@@ -1,0 +1,231 @@
+You are a build agent. Deliver runnable code, not plans.
+Repo facts:
+
+Dev server: TypeScript via tsx ("server": "tsx watch server/index.ts").
+
+Binance integrations already exist:
+
+HTTP OHLCV → server/services/exchanges/binance.ts
+
+WS ticks → server/services/priceStream.ts + priceStream.start() in server/index.ts
+
+Paper order → POST /api/trading/paper/order in server/routes/trading.ts
+
+Backtest route → POST /api/backtest/run using SMA
+
+.replit has run = "npm run dev" but workflows still call node server/index.js.
+
+tsconfig.json has "noEmit": true → no server JS for prod start, and package.json has no "start" script.
+
+GOAL (this PR)
+Fix run/build config so dev and deploy both work cleanly.
+
+Persist OHLCV to Postgres and show a last sync timestamp.
+
+Extend /api/health to include priceStream and lastOHLCVSync.
+
+Make backtests able to read candles from DB (deterministic), with a safe fallback to Binance HTTP when DB is empty.
+
+Add tests for the Binance mapper and the OHLCV route.
+
+Prove everything with curl outputs.
+
+TASK 0 — Run/Build sanity & Replit workflows
+a) Create tsconfig.server.json (server build only):
+
+json
+Copy
+Edit
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": ".",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "allowImportingTsExtensions": true,
+    "sourceMap": true
+  },
+  "include": ["server/**/*", "shared/**/*"]
+}
+b) Update package.json scripts:
+
+Keep existing scripts, and add:
+
+json
+Copy
+Edit
+{
+  "scripts": {
+    "build:server": "tsc -p tsconfig.server.json",
+    "build": "npm run build:server && vite build",
+    "start": "node dist/server/index.js"
+  }
+}
+c) Fix .replit workflows that call node server/index.js:
+
+Change those workflow args to npm run start (prod) or npm run server (dev).
+
+Keep run = "npm run dev" as-is for the green Run button.
+
+Acceptance:
+
+bash
+Copy
+Edit
+npm ci
+npm run type-check
+npm run build
+npm start & sleep 2
+curl -s http://localhost:5000/api/health | head -c 400; echo
+TASK 1 — Persist OHLCV to DB + expose last sync
+a) In server/routes/marketRoutes.ts after fetching candles = await getOHLCV(...), persist to market_bars:
+
+Use storage.storeMarketBars(...) with string fields (schema uses varchar), and include a datasetId, provider: 'binance', and a minimal provenance object.
+
+Add and export a getter for the last sync time:
+
+ts
+Copy
+Edit
+let lastOHLCVSync = new Date().toISOString();
+export function getLastOHLCVSync() { return lastOHLCVSync; }
+Mapping helper (example):
+
+ts
+Copy
+Edit
+import { storage } from '../storage';
+import type { InsertMarketBar } from '@shared/schema';
+
+function toBarsForDB(symbol: string, timeframe: string, candles: {timestamp:number,open:number,high:number,low:number,close:number,volume:number}[]): InsertMarketBar[] {
+  const ds = (ts:number) => `binance:${symbol}:${timeframe}:${new Date(ts).toISOString().slice(0,10)}`;
+  return candles.map(c => ({
+    symbol,
+    timeframe,
+    timestamp: new Date(c.timestamp),
+    open: String(c.open),
+    high: String(c.high),
+    low: String(c.low),
+    close: String(c.close),
+    volume: String(c.volume ?? 0),
+    provider: 'binance',
+    datasetId: ds(c.timestamp),
+    provenance: { source: 'binance', endpoint: 'klines', symbol, timeframe }
+  }));
+}
+
+// after getOHLCV(...)
+try {
+  const bars = toBarsForDB(symbol, timeframe, candles);
+  await storage.storeMarketBars(bars);
+} catch (e) {
+  // do not fail the endpoint on storage error; just log
+  console.error('Failed to persist OHLCV:', e);
+}
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s "http://localhost:5000/api/market/ohlcv?symbol=BTCUSDT&timeframe=1m&limit=5" | jq '.source,.data[0]'
+# Expect "binance" and real numeric candle
+TASK 2 — Enrich /api/health with priceStream + lastOHLCVSync
+In server/routes.ts, import:
+
+ts
+Copy
+Edit
+import { priceStream } from './services/priceStream.js';
+import { getLastOHLCVSync } from './routes/marketRoutes';
+And include in the health payload:
+
+ts
+Copy
+Edit
+services: {
+  ...,
+  priceStream: priceStream.isConnected() ? 'connected' : 'disconnected',
+  lastOHLCVSync: getLastOHLCVSync()
+}
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s http://localhost:5000/api/health | jq '.services.priceStream, .services.lastOHLCVSync'
+TASK 3 — Backtest reads DB candles (with safe fallback)
+In server/services/backtestEngine.ts:
+
+Before calling getOHLCV, attempt to read from DB via storage.getMarketBars(symbol, timeframe, limit) (compute limit from date range + slow + buffer).
+
+If DB returns too few candles, fallback to Binance HTTP, then persist them (reusing the mapper from Task 1) and continue.
+
+Pseudocode to implement:
+
+ts
+Copy
+Edit
+import { storage } from '../storage';
+import { getOHLCV } from './exchanges/binance';
+import { toBarsForDB } from '../routes/marketRoutes'; // or copy helper to a utils module
+
+async function loadCandles(symbol:string, timeframe:string, from:Date, to:Date, fast:number, slow:number) {
+  const ms = { '1m':60000,'5m':300000,'15m':900000,'1h':3600000,'4h':14400000,'1d':86400000 }[timeframe] ?? 3600000;
+  const needed = Math.ceil((+to - +from)/ms) + slow + 10;
+  let rows = await storage.getMarketBars(symbol, timeframe, needed);
+  if (!rows || rows.length < slow + 10) {
+    const candles = await getOHLCV(symbol, timeframe, Math.min(1000, needed));
+    try { await storage.storeMarketBars(toBarsForDB(symbol, timeframe, candles)); } catch {}
+    return candles;
+  }
+  return rows.map(r => ({ 
+    timestamp: +new Date(r.timestamp), 
+    open: +r.open, high: +r.high, low: +r.low, close: +r.close, volume: +(r.volume||0) 
+  }));
+}
+Wire this into the backtest function so the strategy uses these candles.
+
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s -X POST http://localhost:5000/api/backtest/run \
+  -H "Content-Type: application/json" \
+  -d '{"symbol":"BTCUSDT","timeframe":"1m","from":"2024-01-01","to":"2024-01-02","fast":10,"slow":20}' \
+| jq '.metrics | {pnl:.pnl, sharpe:.sharpe, mdd:.maxDrawdown}'
+TASK 4 — Tests
+a) tests/binance_map.spec.ts (unit):
+
+Mock an axios klines response and assert mapper returns numeric open/high/low/close/volume and ascending timestamps.
+
+b) tests/ohlcv_route.spec.ts (integration-lite):
+
+Spin up the app (or mock the handler), call /api/market/ohlcv?symbol=BTCUSDT&timeframe=1m&limit=3, assert shape and source.
+
+Acceptance:
+
+bash
+Copy
+Edit
+npm test
+FINAL PROOF — paste all outputs
+npm ci && npm run type-check && npm run build
+
+npm start logs show server listening and WS connected
+
+curl outputs from Task 1–3
+
+npm test results
+
+Return only:
+
+A concise list of files changed/created,
+
+Diffs or file bodies for those files,
+
+Terminal logs for the acceptance steps above,
+
+Confirmation that type-check, build, tests are green.

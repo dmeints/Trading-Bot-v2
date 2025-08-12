@@ -89,7 +89,7 @@ export default function AlgorithmTraining() {
 
   // Fetch backtest results
   const { data: backtestsData, isLoading: backtestsLoading } = useQuery({
-    queryKey: ['/api/backtests/history'],
+    queryKey: ['/api/backtest/runs'],
     refetchInterval: 10000, // Refresh every 10 seconds
   });
 
@@ -154,14 +154,15 @@ export default function AlgorithmTraining() {
   // Run backtest mutation
   const runBacktest = useMutation({
     mutationFn: async (config: any) => {
-      const response = await fetch('/api/backtests/run', {
+      const response = await fetch('/api/backtest/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          strategyId: config.strategyId,
-          startDate: config.startDate,
-          endDate: config.endDate,
-          initialCapital: config.initialCapital
+          symbol: 'BTCUSDT', // Default symbol
+          startTime: new Date(config.startDate).toISOString(),
+          endTime: new Date(config.endDate).toISOString(),
+          initialBalance: config.initialCapital,
+          timeframe: '1h'
         }),
       });
       
@@ -169,16 +170,16 @@ export default function AlgorithmTraining() {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/backtests/history'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/backtest/runs'] });
       toast({
         title: "Backtest Completed",
         description: "Strategy backtesting has been completed successfully.",
       });
     },
-    onError: () => {
+    onError: (error: any) => {
       toast({
         title: "Error",
-        description: "Failed to run backtest.",
+        description: `Failed to run backtest: ${error.message}`,
         variant: "destructive",
       });
     },

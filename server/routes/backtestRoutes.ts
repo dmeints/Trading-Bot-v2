@@ -65,9 +65,13 @@ router.get('/runs', async (req, res) => {
     
     // This would query the backtestRuns table if it existed
     // For now return empty with proper provenance
-    const runs = [];
+    const runs: any[] = [];
     
-    res.json(addProvenance({ runs, count: runs.length }, 'backtest_history'));
+    res.json(addProvenance({ runs, count: runs.length }, { 
+      commit: 'backtest_history',
+      runId: 'history_query',
+      datasetId: 'backtest_runs'
+    }));
     
   } catch (error: any) {
     console.error('[Backtest] List error:', error);
@@ -104,6 +108,37 @@ router.get('/run/:runId', async (req, res) => {
     console.error('[Backtest] Get run error:', error);
     res.status(500).json({
       error: 'Failed to get backtest run',
+      message: error.message,
+      provenance: {
+        commit: process.env.GIT_COMMIT || 'dev',
+        generatedAt: new Date().toISOString()
+      }
+    });
+  }
+});
+
+/**
+ * GET /api/backtest/history - Alternative endpoint for training page compatibility
+ */
+router.get('/history', async (req, res) => {
+  try {
+    // Return empty backtest data in the format expected by the training page
+    const backtests: any[] = [];
+    
+    res.json({
+      success: true,
+      data: backtests,
+      count: backtests.length,
+      provenance: {
+        commit: process.env.GIT_COMMIT || 'dev',
+        generatedAt: new Date().toISOString()
+      }
+    });
+    
+  } catch (error: any) {
+    console.error('[Backtest] History error:', error);
+    res.status(500).json({
+      error: 'Failed to get backtest history',
       message: error.message,
       provenance: {
         commit: process.env.GIT_COMMIT || 'dev',

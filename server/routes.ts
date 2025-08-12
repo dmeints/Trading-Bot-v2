@@ -150,6 +150,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerStrategyRoutes(app, isAuthenticated); 
   // Backtest routes with deterministic validation
   app.use('/api/backtest', registerBacktestRoutes);
+  app.use('/api/backtests', registerBacktestRoutes); // Alternative endpoint for consistency
 
   // Promotion gate routes for production readiness
   const promotionRoutes = await import('./routes/promotionRoutes');

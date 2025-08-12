@@ -10,6 +10,10 @@ export class PriceStream {
   private symbol: string;
   private connected = false;
   private lastPrice: number = 0;
+  private consecutiveFailures = 0;
+  private maxFailures = 5;
+  private circuitBreakerOpen = false;
+  private circuitBreakerTimeout?: NodeJS.Timeout;
   
   constructor(symbol = 'btcusdt') {
     this.symbol = symbol.toLowerCase();
@@ -17,11 +21,16 @@ export class PriceStream {
   }
   
   start() {
-    if (this.ws) return;
+    if (this.ws || this.circuitBreakerOpen) return;
     
     // Add delay before connecting to reduce connection spam
     const connectDelay = Math.random() * 2000 + 1000; // 1-3 seconds random delay
     setTimeout(() => {
+      if (this.circuitBreakerOpen) {
+        logger.warn(`[PriceStream] Circuit breaker open, skipping connection attempt`);
+        return;
+      }
+      
       logger.info(`[PriceStream] Connecting to ${this.url}`);
       this.ws = new WebSocket(this.url);
       this.setupWebSocketHandlers();
@@ -32,7 +41,8 @@ export class PriceStream {
     if (!this.ws) return;
     
     this.ws.on('open', () => { 
-      this.connected = true; 
+      this.connected = true;
+      this.consecutiveFailures = 0; // Reset on successful connection
       logger.info(`[PriceStream] Connected ${this.symbol}`); 
     });
     
@@ -76,8 +86,25 @@ export class PriceStream {
     });
     
     this.ws.on('error', (error) => { 
-      logger.error(`[PriceStream] Error ${this.symbol}:`, error);
+      this.consecutiveFailures++;
+      logger.error(`[PriceStream] Error ${this.symbol} (${this.consecutiveFailures}/${this.maxFailures}):`, error);
+      
+      if (this.consecutiveFailures >= this.maxFailures) {
+        this.openCircuitBreaker();
+      }
     });
+  }
+  
+  private openCircuitBreaker() {
+    this.circuitBreakerOpen = true;
+    logger.warn(`[PriceStream] Circuit breaker opened for ${this.symbol} - stopping connection attempts for 5 minutes`);
+    
+    // Reset circuit breaker after 5 minutes
+    this.circuitBreakerTimeout = setTimeout(() => {
+      this.circuitBreakerOpen = false;
+      this.consecutiveFailures = 0;
+      logger.info(`[PriceStream] Circuit breaker reset for ${this.symbol}`);
+    }, 5 * 60 * 1000);
   }
   
   stop() {

@@ -111,7 +111,8 @@ app.use((req, res, next) => {
     // Initialize price streaming
     try {
       const { priceStream } = await import('./services/priceStream.js');
-      priceStream.start();
+      // Temporarily disable price streaming due to connection issues
+      // priceStream.start();
     } catch (error) {
       logger.error('[Server] Failed to initialize price streaming:', { error: String(error) });
     }

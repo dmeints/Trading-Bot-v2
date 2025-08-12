@@ -61,10 +61,10 @@ export class MarketDataService {
     // Fetch initial data
     await this.fetchRealMarketData();
     
-    // Update prices every 60 seconds to reduce API pressure
+    // Update prices every 2 minutes to reduce API pressure
     this.updateInterval = setInterval(async () => {
       await this.fetchRealMarketData();
-    }, 60000);
+    }, 120000);
   }
 
   private setupCronJobs() {
@@ -81,8 +81,8 @@ export class MarketDataService {
 
   private async fetchRealMarketData() {
     try {
-      // Add random delay to spread out API calls
-      await new Promise(resolve => setTimeout(resolve, Math.random() * 5000));
+      // Add longer random delay to spread out API calls
+      await new Promise(resolve => setTimeout(resolve, Math.random() * 10000 + 5000)); // 5-15 seconds
       
       const coinIds = Array.from(this.coinGeckoMap.values()).join(',');
       

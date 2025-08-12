@@ -273,9 +273,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const { realBenchmarkRoutes } = await import('./routes/realBenchmarkRoutes');
   app.use('/api/real-benchmark', realBenchmarkRoutes);
 
-  // Health routes (SLO monitoring)
-  const { healthRoutes } = await import('./routes/health');
-  app.use('/api/health', healthRoutes);
+  // Health routes (SLO monitoring) - note: already mounted earlier, skip duplicate
+  // const healthRoutesInternal = (await import('./routes/health')).default;
+  // app.use('/api/health', healthRoutesInternal);
 
   // Plugin system routes
   app.use('/api/plugins', pluginRoutes);

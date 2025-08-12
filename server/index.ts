@@ -15,7 +15,7 @@ import conformalTuningRouter from './routes/conformalTuning';
 // Import routes
 import healthRoutes from './routes/health';
 import tradingRoutes from './routes/trading';
-import portfolioRoutes from './routes/portfolio';
+import { portfolioRouter } from './routes/portfolio';
 import errorRoutes from './routes/errors';
 import chartDataRoutes from './routes/chart-data';
 
@@ -103,11 +103,7 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = env.PORT;
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
+  server.listen(port, "0.0.0.0", () => {
     log(`serving on port ${port}`);
     log('Server started successfully - AI services will initialize on first request');
   });
@@ -135,6 +131,6 @@ app.use('/api/safe-promotion', safePromotionRouter);
 // Mount routes
 app.use('/api/health', healthRoutes);
 app.use('/api/trading', tradingRoutes);
-app.use('/api/portfolio', portfolioRoutes);
+app.use('/api/portfolio', portfolioRouter);
 app.use('/api/errors', errorRoutes);
 app.use('/api/trading', chartDataRoutes);

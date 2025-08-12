@@ -6,6 +6,8 @@ import { registerRoutes } from "./routes";
 import { env } from "./config/env";
 import { logger } from "./utils/logger";
 import { createTradingConformalPredictor } from './brain/conformal';
+import { conformalRouter } from './routes/stevieCore';
+import { metaBrainRouter } from './routes/metaBrain';
 
 const app = express();
 
@@ -104,3 +106,6 @@ app.use((req, res, next) => {
 // Initialize global conformal predictor for uncertainty quantification
 (global as any).conformalPredictor = createTradingConformalPredictor();
 logger.info('[Server] Initialized global conformal predictor for uncertainty quantification');
+
+app.use('/api/uncertainty', conformalRouter);
+app.use('/api/meta-brain', metaBrainRouter);

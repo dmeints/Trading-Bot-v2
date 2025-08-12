@@ -477,6 +477,7 @@ export default function Admin() {
 
 function WebhookTestingPanel({ adminSecret }: { adminSecret: string }) {
   const [isRunning, setIsRunning] = useState(false);
+  const { toast } = useToast();
   
   const { data: testHistory, refetch: refetchHistory } = useQuery({
     queryKey: ['/api/admin/webhook/tests'],

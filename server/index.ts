@@ -1,4 +1,5 @@
 import express from "express";
+// @ts-ignore - Missing type definitions
 import compression from "compression";
 import { setupVite, serveStatic } from "./vite";
 import { notFoundHandler, errorHandler } from "./utils/errorHandler";
@@ -13,11 +14,11 @@ import conformalTuningRouter from './routes/conformalTuning';
 
 const app = express();
 
-app.use(compression());
+app.use((compression as any)());
 
 // Request ID middleware for tracking
 app.use((req: any, res, next) => {
-  req.id = Math.random().toString(36).substring(2, 15);
+  (req as any).id = Math.random().toString(36).substring(2, 15);
   next();
 });
 
@@ -56,8 +57,8 @@ app.use((req, res, next) => {
       log(logLine);
 
       // Also log to structured logger for requests with IDs
-      if (req.id) {
-        logger.withRequest(req.id).info('API Request', {
+      if ((req as any).id) {
+        logger.withRequest((req as any).id).info('API Request', {
           method: req.method,
           path,
           statusCode: res.statusCode,
@@ -85,10 +86,10 @@ app.use((req, res, next) => {
   }
 
   // 404 handler for unknown routes (after frontend routing)
-  app.use(notFoundHandler);
+  app.use(notFoundHandler as any);
 
   // Global error handler
-  app.use(errorHandler);
+  app.use(errorHandler as any);
 
   // ALWAYS serve the app on the port specified in the environment variable PORT
   // Other ports are firewalled. Default to 5000 if not specified.

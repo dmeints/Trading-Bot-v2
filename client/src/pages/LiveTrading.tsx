@@ -272,12 +272,12 @@ export default function LiveTrading() {
     },
   });
 
-  const systemStatus = statusData?.data;
-  const brokers: BrokerStatus[] = brokersData?.data?.brokers || [];
-  const orders: Order[] = ordersData?.data?.orders || [];
-  const positions: Position[] = positionsData?.data?.positions || [];
-  const riskMetrics = riskData?.data;
-  const balances: Balance[] = balancesData?.data?.balances || [];
+  const systemStatus = (statusData as any)?.data || statusData;
+  const brokers: BrokerStatus[] = (brokersData as any)?.brokers || (brokersData as any)?.data?.brokers || [];
+  const orders: Order[] = (ordersData as any)?.orders || (ordersData as any)?.data?.orders || [];
+  const positions: Position[] = (positionsData as any)?.positions || (positionsData as any)?.data?.positions || [];
+  const riskMetrics = (riskData as any)?.data || riskData;
+  const balances: Balance[] = (balancesData as any)?.balances || (balancesData as any)?.data?.balances || [];
 
   const isLiveMode = systemStatus?.isLiveTradingMode || false;
   const connectedBrokers = brokers.filter(b => b.connected).length;

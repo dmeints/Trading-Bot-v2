@@ -164,12 +164,12 @@ export default function SystemDashboard() {
     },
   });
 
-  const health: SystemHealth = healthData?.data?.health;
-  const services: ServiceStatus[] = healthData?.data?.services || [];
-  const analytics: UnifiedAnalytics = analyticsData?.data?.analytics;
-  const insights = analyticsData?.data?.insights;
-  const alerts: SystemAlert[] = alertsData?.data?.alerts || [];
-  const intelligence = intelligenceData?.data?.insights;
+  const health: SystemHealth | undefined = (healthData as any)?.health || (healthData as any)?.data?.health;
+  const services: ServiceStatus[] = (healthData as any)?.services || (healthData as any)?.data?.services || [];
+  const analytics: UnifiedAnalytics | undefined = (analyticsData as any)?.analytics || (analyticsData as any)?.data?.analytics;
+  const insights = (analyticsData as any)?.insights || (analyticsData as any)?.data?.insights;
+  const alerts: SystemAlert[] = (alertsData as any)?.alerts || (alertsData as any)?.data?.alerts || [];
+  const intelligence = (intelligenceData as any)?.insights || (intelligenceData as any)?.data?.insights;
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -226,11 +226,11 @@ export default function SystemDashboard() {
           <p className="text-muted-foreground">Comprehensive system monitoring and analytics</p>
         </div>
         <div className="flex items-center space-x-2">
-          <Badge variant={overviewData?.data?.summary?.overallHealth === 'excellent' ? "default" : "secondary"}>
-            System: {overviewData?.data?.summary?.overallHealth || 'Unknown'}
+          <Badge variant={(overviewData as any)?.summary?.overallHealth === 'excellent' ? "default" : "secondary"}>
+            System: {(overviewData as any)?.summary?.overallHealth || 'Unknown'}
           </Badge>
           <Badge variant="secondary">
-            Score: {overviewData?.data?.summary?.systemScore || 0}/100
+            Score: {(overviewData as any)?.summary?.systemScore || 0}/100
           </Badge>
         </div>
       </div>
@@ -243,10 +243,10 @@ export default function SystemDashboard() {
             <Monitor className="w-4 h-4 text-blue-600" />
           </div>
           <div className="text-2xl font-bold mt-2 capitalize">
-            {overviewData?.data?.summary?.overallHealth || 'Unknown'}
+            {(overviewData as any)?.summary?.overallHealth || 'Unknown'}
           </div>
           <div className="text-sm text-muted-foreground">
-            Grade: {overviewData?.data?.summary?.performanceGrade || 'N/A'}
+            Grade: {(overviewData as any)?.summary?.performanceGrade || 'N/A'}
           </div>
         </Card>
 

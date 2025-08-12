@@ -1,4 +1,3 @@
-
 /**
  * Meta-Brain API Routes
  * Provides endpoints for meta-brain architecture access
@@ -30,7 +29,7 @@ metaBrainRouter.get('/state', (req, res) => {
   try {
     const brain = initializeMetaBrain();
     const state = brain.getState();
-    
+
     res.json({
       success: true,
       data: state,
@@ -53,7 +52,7 @@ metaBrainRouter.get('/diagnostics', (req, res) => {
   try {
     const brain = initializeMetaBrain();
     const diagnostics = brain.getDiagnostics();
-    
+
     res.json({
       success: true,
       data: diagnostics,
@@ -75,17 +74,17 @@ metaBrainRouter.get('/diagnostics', (req, res) => {
 metaBrainRouter.post('/decision', async (req, res) => {
   try {
     const { marketFeatures, target, strategyPerformances } = req.body;
-    
+
     if (!marketFeatures || typeof target !== 'number') {
       return res.status(400).json({
         success: false,
         error: 'Missing required fields: marketFeatures, target'
       });
     }
-    
+
     const brain = initializeMetaBrain();
     const decision = await brain.makeDecision(marketFeatures, target, strategyPerformances);
-    
+
     res.json({
       success: true,
       data: decision,
@@ -107,17 +106,17 @@ metaBrainRouter.post('/decision', async (req, res) => {
 metaBrainRouter.post('/feedback', (req, res) => {
   try {
     const { strategyId, reward } = req.body;
-    
+
     if (!strategyId || typeof reward !== 'number') {
       return res.status(400).json({
         success: false,
         error: 'Missing required fields: strategyId, reward'
       });
     }
-    
+
     const brain = initializeMetaBrain();
     brain.updateStrategyPerformance(strategyId, reward);
-    
+
     res.json({
       success: true,
       message: 'Performance feedback recorded',
@@ -140,7 +139,7 @@ metaBrainRouter.post('/reset', (req, res) => {
   try {
     const brain = initializeMetaBrain();
     brain.reset();
-    
+
     res.json({
       success: true,
       message: 'Meta-brain reset completed',
@@ -164,14 +163,14 @@ metaBrainRouter.get('/components/:component', (req, res) => {
     const { component } = req.params;
     const brain = initializeMetaBrain();
     const diagnostics = brain.getDiagnostics();
-    
+
     if (!diagnostics.components[component]) {
       return res.status(404).json({
         success: false,
         error: `Component '${component}' not found`
       });
     }
-    
+
     res.json({
       success: true,
       data: {
@@ -190,3 +189,4 @@ metaBrainRouter.get('/components/:component', (req, res) => {
 });
 
 export { metaBrainRouter };
+export default metaBrainRouter;

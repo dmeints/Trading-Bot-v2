@@ -19,7 +19,9 @@
     "tune:verify": "tsx tools/tune/verify_tuning_pipeline.ts",
     "tune:full": "npm run tune:coarse && npm run tune:optuna && npm run tune:select && npm run tune:validate && npm run tune:verify",
     "tune:all": "npm run tune:coarse && npm run tune:optuna",
-    "tune:stress": "tsx tools/tune/walkforward_and_stress.ts"
+    "tune:stress": "tsx tools/tune/walkforward_and_stress.ts",
+    "audit:cross": "tsx tools/audit_cross_source.ts",
+    "brain:test:math": "vitest run server/brain/models/*.spec.ts server/brain/execution_qp_solver.spec.ts server/brain/safe/*.spec.ts"
   },
   "dependencies": {
     "@axe-core/playwright": "^4.10.2",
@@ -147,7 +149,8 @@
     "tailwindcss": "^3.4.17",
     "tsx": "^4.19.1",
     "typescript": "5.6.3",
-    "vite": "^5.4.19"
+    "vite": "^5.4.19",
+    "vitest": "^1.7.0"
   },
   "optionalDependencies": {
     "bufferutil": "^4.0.8"

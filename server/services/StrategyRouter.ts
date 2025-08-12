@@ -1,4 +1,3 @@
-
 import { logger } from '../utils/logger';
 
 export interface Context {
@@ -61,18 +60,18 @@ export class StrategyRouter {
 
     for (const [policyId, posterior] of this.policies.entries()) {
       const weights = this.contextWeights.get(policyId) || [];
-      
+
       // Compute expected reward as linear combination of context
       const expectedReward = weights.reduce((sum, w, i) => sum + w * (contextVector[i] || 0), 0);
-      
+
       // Thompson sampling: sample from posterior
       const sampledMean = this.sampleFromNormal(posterior.mean + expectedReward, Math.sqrt(posterior.variance));
-      
+
       // Exploration bonus based on uncertainty
       const explorationBonus = Math.sqrt(posterior.variance) / Math.max(1, posterior.updateCount);
-      
+
       const score = sampledMean + explorationBonus;
-      
+
       if (score > bestScore) {
         bestScore = score;
         bestPolicy = policyId;
@@ -81,7 +80,7 @@ export class StrategyRouter {
     }
 
     logger.info(`[StrategyRouter] Chose policy ${bestPolicy} with score ${bestScore.toFixed(4)}`);
-    
+
     return {
       policyId: bestPolicy,
       score: bestScore,
@@ -97,27 +96,27 @@ export class StrategyRouter {
 
     const contextVector = this.contextToVector(context);
     const weights = this.contextWeights.get(policyId) || [];
-    
+
     // Update posterior using Bayesian learning
     const priorPrecision = 1.0 / posterior.variance;
     const likelihood_precision = 1.0; // Assume known noise variance
-    
+
     const newPrecision = priorPrecision + likelihood_precision;
     const newMean = (priorPrecision * posterior.mean + likelihood_precision * reward) / newPrecision;
     const newVariance = 1.0 / newPrecision;
-    
+
     // Update context weights with simple gradient step
     const learningRate = 0.01;
     const prediction = weights.reduce((sum, w, i) => sum + w * (contextVector[i] || 0), 0);
     const error = reward - prediction;
-    
+
     const updatedWeights = weights.map((w, i) => w + learningRate * error * (contextVector[i] || 0));
     this.contextWeights.set(policyId, updatedWeights);
-    
+
     // Update Beta parameters for success tracking
     const newAlpha = posterior.alpha + (reward > 0 ? 1 : 0);
     const newBeta = posterior.beta + (reward <= 0 ? 1 : 0);
-    
+
     const updatedPosterior: PolicyPosterior = {
       mean: newMean,
       variance: newVariance,
@@ -125,11 +124,11 @@ export class StrategyRouter {
       beta: newBeta,
       updateCount: posterior.updateCount + 1
     };
-    
+
     this.policies.set(policyId, updatedPosterior);
-    
+
     logger.info(`[StrategyRouter] Updated ${policyId}: mean=${newMean.toFixed(4)}, var=${newVariance.toFixed(4)}, updates=${updatedPosterior.updateCount}`);
-    
+
     return updatedPosterior;
   }
 
@@ -138,13 +137,33 @@ export class StrategyRouter {
   }
 
   private contextToVector(context: Context): number[] {
-    return [
-      context.regime === 'bull' ? 1 : context.regime === 'bear' ? -1 : 0,
+    const baseVector = [
+      this.encodeRegime(context.regime || 'unknown'),
       context.vol || 0,
       context.trend || 0,
       context.funding || 0,
       context.sentiment || 0
     ];
+
+    // Append events embedding if provided
+    if (context.eventsEmbedding && Array.isArray(context.eventsEmbedding)) {
+      baseVector.push(...context.eventsEmbedding);
+    }
+
+    return baseVector;
+  }
+
+  private encodeRegime(regime: string): number {
+    switch (regime) {
+      case 'bull':
+        return 1;
+      case 'bear':
+        return -1;
+      case 'sideways':
+        return 0;
+      default:
+        return 0; // Default to neutral or unknown
+    }
   }
 
   private sampleFromNormal(mean: number, std: number): number {

@@ -82,6 +82,7 @@ import { bocpdDetector } from './services/regime/bo_cpd';
 import { featureGating } from '../tools/features/gating';
 import { pbtManager } from '../tools/pbt';
 import { promotionService } from './services/promotion';
+import eventsRoutes from './routes/events.js';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Development bypass function
@@ -1840,6 +1841,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/portfolio', portfolioRouter);
   app.use('/api/chart-data', chartDataRoutes);
   app.use('/api/router', strategyRouterRoutes);
+  app.use('/api/events', eventsRoutes);
 
   // Regime detection endpoint
   app.get('/api/regime/state', (req, res) => {

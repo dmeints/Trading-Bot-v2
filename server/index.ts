@@ -14,7 +14,7 @@ import conformalTuningRouter from './routes/conformalTuning';
 
 // Import routes
 import healthRoutes from './routes/health';
-import tradingRoutes from './routes/trading';
+import { registerTradingRoutes } from './routes/trading';
 import { portfolioRouter } from './routes/portfolio';
 import errorRoutes from './routes/errors';
 import chartDataRoutes from './routes/chart-data';
@@ -103,14 +103,18 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = env.PORT;
-  server.listen(port, "0.0.0.0", () => {
+  server.listen(port, "0.0.0.0", async () => {
     logger.info(`[Server] HTTP server listening on port ${port}`);
     logger.info(`[Server] WebSocket server ready`);
     logger.info(`[Server] Environment: ${process.env.NODE_ENV || 'development'}`);
 
     // Initialize price streaming
-    const { priceStream } = await import('./services/priceStream.js');
-    priceStream.start();
+    try {
+      const { priceStream } = await import('./services/priceStream.js');
+      priceStream.start();
+    } catch (error) {
+      logger.error('[Server] Failed to initialize price streaming:', { error: String(error) });
+    }
   });
 })();
 

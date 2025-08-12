@@ -37,7 +37,7 @@ import { webhookTester } from "./services/webhookTester";
 import { policyEngine } from "./engine/policy";
 import { rlEngine } from "./engine/rl";
 import { lazyInitService } from "./services/lazyInit";
-import { backtestEngine } from "./services/backtestEngine";
+import { runSMABacktest } from "./services/backtestEngine";
 import { ensembleOrchestrator } from "./services/ensembleAI";
 import { env } from "./config/env";
 import { logger } from "./utils/logger";
@@ -63,11 +63,11 @@ import { registerEnhancementRoutes } from './routes/enhancementRoutes';
 import { temporalRoutes } from './routes/temporalRoutes';
 import universalRoutes from './routes/universalRoutes';
 import { trainingJobsRouter } from './training/jobs/routes';
-import tradingRoutes from './routes/trading.js';
+import { registerTradingRoutes } from './routes/trading.js';
 import tradingTestRoutes from './routes/trading-tests.js';
 import { registerMarketRoutes } from './routes/marketRoutes';
 import { registerStrategyRoutes } from './routes/strategyRoutes';
-import registerBacktestRoutes from './routes/backtestRoutes';
+import { registerBacktestRoutes } from './routes/backtestRoutes';
 import externalConnectorsRouter from './routes/externalConnectors';
 import connectorsRouter from './routes/connectors';
 import comprehensiveFeaturesRouter from './routes/comprehensive-features';
@@ -1765,7 +1765,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/training-jobs', trainingJobsRouter);
 
   // Trading system routes
-  app.use('/api/trading', tradingRoutes);
+  registerTradingRoutes(app, requireAuth);
   app.use('/api/trading', tradingTestRoutes);
 
   // Feedback routes

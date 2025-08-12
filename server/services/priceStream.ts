@@ -53,7 +53,7 @@ export class PriceStream {
           });
         }
       } catch (e) { 
-        logger.warn('[PriceStream] Failed to parse message:', e);
+        logger.warn('[PriceStream] Failed to parse message:', { error: String(e) });
       }
     });
     

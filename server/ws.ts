@@ -1,6 +1,6 @@
 import { WebSocketServer } from 'ws';
 import { logger } from './utils/logger';
-import { priceStreamManager } from './services/priceStream';
+import { priceStream } from './services/priceStream';
 
 let wss: WebSocketServer | null = null;
 
@@ -11,11 +11,10 @@ export function initWebSocketServer(server: any) {
     const clientId = Math.random().toString(36).substr(2, 9);
     logger.info(`WebSocket client connected: ${clientId}`);
 
-    // Start default price streams when first client connects
+    // Start default price stream when first client connects
     if (wss && wss.clients.size === 1) {
-      logger.info('Starting default price streams');
-      priceStreamManager.startStream('BTCUSDT');
-      priceStreamManager.startStream('ETHUSDT');
+      logger.info('Starting default price stream');
+      priceStream.start();
     }
 
     ws.on('message', (message) => {
@@ -26,7 +25,10 @@ export function initWebSocketServer(server: any) {
         // Handle price stream subscriptions
         if (data.type === 'subscribe' && data.symbol) {
           logger.info(`Client ${clientId} subscribing to ${data.symbol}`);
-          priceStreamManager.startStream(data.symbol);
+          // Note: Current implementation supports BTCUSDT stream only
+          if (!priceStream.isConnected()) {
+            priceStream.start();
+          }
 
           ws.send(JSON.stringify({
             type: 'subscription_confirmed',
@@ -56,17 +58,17 @@ export function initWebSocketServer(server: any) {
           }));
         }
       } catch (error) {
-        logger.error(`Error processing message from ${clientId}:`, error);
+        logger.error(`Error processing message from ${clientId}:`, { error: String(error) });
       }
     });
 
     ws.on('close', () => {
       logger.info(`WebSocket client disconnected: ${clientId}`);
 
-      // Stop all streams when no clients are connected
+      // Stop stream when no clients are connected
       if (wss && wss.clients.size === 0) {
-        logger.info('No clients connected, stopping all price streams');
-        priceStreamManager.stopAllStreams();
+        logger.info('No clients connected, stopping price stream');
+        priceStream.stop();
       }
     });
   });

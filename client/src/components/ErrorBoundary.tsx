@@ -1,9 +1,7 @@
-
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 
 interface Props {
   children: ReactNode;
-  fallback?: ReactNode;
 }
 
 interface State {
@@ -12,32 +10,42 @@ interface State {
 }
 
 export class ErrorBoundary extends Component<Props, State> {
-  public state: State = {
-    hasError: false
-  };
+  constructor(props: Props) {
+    super(props);
+    this.state = { hasError: false };
 
-  public static getDerivedStateFromError(error: Error): State {
+    // Handle unhandled promise rejections
+    window.addEventListener('unhandledrejection', (event) => {
+      console.error('Unhandled promise rejection:', event.reason);
+      event.preventDefault();
+    });
+  }
+
+  static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error };
   }
 
-  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Uncaught error:', error, errorInfo);
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('Error caught by boundary:', error, errorInfo);
   }
 
-  public render() {
+  render() {
     if (this.state.hasError) {
-      return this.props.fallback || (
+      return (
         <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-          <div className="bg-gray-800 p-8 rounded-lg border border-gray-700 max-w-md">
-            <h2 className="text-xl font-bold text-red-400 mb-4">Something went wrong</h2>
-            <p className="text-gray-300 mb-4">
-              An error occurred while rendering this page. Please refresh to try again.
+          <div className="text-center">
+            <h1 className="text-xl font-bold text-white mb-4">Something went wrong</h1>
+            <p className="text-gray-400 mb-4">
+              {this.state.error?.message || 'An unexpected error occurred'}
             </p>
             <button
-              onClick={() => window.location.reload()}
+              onClick={() => {
+                this.setState({ hasError: false, error: undefined });
+                window.location.reload();
+              }}
               className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
             >
-              Refresh Page
+              Reload Application
             </button>
           </div>
         </div>

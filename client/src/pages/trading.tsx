@@ -19,6 +19,7 @@ import OnboardingTour from '@/components/onboarding/OnboardingTour';
 import TradingNotifications from '@/components/notifications/TradingNotifications';
 import { SafetyBanner } from '@/components/SafetyBanner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useQuery } from '@tanstack/react-query';
 
 // Mock data generation function (assuming it exists elsewhere or needs to be defined)
 const generateMockChartData = () => {
@@ -78,6 +79,25 @@ export default function Trading() {
       }
     }
   };
+
+  // Fetch market data using React Query
+  const { data: marketData, isLoading: isMarketLoading, error: marketError } = useQuery({
+    queryKey: ['marketData'],
+    queryFn: async () => {
+      const response = await fetch('/api/trading/market-data');
+      if (!response.ok) {
+        throw new Error(`Failed to fetch market data: ${response.statusText}`);
+      }
+      const data = await response.json();
+      if (!data || typeof data !== 'object') {
+        throw new Error('Invalid market data response');
+      }
+      return data;
+    },
+    refetchInterval: 5000,
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000)
+  });
 
 
   if (isLoading) {

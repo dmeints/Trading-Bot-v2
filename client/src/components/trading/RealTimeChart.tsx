@@ -20,10 +20,10 @@ interface RealTimeChartProps {
   'data-testid'?: string;
 }
 
-export default function RealTimeChart({ 
-  symbol, 
-  timeframe, 
-  indicators = [], 
+export default function RealTimeChart({
+  symbol,
+  timeframe,
+  indicators = [],
   onDataUpdate,
   'data-testid': dataTestId
 }: RealTimeChartProps) {
@@ -35,57 +35,65 @@ export default function RealTimeChart({
   const fetchChartData = async () => {
     try {
       setError(null);
-      
+
       // Try to fetch real OHLCV data
-      const response = await fetch(`/api/market/ohlcv?symbol=${symbol}&timeframe=${timeframe}&limit=100`).then(r => r.json());
-      
-      if (response && Array.isArray(response)) {
-        const formattedData = response.map((candle: any) => ({
+      const response = await fetch(`/api/market/ohlcv?symbol=${symbol}&timeframe=${timeframe}&limit=100`);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const data = await response.json();
+
+      if (data && Array.isArray(data) && data.length > 0) {
+        const formattedData = data.map((candle: any) => ({
           timestamp: candle.timestamp || Date.now(),
-          price: candle.close || candle.price || 116789,
+          price: candle.close || candle.price || 116789, // Fallback price if close is not available
           volume: candle.volume || Math.random() * 100,
           high: candle.high || candle.price || 116789,
           low: candle.low || candle.price || 116789,
           open: candle.open || candle.price || 116789,
           close: candle.close || candle.price || 116789
         }));
-        
+
         setChartData(formattedData);
         onDataUpdate?.(formattedData);
       } else {
         throw new Error('Invalid chart data response');
       }
-      
+
       setLoading(false);
     } catch (error) {
       console.error('Failed to fetch real chart data:', error);
-      
+
       // Fallback: Generate realistic chart data based on current price
       try {
-        const priceResponse = await fetch('/api/market/price?symbol=BTC').then(r => r.json());
-        const currentPrice = priceResponse?.price || 116789;
-        
+        const priceResponse = await fetch('/api/market/price?symbol=BTC');
+        if (!priceResponse.ok) {
+          throw new Error(`HTTP ${priceResponse.status}: ${priceResponse.statusText} while fetching fallback price`);
+        }
+        const priceData = await priceResponse.json();
+        const currentPrice = priceData?.price || 116789;
+
         // Generate realistic OHLCV data
         const now = Date.now();
         const timeframeMs = getTimeframeMilliseconds(timeframe);
         const dataPoints: ChartDataPoint[] = [];
-        
+
         let basePrice = currentPrice * 0.995; // Start slightly lower for trend
-        
+
         for (let i = 99; i >= 0; i--) {
           const timestamp = now - (i * timeframeMs);
-          
+
           // Generate realistic price movement
           const volatility = 0.002; // 0.2% volatility per candle
           const trend = 0.0001; // Small upward trend
           const change = (Math.random() - 0.5) * volatility + trend;
-          
+
           const open = basePrice;
           const close = open * (1 + change);
           const high = Math.max(open, close) * (1 + Math.random() * 0.001);
           const low = Math.min(open, close) * (1 - Math.random() * 0.001);
           const volume = 50 + Math.random() * 100;
-          
+
           dataPoints.push({
             timestamp,
             price: close,
@@ -95,24 +103,24 @@ export default function RealTimeChart({
             open,
             close
           });
-          
+
           basePrice = close;
         }
-        
+
         setChartData(dataPoints);
         onDataUpdate?.(dataPoints);
         setError(null);
-        
+
       } catch (fallbackError) {
         console.error('Fallback chart data generation failed:', fallbackError);
         setError('Unable to load chart data');
-        
+
         // Final fallback with current market snapshot
         const basePrice = 116780;
         const dataPoints: ChartDataPoint[] = [];
         const now = Date.now();
         const timeframeMs = getTimeframeMilliseconds(timeframe);
-        
+
         for (let i = 10; i >= 0; i--) {
           dataPoints.push({
             timestamp: now - (i * timeframeMs),
@@ -124,11 +132,11 @@ export default function RealTimeChart({
             close: basePrice
           });
         }
-        
+
         setChartData(dataPoints);
         onDataUpdate?.(dataPoints);
       }
-      
+
       setLoading(false);
     }
   };
@@ -148,11 +156,11 @@ export default function RealTimeChart({
 
   useEffect(() => {
     fetchChartData();
-    
+
     // Set up real-time updates
     const updateInterval = Math.max(2000, getTimeframeMilliseconds(timeframe) / 10);
     intervalRef.current = setInterval(fetchChartData, updateInterval);
-    
+
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
@@ -202,25 +210,25 @@ export default function RealTimeChart({
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-          <XAxis 
-            dataKey="timestamp" 
+          <XAxis
+            dataKey="timestamp"
             tickFormatter={formatTimestamp}
             stroke="#9CA3AF"
             fontSize={12}
             axisLine={false}
             tickLine={false}
           />
-          <YAxis 
+          <YAxis
             tickFormatter={formatPrice}
-            stroke="#9CA3AF" 
+            stroke="#9CA3AF"
             fontSize={12}
             axisLine={false}
             tickLine={false}
             domain={['dataMin - 100', 'dataMax + 100']}
           />
-          <Tooltip 
-            contentStyle={{ 
-              backgroundColor: '#1F2937', 
+          <Tooltip
+            contentStyle={{
+              backgroundColor: '#1F2937',
               border: '1px solid #374151',
               borderRadius: '8px',
               color: '#F9FAFB'
@@ -228,10 +236,10 @@ export default function RealTimeChart({
             labelFormatter={(timestamp) => formatTimestamp(timestamp as number)}
             formatter={(value: number, name: string) => [formatPrice(value), name === 'price' ? 'Price' : name]}
           />
-          <Line 
-            type="monotone" 
-            dataKey="price" 
-            stroke="#0EA5E9" 
+          <Line
+            type="monotone"
+            dataKey="price"
+            stroke="#0EA5E9"
             strokeWidth={2}
             dot={false}
             activeDot={{ r: 4, stroke: '#0EA5E9', strokeWidth: 2, fill: '#1F2937' }}

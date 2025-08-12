@@ -12,6 +12,13 @@ import metaBrainRouter from './routes/metaBrain';
 import scenarioCoverageRouter from './routes/scenarioCoverage';
 import conformalTuningRouter from './routes/conformalTuning';
 
+// Import routes
+import healthRoutes from './routes/health.js';
+import tradingRoutes from './routes/trading.js';
+import portfolioRoutes from './routes/portfolio.js';
+import errorRoutes from './routes/errors.js';
+import chartDataRoutes from './routes/chart-data.js';
+
 const app = express();
 
 app.use((compression as any)());
@@ -124,3 +131,10 @@ import safePromotionRouter from './routes/safePromotion';
 
 // Register safe promotion routes
 app.use('/api/safe-promotion', safePromotionRouter);
+
+// Mount routes
+app.use('/api/health', healthRoutes);
+app.use('/api/trading', tradingRoutes);
+app.use('/api/portfolio', portfolioRoutes);
+app.use('/api/errors', errorRoutes);
+app.use('/api/trading', chartDataRoutes);

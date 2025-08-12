@@ -155,13 +155,10 @@ export default function SimulationStudio() {
     setIsRunning(true);
     setProgress(0);
 
-    // Simulate progress updates
-    // Real backtest execution with progress tracking
     const executeRealBacktest = async () => {
       try {
         setProgress(10);
 
-        // Submit backtest job to real backtesting engine
         const backtestJob = await apiRequest('/api/backtests/submit', {
           method: 'POST',
           data: {
@@ -176,7 +173,6 @@ export default function SimulationStudio() {
 
         setProgress(25);
 
-        // Poll for real progress updates
         const progressInterval = setInterval(async () => {
           try {
             const status = await apiRequest(`/api/backtests/status/${jobId}`);
@@ -188,7 +184,6 @@ export default function SimulationStudio() {
               clearInterval(progressInterval);
               setProgress(100);
 
-              // Fetch real results
               const results = await apiRequest(`/api/backtests/results/${jobId}`);
               if (results) {
                 setSelectedResult(results);
@@ -197,19 +192,26 @@ export default function SimulationStudio() {
                   title: "Backtest Complete",
                   description: `Strategy performance: ${results.performance?.totalReturn?.toFixed(2)}% return`,
                 });
+              } else {
+                throw new Error('Failed to fetch backtest results');
               }
             } else if (status?.status === 'failed') {
               clearInterval(progressInterval);
               setProgress(0);
               toast({
-                title: "Backtest Failed", 
-                description: status?.error || "Unknown error occurred",
+                title: "Backtest Failed",
+                description: status?.error || "Unknown error occurred during backtest execution",
                 variant: "destructive"
               });
             }
           } catch (error) {
             clearInterval(progressInterval);
             console.error('Progress polling error:', error);
+            toast({
+              title: "Progress Error",
+              description: "Could not retrieve backtest status.",
+              variant: "destructive"
+            });
           }
         }, 2000);
 
@@ -293,8 +295,8 @@ export default function SimulationStudio() {
                     <CardContent className="space-y-4">
                       <div>
                         <Label htmlFor="strategy">Strategy</Label>
-                        <Select 
-                          value={config.strategy} 
+                        <Select
+                          value={config.strategy}
                           onValueChange={(value) => setConfig({...config, strategy: value})}
                         >
                           <SelectTrigger id="strategy" data-testid="select-strategy">
@@ -312,8 +314,8 @@ export default function SimulationStudio() {
 
                       <div>
                         <Label htmlFor="symbol">Trading Pair</Label>
-                        <Select 
-                          value={config.symbol} 
+                        <Select
+                          value={config.symbol}
                           onValueChange={(value) => setConfig({...config, symbol: value})}
                         >
                           <SelectTrigger id="symbol" data-testid="select-symbol">
@@ -418,8 +420,8 @@ export default function SimulationStudio() {
                         </div>
                       </div>
 
-                      <Button 
-                        onClick={handleRunBacktest} 
+                      <Button
+                        onClick={handleRunBacktest}
                         disabled={isRunning}
                         className="w-full"
                         data-testid="button-run-backtest"
@@ -510,7 +512,7 @@ export default function SimulationStudio() {
                                 <TrendingUp className="w-4 h-4 text-green-400" />
                                 <div>
                                   <div className="text-2xl font-bold text-green-400" data-testid="metric-total-return">
-                                    {selectedResult.performance.totalReturn.toFixed(2)}%
+                                    {selectedResult.performance?.totalReturn?.toFixed(2)}%
                                   </div>
                                   <div className="text-sm text-gray-400">Total Return</div>
                                 </div>
@@ -524,7 +526,7 @@ export default function SimulationStudio() {
                                 <BarChart3 className="w-4 h-4 text-blue-400" />
                                 <div>
                                   <div className="text-2xl font-bold text-blue-400" data-testid="metric-win-rate">
-                                    {selectedResult.performance.winRate.toFixed(1)}%
+                                    {selectedResult.performance?.winRate?.toFixed(1)}%
                                   </div>
                                   <div className="text-sm text-gray-400">Win Rate</div>
                                 </div>
@@ -538,7 +540,7 @@ export default function SimulationStudio() {
                                 <TrendingDown className="w-4 h-4 text-red-400" />
                                 <div>
                                   <div className="text-2xl font-bold text-red-400" data-testid="metric-max-drawdown">
-                                    {selectedResult.performance.maxDrawdown.toFixed(2)}%
+                                    {selectedResult.performance?.maxDrawdown?.toFixed(2)}%
                                   </div>
                                   <div className="text-sm text-gray-400">Max Drawdown</div>
                                 </div>
@@ -552,7 +554,7 @@ export default function SimulationStudio() {
                                 <Clock className="w-4 h-4 text-purple-400" />
                                 <div>
                                   <div className="text-2xl font-bold text-purple-400" data-testid="metric-total-trades">
-                                    {selectedResult.performance.totalTrades}
+                                    {selectedResult.performance?.totalTrades}
                                   </div>
                                   <div className="text-sm text-gray-400">Total Trades</div>
                                 </div>
@@ -569,26 +571,30 @@ export default function SimulationStudio() {
                           </CardHeader>
                           <CardContent>
                             <ResponsiveContainer width="100%" height={400}>
-                              <AreaChart data={selectedResult.equityCurve}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                                <XAxis 
-                                  dataKey="timestamp" 
-                                  tickFormatter={(value) => format(new Date(value), "MMM dd")}
-                                  stroke="#9CA3AF"
-                                />
-                                <YAxis stroke="#9CA3AF" />
-                                <Tooltip 
-                                  labelFormatter={(value) => format(new Date(value), "MMM dd, yyyy HH:mm")}
-                                  contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151' }}
-                                />
-                                <Area
-                                  type="monotone"
-                                  dataKey="equity"
-                                  stroke="#10B981"
-                                  fill="#10B981"
-                                  fillOpacity={0.2}
-                                />
-                              </AreaChart>
+                              {selectedResult.equityCurve && selectedResult.equityCurve.length > 0 ? (
+                                <AreaChart data={selectedResult.equityCurve}>
+                                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                                  <XAxis
+                                    dataKey="timestamp"
+                                    tickFormatter={(value) => format(new Date(value), "MMM dd")}
+                                    stroke="#9CA3AF"
+                                  />
+                                  <YAxis stroke="#9CA3AF" />
+                                  <Tooltip
+                                    labelFormatter={(value) => format(new Date(value), "MMM dd, yyyy HH:mm")}
+                                    contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151' }}
+                                  />
+                                  <Area
+                                    type="monotone"
+                                    dataKey="equity"
+                                    stroke="#10B981"
+                                    fill="#10B981"
+                                    fillOpacity={0.2}
+                                  />
+                                </AreaChart>
+                              ) : (
+                                <div className="flex items-center justify-center h-full text-gray-400">No equity curve data available.</div>
+                              )}
                             </ResponsiveContainer>
                           </CardContent>
                         </Card>
@@ -601,38 +607,42 @@ export default function SimulationStudio() {
                           </CardHeader>
                           <CardContent>
                             <div className="overflow-x-auto">
-                              <table className="w-full text-sm" data-testid="table-trades">
-                                <thead>
-                                  <tr className="border-b border-gray-700">
-                                    <th className="text-left p-2">Date</th>
-                                    <th className="text-left p-2">Symbol</th>
-                                    <th className="text-left p-2">Side</th>
-                                    <th className="text-left p-2">Quantity</th>
-                                    <th className="text-left p-2">Price</th>
-                                    <th className="text-left p-2">P&L</th>
-                                    <th className="text-left p-2">Confidence</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {selectedResult.trades.slice(0, 20).map((trade, index) => (
-                                    <tr key={index} className="border-b border-gray-700/50" data-testid={`trade-row-${index}`}>
-                                      <td className="p-2">{format(new Date(trade.timestamp), "MMM dd, HH:mm")}</td>
-                                      <td className="p-2">{trade.symbol}</td>
-                                      <td className="p-2">
-                                        <Badge variant={trade.side === 'buy' ? 'default' : 'secondary'}>
-                                          {trade.side.toUpperCase()}
-                                        </Badge>
-                                      </td>
-                                      <td className="p-2">{trade.quantity.toFixed(6)}</td>
-                                      <td className="p-2">${trade.price.toFixed(2)}</td>
-                                      <td className={`p-2 ${trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                        ${trade.pnl.toFixed(2)}
-                                      </td>
-                                      <td className="p-2">{(trade.confidence * 100).toFixed(1)}%</td>
+                              {selectedResult.trades && selectedResult.trades.length > 0 ? (
+                                <table className="w-full text-sm" data-testid="table-trades">
+                                  <thead>
+                                    <tr className="border-b border-gray-700">
+                                      <th className="text-left p-2">Date</th>
+                                      <th className="text-left p-2">Symbol</th>
+                                      <th className="text-left p-2">Side</th>
+                                      <th className="text-left p-2">Quantity</th>
+                                      <th className="text-left p-2">Price</th>
+                                      <th className="text-left p-2">P&L</th>
+                                      <th className="text-left p-2">Confidence</th>
                                     </tr>
-                                  ))}
-                                </tbody>
-                              </table>
+                                  </thead>
+                                  <tbody>
+                                    {selectedResult.trades.slice(0, 20).map((trade, index) => (
+                                      <tr key={index} className="border-b border-gray-700/50" data-testid={`trade-row-${index}`}>
+                                        <td className="p-2">{format(new Date(trade.timestamp), "MMM dd, HH:mm")}</td>
+                                        <td className="p-2">{trade.symbol}</td>
+                                        <td className="p-2">
+                                          <Badge variant={trade.side === 'buy' ? 'default' : 'secondary'}>
+                                            {trade.side.toUpperCase()}
+                                          </Badge>
+                                        </td>
+                                        <td className="p-2">{trade.quantity.toFixed(6)}</td>
+                                        <td className="p-2">${trade.price.toFixed(2)}</td>
+                                        <td className={`p-2 ${trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                          ${trade.pnl.toFixed(2)}
+                                        </td>
+                                        <td className="p-2">{(trade.confidence * 100).toFixed(1)}%</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              ) : (
+                                <div className="text-center text-gray-400 py-4">No trade history available for this simulation.</div>
+                              )}
                             </div>
                           </CardContent>
                         </Card>
@@ -647,23 +657,23 @@ export default function SimulationStudio() {
                             <CardContent className="space-y-3">
                               <div className="flex justify-between">
                                 <span>Sharpe Ratio:</span>
-                                <span className="font-mono">{selectedResult.performance.sharpeRatio.toFixed(3)}</span>
+                                <span className="font-mono">{selectedResult.performance?.sharpeRatio?.toFixed(3)}</span>
                               </div>
                               <div className="flex justify-between">
                                 <span>Profit Factor:</span>
-                                <span className="font-mono">{selectedResult.performance.profitFactor.toFixed(2)}</span>
+                                <span className="font-mono">{selectedResult.performance?.profitFactor?.toFixed(2)}</span>
                               </div>
                               <div className="flex justify-between">
                                 <span>Avg Trade Return:</span>
-                                <span className="font-mono">${selectedResult.performance.avgTradeReturn.toFixed(2)}</span>
+                                <span className="font-mono">${selectedResult.performance?.avgTradeReturn?.toFixed(2)}</span>
                               </div>
                               <div className="flex justify-between">
                                 <span>Best Trade:</span>
-                                <span className="font-mono text-green-400">${selectedResult.statistics.bestTrade.toFixed(2)}</span>
+                                <span className="font-mono text-green-400">${selectedResult.statistics?.bestTrade?.toFixed(2)}</span>
                               </div>
                               <div className="flex justify-between">
                                 <span>Worst Trade:</span>
-                                <span className="font-mono text-red-400">${selectedResult.statistics.worstTrade.toFixed(2)}</span>
+                                <span className="font-mono text-red-400">${selectedResult.statistics?.worstTrade?.toFixed(2)}</span>
                               </div>
                             </CardContent>
                           </Card>
@@ -675,23 +685,23 @@ export default function SimulationStudio() {
                             <CardContent className="space-y-3">
                               <div className="flex justify-between">
                                 <span>Duration:</span>
-                                <span className="font-mono">{selectedResult.statistics.duration.toFixed(0)} days</span>
+                                <span className="font-mono">{selectedResult.statistics?.duration?.toFixed(0)} days</span>
                               </div>
                               <div className="flex justify-between">
                                 <span>Consecutive Wins:</span>
-                                <span className="font-mono">{selectedResult.statistics.consecutiveWins}</span>
+                                <span className="font-mono">{selectedResult.statistics?.consecutiveWins}</span>
                               </div>
                               <div className="flex justify-between">
                                 <span>Consecutive Losses:</span>
-                                <span className="font-mono">{selectedResult.statistics.consecutiveLosses}</span>
+                                <span className="font-mono">{selectedResult.statistics?.consecutiveLosses}</span>
                               </div>
                               <div className="flex justify-between">
                                 <span>Volatility:</span>
-                                <span className="font-mono">{selectedResult.statistics.volatility.toFixed(2)}%</span>
+                                <span className="font-mono">{selectedResult.statistics?.volatility?.toFixed(2)}%</span>
                               </div>
                               <div className="flex justify-between">
                                 <span>Avg Daily Return:</span>
-                                <span className="font-mono">${selectedResult.statistics.avgDailyReturn.toFixed(2)}</span>
+                                <span className="font-mono">${selectedResult.statistics?.avgDailyReturn?.toFixed(2)}</span>
                               </div>
                             </CardContent>
                           </Card>
@@ -711,7 +721,7 @@ export default function SimulationStudio() {
               </div>
 
               {/* Previous Results */}
-              {backtestHistory.length > 0 && (
+              {backtestHistory && backtestHistory.length > 0 && (
                 <Card className="bg-gray-800 border-gray-700 mt-6">
                   <CardHeader>
                     <CardTitle>Recent Simulations</CardTitle>
@@ -719,7 +729,7 @@ export default function SimulationStudio() {
                   <CardContent>
                     <div className="space-y-2">
                       {backtestHistory.slice(0, 5).map((result, index) => (
-                        <div 
+                        <div
                           key={result.id}
                           className="flex items-center justify-between p-3 bg-gray-700 rounded cursor-pointer hover:bg-gray-600"
                           onClick={() => setSelectedResult(result)}

@@ -4,7 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, useCallback } from "react";
 import { IntlProvider } from "@/providers/IntlProvider";
 import { SkipLink } from "@/components/accessibility/SkipLink";
 import { LiveRegion } from "@/components/accessibility/LiveRegion";
@@ -44,6 +44,21 @@ const NotFound = lazy(() => import("@/pages/not-found"));
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
+
+  const navigate = useCallback((path: string) => {
+    try {
+      if (typeof path === 'string' && path.length > 0) {
+        window.history.pushState(null, '', path);
+        window.location.reload();
+      } else {
+        console.warn('Invalid navigation path:', path);
+      }
+    } catch (error) {
+      console.error('Navigation failed:', error);
+      // Fallback navigation
+      window.location.href = path || '/';
+    }
+  }, []);
 
   if (isLoading) {
     return (

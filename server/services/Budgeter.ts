@@ -243,3 +243,167 @@ export class Budgeter {
 }
 
 export const budgeter = new Budgeter();
+import { logger } from '../utils/logger.js';
+
+interface ProviderLimits {
+  provider: string;
+  rateLimit: number;
+  costLimit: number;
+  calls: number;
+  costUSD: number;
+  rateRemaining: number;
+  resetAt: number;
+  lastCall?: number;
+}
+
+interface BudgetRequest {
+  provider: string;
+  kind: string;
+  estimatedCost?: number;
+}
+
+interface BudgetCheckResult {
+  allowed: boolean;
+  reason?: string;
+  fallbackProvider?: string;
+  rateRemaining: number;
+  costRemaining: number;
+}
+
+export class Budgeter {
+  private providers: Map<string, ProviderLimits> = new Map();
+
+  constructor() {
+    this.initializeProviders();
+  }
+
+  private initializeProviders(): void {
+    const defaultProviders = [
+      { provider: 'binance', rateLimit: 1200, costLimit: 50 },
+      { provider: 'coinbase', rateLimit: 1000, costLimit: 40 },
+      { provider: 'coingecko', rateLimit: 100, costLimit: 10 },
+      { provider: 'kraken', rateLimit: 500, costLimit: 30 }
+    ];
+
+    for (const config of defaultProviders) {
+      this.providers.set(config.provider, {
+        ...config,
+        calls: 0,
+        costUSD: 0,
+        rateRemaining: config.rateLimit,
+        resetAt: Date.now() + 3600000 // 1 hour
+      });
+    }
+  }
+
+  checkBudget(request: BudgetRequest): BudgetCheckResult {
+    const provider = this.providers.get(request.provider);
+    if (!provider) {
+      return {
+        allowed: false,
+        reason: 'Unknown provider',
+        rateRemaining: 0,
+        costRemaining: 0
+      };
+    }
+
+    // Check rate limit
+    if (provider.rateRemaining <= 0) {
+      const fallback = this.findFallbackProvider(request.provider);
+      return {
+        allowed: false,
+        reason: 'Rate limit exceeded',
+        fallbackProvider: fallback,
+        rateRemaining: 0,
+        costRemaining: provider.costLimit - provider.costUSD
+      };
+    }
+
+    // Check cost limit
+    const estimatedCost = request.estimatedCost || 0.1;
+    if (provider.costUSD + estimatedCost > provider.costLimit) {
+      const fallback = this.findFallbackProvider(request.provider);
+      return {
+        allowed: false,
+        reason: 'Cost budget exceeded',
+        fallbackProvider: fallback,
+        rateRemaining: provider.rateRemaining,
+        costRemaining: 0
+      };
+    }
+
+    return {
+      allowed: true,
+      rateRemaining: provider.rateRemaining,
+      costRemaining: provider.costLimit - provider.costUSD
+    };
+  }
+
+  async request<T>(provider: string, kind: string, fn: () => Promise<T>, cost = 0.1): Promise<T> {
+    const budget = this.checkBudget({ provider, kind, estimatedCost: cost });
+    
+    if (!budget.allowed) {
+      if (budget.fallbackProvider) {
+        logger.warn(`[Budgeter] Using fallback ${budget.fallbackProvider} for ${provider}`);
+        return this.request(budget.fallbackProvider, kind, fn, cost);
+      }
+      throw new Error(`Budget exceeded: ${budget.reason}`);
+    }
+
+    const providerData = this.providers.get(provider)!;
+    
+    try {
+      const result = await fn();
+      
+      // Update usage
+      providerData.calls++;
+      providerData.rateRemaining--;
+      providerData.costUSD += cost;
+      providerData.lastCall = Date.now();
+      
+      return result;
+    } catch (error) {
+      // Still count failed requests against rate limit
+      providerData.calls++;
+      providerData.rateRemaining--;
+      providerData.lastCall = Date.now();
+      throw error;
+    }
+  }
+
+  private findFallbackProvider(excludeProvider: string): string | undefined {
+    const fallbacks: Record<string, string[]> = {
+      'coingecko': ['coinbase', 'binance'],
+      'binance': ['coinbase', 'kraken'],
+      'coinbase': ['binance', 'kraken'],
+      'kraken': ['binance', 'coinbase']
+    };
+
+    const candidates = fallbacks[excludeProvider] || [];
+    for (const candidate of candidates) {
+      const provider = this.providers.get(candidate);
+      if (provider && provider.rateRemaining > 10) {
+        return candidate;
+      }
+    }
+    return undefined;
+  }
+
+  getStatus(): ProviderLimits[] {
+    return Array.from(this.providers.values());
+  }
+
+  getProviderStatus(provider: string): ProviderLimits | null {
+    return this.providers.get(provider) || null;
+  }
+
+  updateLimits(provider: string, updates: Partial<ProviderLimits>): void {
+    const existing = this.providers.get(provider);
+    if (existing) {
+      Object.assign(existing, updates);
+      logger.info(`[Budgeter] Updated limits for ${provider}`, updates);
+    }
+  }
+}
+
+export const budgeter = new Budgeter();

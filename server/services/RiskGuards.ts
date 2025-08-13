@@ -123,7 +123,7 @@ class RiskGuards {
       // Check for drawdown breach
       if (this.state.currentDrawdown > this.MAX_DRAWDOWN_PCT && !this.state.isBlocked) {
         this.state.isBlocked = true;
-        this.state.blockReason = `Drawdown breaker triggered: ${(this.state.currentDrawdown * 100).toFixed(2)}% > ${(this.MAX_DRAWDOWN_PCT * 100).toFixed(2)}%`;
+        this.state.blockReason = `Drawdown limit triggered: ${(this.state.currentDrawdown * 100).toFixed(2)}% > ${(this.MAX_DRAWDOWN_PCT * 100).toFixed(2)}%`;
         this.state.lastReset = Date.now(); // Mark the time of breach for reset
 
         // Schedule automatic reset
@@ -173,7 +173,7 @@ class RiskGuards {
     // Check if drawdown breaker should be triggered
     if (this.state.currentDrawdown > this.MAX_DRAWDOWN_PCT && !this.state.isBlocked) {
       this.state.isBlocked = true;
-      this.state.blockReason = `Drawdown breaker triggered: ${(this.state.currentDrawdown * 100).toFixed(2)}% > ${(this.MAX_DRAWDOWN_PCT * 100).toFixed(2)}%`;
+      this.state.blockReason = `Drawdown limit triggered: ${(this.state.currentDrawdown * 100).toFixed(2)}% > ${(this.MAX_DRAWDOWN_PCT * 100).toFixed(2)}%`;
       this.state.lastReset = Date.now(); // Mark the time of breach for reset
 
       // Schedule automatic reset

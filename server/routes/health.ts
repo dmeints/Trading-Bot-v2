@@ -1,4 +1,3 @@
-
 import { Router } from 'express';
 import { strategyRouter } from '../services/StrategyRouter.js';
 import { logger } from '../utils/logger.js';
@@ -16,11 +15,11 @@ router.get('/', (req, res) => {
         websocket: 'active'
       }
     };
-    
+
     res.json(health);
   } catch (error) {
     logger.error('[Health] Error checking health:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       status: 'error',
       timestamp: new Date().toISOString(),
       error: 'Health check failed'

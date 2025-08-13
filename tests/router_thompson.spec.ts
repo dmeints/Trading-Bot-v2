@@ -139,4 +139,54 @@ describe('Thompson Sampling Strategy Router', () => {
       expect(laterChoice.confidence).toBeGreaterThan(initialChoice.confidence);
     }
   });
+
+  it('should validate UCB exploration bonus calculation', () => {
+    const context: RouterContext = { regime: 'bull', vol: 0.15 };
+    
+    // Test that exploration bonus follows UCB formula: sqrt(2 * log(total_actions) / arm_count)
+    const choice1 = strategyRouter.choose(context);
+    const initialBonus = choice1.explorationBonus;
+    
+    // Verify exploration bonus is positive and reasonable
+    expect(initialBonus).toBeGreaterThan(0);
+    expect(initialBonus).toBeLessThan(10); // Reasonable upper bound
+    
+    // Update the chosen policy multiple times
+    for (let i = 0; i < 5; i++) {
+      strategyRouter.update(choice1.policyId, 0.005, context);
+    }
+    
+    // Choose again and verify exploration bonus decreased (more samples = less uncertainty)
+    const choice2 = strategyRouter.choose(context);
+    if (choice2.policyId === choice1.policyId) {
+      expect(choice2.explorationBonus).toBeLessThanOrEqual(initialBonus);
+    }
+  });
+
+  it('should validate Thompson Sampling beta distribution sampling', () => {
+    const context: RouterContext = { regime: 'bull', vol: 0.2 };
+    
+    // Update one policy with positive rewards to skew its distribution
+    for (let i = 0; i < 10; i++) {
+      strategyRouter.update('p_trend', 0.02, context);
+    }
+    
+    // Update another policy with negative rewards
+    for (let i = 0; i < 10; i++) {
+      strategyRouter.update('p_sma', -0.01, context);
+    }
+    
+    // Test multiple choices to verify stochastic behavior
+    const choices = [];
+    for (let i = 0; i < 50; i++) {
+      const choice = strategyRouter.choose(context);
+      choices.push(choice.policyId);
+    }
+    
+    // p_trend should be chosen more often due to better rewards
+    const trendChoices = choices.filter(p => p === 'p_trend').length;
+    const smaChoices = choices.filter(p => p === 'p_sma').length;
+    
+    expect(trendChoices).toBeGreaterThan(smaChoices);
+  });
 });

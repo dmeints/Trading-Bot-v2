@@ -1,0 +1,60 @@
+TASK 4 — Context Router (Bayesian Thompson Sampling)
+server/services/StrategyRouter.ts: Bayesian linear TS over policies using context vector (regime, vol forecasts, microstructure, options metrics, funding/basis, sentiment/on-chain as available).
+
+Routes:
+
+POST /api/router/choose {context} → {policyId, score, explorationBonus}
+
+POST /api/router/update {policyId, reward, context}
+
+GET /api/router/snapshot → last choice + sampled scores + feature vector
+
+Tests: tests/router_ts.spec.ts (converges to better policy on synthetic).
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s -X POST localhost:5000/api/router/choose -H "Content-Type: application/json" \
+  -d '{"context":{"regime":"bull","sigmaHAR":0.02,"obi":0.2,"rr25":0.1}}' | jq
+curl -s -X POST localhost:5000/api/router/update -H "Content-Type: application/json" \
+  -d '{"policyId":"p_sma","reward":0.004,"context":{"regime":"bull"}}' | jq
+curl -s localhost:5000/api/router/snapshot | jq
+TASK 5 — L2 Depth (Snapshot + Delta Reconciliation)
+server/services/l2/OrderBook.ts: in-memory book (price→size maps), best bid/ask, top-K aggregates, sequence tracking.
+
+server/services/l2/BookMaintainer.ts: per venue & symbol → snapshot via REST + apply WS deltas; resync on seq gaps.
+
+Route: GET /api/l2/:venue/:symbol → { bids, asks, seq, ts }.
+
+Feed top-K aggregates to Microstructure features.
+
+Tests: tests/l2_reconciliation.spec.ts.
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/l2/binance/BTCUSDT | jq '.bids[0], .asks[0], .seq'
+TASK 6 — Cross-Venue Smart Router
+server/services/venues/VenueRegistry.ts: latency, spread_bps, topDepth, feeBps, reliability, rateRemaining.
+
+server/services/venues/SmartVenueRouter.ts: scoreVenue/chooseVenue per symbol & size.
+
+Routes:
+
+GET /api/venues/registry
+
+POST /api/venues/score {symbol,size} → {venue,score,reasons}
+
+Include chosen venue in Execution audit (paper).
+
+Tests: tests/venues_router.spec.ts.
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/venues/registry | jq '.[0:3]'
+curl -s -X POST localhost:5000/api/venues/score -H "Content-Type: application/json" \
+  -d '{"symbol":"BTCUSDT","size":0.02}' | jq

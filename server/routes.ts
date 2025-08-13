@@ -197,6 +197,15 @@ import promotionRouter from './routes/promotion.js';
 import cfRouter from './routes/counterfactuals.js';
 import metaRouter from './routes/meta.js';
 import eventsRouter from './routes/events.js';
+// Task 15-20: Import new route modules
+import budgetRoutes from './routes/budget';
+import deployRoutes from './routes/deploy';
+import chaosRoutes from './routes/chaos';
+import dataQualityRoutes from './routes/data-quality';
+import featuresRoutes from './routes/features';
+import auditRoutes from './routes/audit';
+import reportRoutes from './routes/report';
+import metricsRoutes from './routes/metrics';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Development bypass function
@@ -1992,6 +2001,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/router', routerRoutes);
   app.use('/api/l2', l2Routes);
   app.use('/api/venues', venuesRouter);
+
+  // Task 15-20: Register new routes
+  app.use('/api/budget', budgetRoutes);
+  app.use('/api/deploy', deployRoutes);
+  app.use('/api/chaos', chaosRoutes);
+  app.use('/api/data-quality', dataQualityRoutes);
+  app.use('/api/features', featuresRoutes);
+  app.use('/api/audit', auditRoutes);
+  app.use('/api/report', reportRoutes);
+  app.use('/metrics', metricsRoutes); // Note: this route is usually mounted at the root or a specific prefix
+
+  // Metrics and Monitoring Routes (already registered above, ensure no conflict)
+  // app.use('/api/metrics', (await import('./routes/metrics')).default);
+
+  // Feature Flags Routes (already registered above)
+  // app.use('/api/feature-flags', (await import('./routes/featureFlags')).default);
 
   // Metrics endpoint
   app.get('/api/metrics', metricsHandler);

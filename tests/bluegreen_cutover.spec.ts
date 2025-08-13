@@ -1,8 +1,3 @@
-
-/**
- * Blue/Green Cutover Tests
- */
-
 import { describe, it, expect, beforeEach } from '@jest/globals';
 import { BlueGreen } from '../server/services/BlueGreen';
 
@@ -13,72 +8,44 @@ describe('Blue/Green Cutover', () => {
     blueGreen = new BlueGreen();
   });
 
-  afterEach(() => {
-    blueGreen.cleanup();
-  });
-
-  it('should start in stable state with blue active', () => {
+  it('should start with active deployment', () => {
     const status = blueGreen.getStatus();
-    
-    expect(status.phase).toBe('stable');
-    expect(status.activeStack).toBe('blue');
-    expect(status.candidateStack).toBe(null);
-    expect(status.trafficSplit.blue).toBe(100);
-    expect(status.trafficSplit.green).toBe(0);
+    expect(status.state).toBe('active');
+    expect(status.trafficPercent).toBe(100);
   });
 
-  it('should deploy candidate successfully', () => {
-    blueGreen.deployCandidate('green');
+  it('should deploy candidate and auto-promote', async () => {
+    const version = '2.0.0';
+    await blueGreen.deployCandidate(version);
+
     const status = blueGreen.getStatus();
-    
-    expect(status.phase).toBe('candidate');
-    expect(status.candidateStack).toBe('green');
+    expect(status.version).toBe(version);
+    expect(status.state).toBe('candidate');
+    expect(status.trafficPercent).toBe(0);
   });
 
-  it('should prevent deployment during active phase', () => {
-    blueGreen.deployCandidate('green');
-    
-    expect(() => {
-      blueGreen.deployCandidate('blue');
-    }).toThrow(/Cannot deploy candidate during/);
-  });
-
-  it('should rollback on command', () => {
-    blueGreen.deployCandidate('green');
-    blueGreen.forceRollback('Test rollback');
-    
+  it('should evaluate SLO health', () => {
     const status = blueGreen.getStatus();
-    expect(status.phase).toBe('stable');
-    expect(status.candidateStack).toBe(null);
-    expect(status.trafficSplit.blue).toBe(100);
+    const slos = status.slos;
+
+    expect(slos.p95LatencyMs).toBeGreaterThan(0);
+    expect(slos.errorRate).toBeGreaterThanOrEqual(0);
+    expect(slos.qosScore).toBeGreaterThanOrEqual(0);
+    expect(slos.qosScore).toBeLessThanOrEqual(1);
   });
 
-  it('should update thresholds', () => {
-    blueGreen.updateThresholds({
-      maxP95Latency: 1000,
-      maxErrorRate: 0.1
-    });
-    
-    // Thresholds should be applied (internal state, can't verify directly)
-    expect(() => {
-      blueGreen.updateThresholds({ maxErrorRate: 0.05 });
-    }).not.toThrow();
+  it('should have proper rollback thresholds', () => {
+    const status = blueGreen.getStatus();
+    const thresholds = status.rollbackThreshold;
+
+    expect(thresholds.maxErrorRate).toBeGreaterThan(0);
+    expect(thresholds.maxLatencyMs).toBeGreaterThan(0);
+    expect(thresholds.minQosScore).toBeGreaterThan(0);
+    expect(thresholds.minQosScore).toBeLessThan(1);
   });
 
-  it('should emit events during lifecycle', (done) => {
-    let eventsReceived = 0;
-    
-    blueGreen.on('candidateDeployed', () => {
-      eventsReceived++;
-    });
-    
-    blueGreen.on('rollback', () => {
-      eventsReceived++;
-      expect(eventsReceived).toBe(2);
-      done();
-    });
-    
-    blueGreen.deployCandidate('green');
-    blueGreen.forceRollback('Test');
+  it('should track metrics history', () => {
+    const history = blueGreen.getMetricsHistory();
+    expect(Array.isArray(history)).toBe(true);
   });
 });

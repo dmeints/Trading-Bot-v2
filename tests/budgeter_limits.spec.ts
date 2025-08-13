@@ -1,85 +1,81 @@
 
-/**
- * Budgeter Limits Tests
- */
-
 import { describe, it, expect, beforeEach } from '@jest/globals';
-import { budgeter } from '../server/services/Budgeter';
+import { Budgeter } from '../server/services/Budgeter';
 
 describe('Budgeter Limits', () => {
+  let budgeter: Budgeter;
+
   beforeEach(() => {
-    // Reset budgeter state if needed
+    budgeter = new Budgeter();
   });
 
   it('should enforce rate limits', async () => {
-    // Update limits to very low for testing
-    budgeter.updateLimits('coingecko', { maxCallsPerMinute: 2 });
+    const provider = 'binance';
     
-    // First two calls should succeed
-    await expect(budgeter.request('coingecko', 'test', async () => 'success1')).resolves.toBe('success1');
-    await expect(budgeter.request('coingecko', 'test', async () => 'success2')).resolves.toBe('success2');
-    
-    // Third call should be rate limited
-    await expect(budgeter.request('coingecko', 'test', async () => 'fail')).rejects.toThrow();
+    // Check initial budget
+    const initial = budgeter.checkBudget({ provider, kind: 'test' });
+    expect(initial.allowed).toBe(true);
+
+    // Simulate rapid requests to exhaust rate limit
+    for (let i = 0; i < 1200; i++) {
+      await budgeter.request(provider, 'test', async () => 'success');
+    }
+
+    // Should now be rate limited
+    const afterExhaustion = budgeter.checkBudget({ provider, kind: 'test' });
+    expect(afterExhaustion.allowed).toBe(false);
+    expect(afterExhaustion.reason).toContain('Rate limit');
   });
 
-  it('should provide fallback providers when cost budget exceeded', async () => {
-    // Set very low cost limit
-    budgeter.updateLimits('coingecko', { maxCostUSD: 0.001 });
+  it('should track cost limits', () => {
+    const provider = 'coingecko';
     
-    const status = budgeter.getProviderStatus('coingecko');
-    expect(status).toBeDefined();
-    
-    // Check budget without making actual call
-    const budgetCheck = budgeter.checkBudget({
-      provider: 'coingecko',
-      kind: 'test',
-      estimatedCost: 1.0 // Very high cost
+    // Check budget with high cost request
+    const result = budgeter.checkBudget({ 
+      provider, 
+      kind: 'test', 
+      estimatedCost: 10 
     });
     
-    expect(budgetCheck.allowed).toBe(false);
-    expect(budgetCheck.reason).toMatch(/cost budget/i);
+    // Should suggest fallback due to cost
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toContain('Cost budget');
+    expect(result.fallbackProvider).toBeDefined();
   });
 
-  it('should track usage correctly', async () => {
-    const initialStatus = budgeter.getProviderStatus('binance');
-    const initialCalls = initialStatus?.calls || 0;
+  it('should provide fallback providers', () => {
+    const provider = 'coingecko';
     
-    await budgeter.request('binance', 'test', async () => 'success');
-    
-    const finalStatus = budgeter.getProviderStatus('binance');
-    expect(finalStatus?.calls).toBe(initialCalls + 1);
-    expect(finalStatus?.costUSD).toBeGreaterThan(initialStatus?.costUSD || 0);
-  });
-
-  it('should suggest fallback providers when available', () => {
-    const budgetCheck = budgeter.checkBudget({
-      provider: 'coingecko',
-      kind: 'price',
-      estimatedCost: 999 // Very high cost
+    const result = budgeter.checkBudget({ 
+      provider, 
+      kind: 'test', 
+      estimatedCost: 10 
     });
     
-    if (!budgetCheck.allowed && budgetCheck.fallbackProvider) {
-      expect(['coinbase', 'binance']).toContain(budgetCheck.fallbackProvider);
+    if (result.fallbackProvider) {
+      expect(['coinbase', 'binance']).toContain(result.fallbackProvider);
     }
   });
 
-  it('should delay requests when rate limited', async () => {
-    // Set very low rate limit
-    budgeter.updateLimits('etherscan', { maxCallsPerMinute: 1 });
+  it('should reset rate limits over time', (done) => {
+    const provider = 'binance';
     
-    // Use up the rate limit
-    await budgeter.request('etherscan', 'test', async () => 'first');
-    
-    // Next request should get delay recommendation
-    const budgetCheck = budgeter.checkBudget({
-      provider: 'etherscan',
-      kind: 'test'
-    });
-    
-    if (!budgetCheck.allowed) {
-      expect(budgetCheck.delayMs).toBeDefined();
-      expect(budgetCheck.delayMs).toBeGreaterThan(0);
+    // Exhaust rate limit
+    const status = budgeter.getProviderStatus(provider);
+    if (status) {
+      status.rateRemaining = 0;
+      status.resetAt = Date.now() + 100; // Reset in 100ms
     }
+
+    // Check that it's limited
+    const limited = budgeter.checkBudget({ provider, kind: 'test' });
+    expect(limited.allowed).toBe(false);
+
+    // Wait for reset
+    setTimeout(() => {
+      const afterReset = budgeter.checkBudget({ provider, kind: 'test' });
+      expect(afterReset.allowed).toBe(true);
+      done();
+    }, 150);
   });
 });

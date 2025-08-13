@@ -1,43 +1,56 @@
 
 import { Router } from 'express';
-import { DataQuality } from '../services/DataQuality';
-import { logger } from '../utils/logger';
+import { dataQuality } from '../services/DataQuality';
 
 const router = Router();
-const dataQuality = DataQuality.getInstance();
 
-// Get data quality stats
 router.get('/stats', (req, res) => {
-  try {
-    const stats = dataQuality.getStats();
-    res.json(stats);
-  } catch (error) {
-    logger.error('[DataQuality] Get stats error:', error);
-    res.status(500).json({ error: 'Failed to get data quality stats' });
-  }
+  const stats = dataQuality.getStats();
+  res.json(stats);
 });
 
-// Get quarantined candles
-router.get('/quarantined', (req, res) => {
-  try {
-    const limit = parseInt(req.query.limit as string) || 10;
-    const quarantined = dataQuality.getQuarantinedCandles(limit);
-    res.json(quarantined);
-  } catch (error) {
-    logger.error('[DataQuality] Get quarantined error:', error);
-    res.status(500).json({ error: 'Failed to get quarantined candles' });
-  }
+router.get('/quarantine/:dataType', (req, res) => {
+  const { dataType } = req.params;
+  const limit = parseInt(req.query.limit as string) || 10;
+  
+  const quarantineData = dataQuality.getQuarantineData(dataType, limit);
+  
+  res.json({
+    dataType,
+    quarantineData,
+    count: quarantineData.length
+  });
 });
 
-// Reset data quality (dev only)
-router.post('/reset', (req, res) => {
-  try {
-    dataQuality.reset();
-    res.json({ success: true, message: 'Data quality stats reset' });
-  } catch (error) {
-    logger.error('[DataQuality] Reset error:', error);
-    res.status(500).json({ error: 'Failed to reset data quality' });
-  }
+router.get('/anomalies', (req, res) => {
+  const limit = parseInt(req.query.limit as string) || 50;
+  const anomalies = dataQuality.getAnomalies(limit);
+  
+  res.json({
+    anomalies,
+    count: anomalies.length,
+    timestamp: Date.now()
+  });
+});
+
+router.delete('/quarantine/:dataType', (req, res) => {
+  const { dataType } = req.params;
+  dataQuality.clearQuarantine(dataType);
+  
+  res.json({
+    success: true,
+    message: `Quarantine cleared for ${dataType}`
+  });
+});
+
+router.get('/health', (req, res) => {
+  const isHealthy = dataQuality.isHealthy();
+  
+  res.json({
+    healthy: isHealthy,
+    timestamp: Date.now(),
+    status: isHealthy ? 'ok' : 'degraded'
+  });
 });
 
 export default router;

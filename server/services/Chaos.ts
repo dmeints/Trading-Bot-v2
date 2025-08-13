@@ -1,287 +1,204 @@
 
-/**
- * Chaos Injection - Verify graceful degradation
- */
-
-import { EventEmitter } from 'events';
 import { logger } from '../utils/logger';
 
-export type ChaosType = 'ws_flap' | 'api_timeout' | 'l2_gap' | 'depth_spike' | 'network_partition';
+type ChaosType = 'ws_flap' | 'api_timeout' | 'l2_gap' | 'depth_spike' | 'network_partition' | 'memory_pressure';
 
-export interface ChaosEvent {
-  id: string;
+interface ChaosInjection {
   type: ChaosType;
-  target: string;
   startTime: number;
-  endTime?: number;
-  parameters: Record<string, any>;
-  impact: {
-    systems: string[];
-    severity: 'low' | 'medium' | 'high';
-    recoveryTime?: number;
-  };
+  duration: number;
+  severity: number;
+  metadata?: Record<string, any>;
 }
 
-export interface ChaosInjectionRequest {
-  type: ChaosType;
-  target?: string;
-  duration?: number;
-  parameters?: Record<string, any>;
-}
+export class Chaos {
+  private activeInjections: Map<string, ChaosInjection> = new Map();
+  private injectionHistory: ChaosInjection[] = [];
+  private enabled: boolean = process.env.NODE_ENV === 'development';
 
-export class Chaos extends EventEmitter {
-  private activeEvents = new Map<string, ChaosEvent>();
-  private eventHistory: ChaosEvent[] = [];
-  private isEnabled = process.env.NODE_ENV === 'development';
-
-  constructor() {
-    super();
-    logger.info(`[Chaos] Chaos injection ${this.isEnabled ? 'enabled' : 'disabled'}`);
-  }
-
-  inject(request: ChaosInjectionRequest): ChaosEvent {
-    if (!this.isEnabled) {
-      throw new Error('Chaos injection disabled in production');
+  async inject(type: ChaosType, options?: { duration?: number; severity?: number }): Promise<string> {
+    if (!this.enabled) {
+      throw new Error('Chaos engineering only available in development mode');
     }
 
-    const event: ChaosEvent = {
-      id: `chaos_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`,
-      type: request.type,
-      target: request.target || 'system',
+    const injectionId = `${type}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const injection: ChaosInjection = {
+      type,
       startTime: Date.now(),
-      parameters: request.parameters || {},
-      impact: this.calculateImpact(request.type)
+      duration: options?.duration || this.getDefaultDuration(type),
+      severity: options?.severity || 0.5,
+      metadata: this.getInjectionMetadata(type)
     };
 
-    this.activeEvents.set(event.id, event);
-    
-    // Schedule auto-recovery
-    const duration = request.duration || 30000; // 30s default
-    setTimeout(() => {
-      this.recover(event.id);
-    }, duration);
+    this.activeInjections.set(injectionId, injection);
+    this.injectionHistory.push(injection);
 
-    this.executeInjection(event);
-    
-    logger.warn(`[Chaos] Injected ${event.type} chaos event`, {
-      id: event.id,
-      target: event.target,
-      duration
+    logger.warn(`[Chaos] Injecting ${type} for ${injection.duration}ms`, {
+      injectionId,
+      severity: injection.severity
     });
 
-    this.emit('chaosInjected', event);
-    return event;
+    // Execute the chaos injection
+    await this.executeInjection(type, injection);
+
+    // Auto-cleanup after duration
+    setTimeout(() => {
+      this.activeInjections.delete(injectionId);
+      logger.info(`[Chaos] Injection ${injectionId} completed`);
+    }, injection.duration);
+
+    return injectionId;
   }
 
-  private executeInjection(event: ChaosEvent): void {
-    switch (event.type) {
+  private async executeInjection(type: ChaosType, injection: ChaosInjection): Promise<void> {
+    switch (type) {
       case 'ws_flap':
-        this.injectWebSocketFlap(event);
+        await this.injectWebSocketFlap(injection);
         break;
       case 'api_timeout':
-        this.injectApiTimeout(event);
+        await this.injectApiTimeout(injection);
         break;
       case 'l2_gap':
-        this.injectL2Gap(event);
+        await this.injectL2Gap(injection);
         break;
       case 'depth_spike':
-        this.injectDepthSpike(event);
+        await this.injectDepthSpike(injection);
         break;
       case 'network_partition':
-        this.injectNetworkPartition(event);
+        await this.injectNetworkPartition(injection);
+        break;
+      case 'memory_pressure':
+        await this.injectMemoryPressure(injection);
         break;
     }
   }
 
-  private injectWebSocketFlap(event: ChaosEvent): void {
+  private async injectWebSocketFlap(injection: ChaosInjection): Promise<void> {
     // Simulate WebSocket connection instability
-    const flapCount = event.parameters.flapCount || 5;
-    const interval = event.parameters.interval || 2000;
+    const flapCount = Math.floor(injection.severity * 10) + 1;
+    const interval = injection.duration / flapCount;
 
-    let currentFlap = 0;
-    const flapInterval = setInterval(() => {
-      currentFlap++;
-      
-      logger.warn(`[Chaos] WebSocket flap ${currentFlap}/${flapCount}`);
-      this.emit('wsFlap', { event, flapNumber: currentFlap });
-      
-      // Simulate connection drop and reconnect
-      this.simulateConnectionDrop(event.target);
-      
-      if (currentFlap >= flapCount) {
-        clearInterval(flapInterval);
-      }
-    }, interval);
+    for (let i = 0; i < flapCount; i++) {
+      setTimeout(() => {
+        logger.warn(`[Chaos] WebSocket flap ${i + 1}/${flapCount}`);
+        // In real implementation, would disconnect/reconnect WebSocket clients
+      }, i * interval);
+    }
   }
 
-  private injectApiTimeout(event: ChaosEvent): void {
-    // Simulate API call timeouts
-    const timeoutMs = event.parameters.timeoutMs || 10000;
+  private async injectApiTimeout(injection: ChaosInjection): Promise<void> {
+    // Simulate API response delays
+    const delayMs = injection.severity * 5000; // Up to 5s delay
+    logger.warn(`[Chaos] Injecting API timeout of ${delayMs}ms`);
     
-    logger.warn(`[Chaos] Injecting API timeouts for ${timeoutMs}ms`);
-    
-    // Set global timeout flag that other services can check
-    global.chaosApiTimeout = true;
+    // Store delay for middleware to use
+    global.chaosApiDelay = delayMs;
     
     setTimeout(() => {
-      global.chaosApiTimeout = false;
-      logger.info('[Chaos] API timeout chaos recovered');
-    }, timeoutMs);
-    
-    this.emit('apiTimeout', { event, timeoutMs });
+      global.chaosApiDelay = 0;
+    }, injection.duration);
   }
 
-  private injectL2Gap(event: ChaosEvent): void {
-    // Simulate order book sequence gaps
-    const gapSize = event.parameters.gapSize || 100;
+  private async injectL2Gap(injection: ChaosInjection): Promise<void> {
+    // Simulate order book data gaps
+    const gapSize = injection.severity * 50; // Up to 50% of book depth
+    logger.warn(`[Chaos] Injecting L2 gap of ${gapSize}%`);
     
-    logger.warn(`[Chaos] Injecting L2 sequence gap of ${gapSize}`);
+    global.chaosL2Gap = gapSize;
     
-    // Emit gap event that BookMaintainer can listen for
-    this.emit('l2Gap', { 
-      event, 
-      gapSize,
-      symbol: event.target || 'BTCUSDT'
-    });
-  }
-
-  private injectDepthSpike(event: ChaosEvent): void {
-    // Simulate extreme order book depth changes
-    const spikeMultiplier = event.parameters.spikeMultiplier || 10;
-    
-    logger.warn(`[Chaos] Injecting depth spike with ${spikeMultiplier}x multiplier`);
-    
-    this.emit('depthSpike', {
-      event,
-      spikeMultiplier,
-      symbol: event.target || 'BTCUSDT'
-    });
-  }
-
-  private injectNetworkPartition(event: ChaosEvent): void {
-    // Simulate network connectivity issues
-    const affectedSystems = event.parameters.systems || ['external_apis'];
-    
-    logger.warn(`[Chaos] Injecting network partition affecting:`, affectedSystems);
-    
-    global.chaosNetworkPartition = affectedSystems;
-    
-    this.emit('networkPartition', {
-      event,
-      affectedSystems
-    });
-  }
-
-  private simulateConnectionDrop(target: string): void {
-    // Emit connection drop event
-    this.emit('connectionDrop', { target, timestamp: Date.now() });
-    
-    // Simulate reconnection after delay
     setTimeout(() => {
-      this.emit('connectionRestore', { target, timestamp: Date.now() });
-    }, 1000 + Math.random() * 3000);
+      global.chaosL2Gap = 0;
+    }, injection.duration);
   }
 
-  private calculateImpact(type: ChaosType): ChaosEvent['impact'] {
-    const impacts: Record<ChaosType, ChaosEvent['impact']> = {
-      ws_flap: {
-        systems: ['websocket', 'realtime_data'],
-        severity: 'medium'
-      },
-      api_timeout: {
-        systems: ['external_apis', 'data_ingestion'],
-        severity: 'high'
-      },
-      l2_gap: {
-        systems: ['order_book', 'microstructure'],
-        severity: 'medium'
-      },
-      depth_spike: {
-        systems: ['order_book', 'risk_management'],
-        severity: 'low'
-      },
-      network_partition: {
-        systems: ['all_external'],
-        severity: 'high'
-      }
+  private async injectDepthSpike(injection: ChaosInjection): Promise<void> {
+    // Simulate sudden depth spikes in order book
+    const spikeMultiplier = 1 + injection.severity * 10; // Up to 10x normal depth
+    logger.warn(`[Chaos] Injecting depth spike of ${spikeMultiplier}x`);
+    
+    global.chaosDepthSpike = spikeMultiplier;
+    
+    setTimeout(() => {
+      global.chaosDepthSpike = 1;
+    }, injection.duration);
+  }
+
+  private async injectNetworkPartition(injection: ChaosInjection): Promise<void> {
+    // Simulate network partitioning
+    logger.warn(`[Chaos] Simulating network partition`);
+    global.chaosNetworkPartition = true;
+    
+    setTimeout(() => {
+      global.chaosNetworkPartition = false;
+    }, injection.duration);
+  }
+
+  private async injectMemoryPressure(injection: ChaosInjection): Promise<void> {
+    // Simulate memory pressure
+    const pressureSize = injection.severity * 100; // MB
+    logger.warn(`[Chaos] Injecting memory pressure of ${pressureSize}MB`);
+    
+    const memoryHog: any[] = [];
+    const chunkSize = 1024 * 1024; // 1MB chunks
+    
+    for (let i = 0; i < pressureSize; i++) {
+      memoryHog.push(new Array(chunkSize / 4).fill(Math.random()));
+    }
+    
+    setTimeout(() => {
+      memoryHog.length = 0; // Release memory
+    }, injection.duration);
+  }
+
+  private getDefaultDuration(type: ChaosType): number {
+    const durations: Record<ChaosType, number> = {
+      'ws_flap': 30000,      // 30s
+      'api_timeout': 60000,   // 1m
+      'l2_gap': 15000,        // 15s
+      'depth_spike': 20000,   // 20s
+      'network_partition': 45000, // 45s
+      'memory_pressure': 30000    // 30s
     };
-
-    return impacts[type];
+    return durations[type] || 30000;
   }
 
-  recover(eventId: string): void {
-    const event = this.activeEvents.get(eventId);
-    if (!event) return;
-
-    event.endTime = Date.now();
-    event.impact.recoveryTime = event.endTime - event.startTime;
-    
-    this.activeEvents.delete(eventId);
-    this.eventHistory.push(event);
-    
-    // Clean up chaos effects
-    this.cleanupChaosEffects(event);
-    
-    logger.info(`[Chaos] Recovered from ${event.type} chaos event`, {
-      id: eventId,
-      recoveryTime: event.impact.recoveryTime
-    });
-
-    this.emit('chaosRecovered', event);
-  }
-
-  private cleanupChaosEffects(event: ChaosEvent): void {
-    switch (event.type) {
-      case 'api_timeout':
-        global.chaosApiTimeout = false;
-        break;
-      case 'network_partition':
-        global.chaosNetworkPartition = undefined;
-        break;
-    }
-  }
-
-  getActiveEvents(): ChaosEvent[] {
-    return Array.from(this.activeEvents.values());
-  }
-
-  getEventHistory(limit: number = 50): ChaosEvent[] {
-    return this.eventHistory.slice(-limit);
-  }
-
-  getSystemHealth(): { healthy: boolean; affectedSystems: string[] } {
-    const affectedSystems = new Set<string>();
-    
-    for (const event of this.activeEvents.values()) {
-      for (const system of event.impact.systems) {
-        affectedSystems.add(system);
-      }
-    }
-
+  private getInjectionMetadata(type: ChaosType): Record<string, any> {
     return {
-      healthy: this.activeEvents.size === 0,
-      affectedSystems: Array.from(affectedSystems)
+      environment: process.env.NODE_ENV,
+      timestamp: Date.now(),
+      type,
+      source: 'chaos-engineering'
     };
   }
 
-  forceRecoverAll(): void {
-    const activeIds = Array.from(this.activeEvents.keys());
-    for (const id of activeIds) {
-      this.recover(id);
+  getActiveInjections(): ChaosInjection[] {
+    return Array.from(this.activeInjections.values());
+  }
+
+  getInjectionHistory(limit: number = 50): ChaosInjection[] {
+    return this.injectionHistory.slice(-limit);
+  }
+
+  stopInjection(injectionId: string): boolean {
+    const removed = this.activeInjections.delete(injectionId);
+    if (removed) {
+      logger.info(`[Chaos] Stopped injection ${injectionId}`);
     }
-    
-    logger.info('[Chaos] Force recovered all active chaos events');
+    return removed;
   }
 
-  enable(): void {
-    this.isEnabled = true;
-    logger.info('[Chaos] Chaos injection enabled');
+  isEnabled(): boolean {
+    return this.enabled;
   }
 
-  disable(): void {
-    this.forceRecoverAll();
-    this.isEnabled = false;
-    logger.info('[Chaos] Chaos injection disabled');
+  getStats(): Record<string, any> {
+    return {
+      enabled: this.enabled,
+      activeInjections: this.activeInjections.size,
+      totalHistoryCount: this.injectionHistory.length,
+      injectionTypes: [...new Set(this.injectionHistory.map(i => i.type))],
+      lastInjection: this.injectionHistory[this.injectionHistory.length - 1]
+    };
   }
 }
 

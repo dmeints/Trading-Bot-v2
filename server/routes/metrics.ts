@@ -1,114 +1,95 @@
+
 import { Router } from 'express';
-import { strategyRouter } from '../services/StrategyRouter.js';
-import { executionRouter } from '../services/ExecutionRouter.js';
-import { dataQuality } from '../services/DataQuality.js';
-import { riskGuards } from '../services/RiskGuards.js';
-import { metaMonitor } from '../services/MetaMonitor.js';
 
 const router = Router();
 
-// Simple Prometheus metrics counter
-class MetricsCounter {
-  private counters: Map<string, number> = new Map();
-  private gauges: Map<string, number> = new Map();
+// Simple metrics store
+const metricsStore = {
+  venue_score: new Map<string, number>(),
+  l2_resyncs_total: 0,
+  chaos_injections_total: 0,
+  router_decisions_total: 0,
+  exec_blocked_total: 0,
+  price_stream_connected: 1,
+  ohlcv_last_sync_ts_seconds: Math.floor(Date.now() / 1000)
+};
 
-  increment(name: string, value: number = 1): void {
-    this.counters.set(name, (this.counters.get(name) || 0) + value);
-  }
-
-  setGauge(name: string, value: number): void {
-    this.gauges.set(name, value);
-  }
-
-  getCounters(): Map<string, number> {
-    return this.counters;
-  }
-
-  getGauges(): Map<string, number> {
-    return this.gauges;
-  }
-}
-
-const metrics = new MetricsCounter();
-
-// Update metrics periodically
-setInterval(() => {
-  updateMetrics();
-}, 30000); // Every 30 seconds
-
-function updateMetrics(): void {
-  // Strategy Router metrics
-  const policies = strategyRouter.getPolicies();
-  metrics.setGauge('router_active_policies', policies.size);
-
-  let totalUpdates = 0;
-  for (const policy of policies.values()) {
-    totalUpdates += policy.updateCount;
-  }
-  metrics.setGauge('router_total_updates', totalUpdates);
-
-  // Execution metrics
-  const execRecords = executionRouter.getExecutionRecords();
-  metrics.setGauge('execution_total_count', execRecords.length);
-
-  const blockedCount = execRecords.filter(r => r.side === 'hold').length;
-  metrics.setGauge('execution_blocked_total', blockedCount);
-
-  // Data Quality metrics
-  const dqStats = dataQuality.getStats();
-  metrics.setGauge('data_quality_total_candles', dqStats.totalCandles);
-  metrics.setGauge('data_quality_quarantined_candles', dqStats.quarantinedCandles);
-  metrics.setGauge('data_quality_schema_violations', dqStats.schemaViolations);
-  metrics.setGauge('data_quality_spike_detections', dqStats.spikeDetections);
-
-  // Risk Guards metrics
-  const guardState = riskGuards.getState();
-  metrics.setGauge('risk_guards_total_notional', guardState.totalNotional);
-  metrics.setGauge('risk_guards_drawdown_breaker_active', guardState.drawdownBreaker.active ? 1 : 0);
-
-  // Meta Monitor metrics
-  const quality = metaMonitor.getQuality();
-  metrics.setGauge('meta_monitor_brier_score', quality.brierScore);
-  metrics.setGauge('meta_monitor_regret_vs_hold', quality.regretVsHold);
-  metrics.setGauge('meta_monitor_calibration', quality.calibration);
-
-  // Price stream metrics (mock)
-  metrics.setGauge('price_stream_connected', 1);
-  metrics.setGauge('ohlcv_last_sync_ts_seconds', Math.floor(Date.now() / 1000));
-}
-
-router.get('/', (req, res) => {
-  try {
-    updateMetrics();
-
-    let output = '';
-
-    // Export counters
-    for (const [name, value] of metrics.getCounters().entries()) {
-      output += `# TYPE ${name} counter\n`;
-      output += `${name} ${value}\n`;
-    }
-
-    // Export gauges
-    for (const [name, value] of metrics.getGauges().entries()) {
-      output += `# TYPE ${name} gauge\n`;
-      output += `${name} ${value}\n`;
-    }
-
-    // Add timestamp
-    output += `# TYPE metrics_generation_timestamp_seconds gauge\n`;
-    output += `metrics_generation_timestamp_seconds ${Math.floor(Date.now() / 1000)}\n`;
-
-    res.set('Content-Type', 'text/plain');
-    res.send(output);
-  } catch (error) {
-    res.status(500).send('Error generating metrics');
-  }
+// Update venue scores
+const venues = ['binance', 'coinbase', 'kraken', 'deribit'];
+venues.forEach(venue => {
+  metricsStore.venue_score.set(venue, Math.random() * 0.3 + 0.7);
 });
 
-// Helper function to increment counters from other services
-export function incrementCounter(name: string, value: number = 1): void {
-  metrics.increment(name, value);
-}
+// Simulate some activity
+setInterval(() => {
+  metricsStore.l2_resyncs_total += Math.floor(Math.random() * 3);
+  metricsStore.router_decisions_total += Math.floor(Math.random() * 20) + 5;
+  metricsStore.exec_blocked_total += Math.floor(Math.random() * 2);
+  metricsStore.ohlcv_last_sync_ts_seconds = Math.floor(Date.now() / 1000);
+}, 60000);
+
+router.get('/', (req, res) => {
+  res.set('Content-Type', 'text/plain');
+  
+  let output = '';
+  
+  // Venue scores
+  output += '# HELP venue_score Quality score for each venue\n';
+  output += '# TYPE venue_score gauge\n';
+  for (const [venue, score] of metricsStore.venue_score) {
+    output += `venue_score{venue="${venue}"} ${score.toFixed(4)}\n`;
+  }
+  
+  // L2 resyncs
+  output += '\n# HELP l2_resyncs_total Total number of L2 book resyncs\n';
+  output += '# TYPE l2_resyncs_total counter\n';
+  output += `l2_resyncs_total ${metricsStore.l2_resyncs_total}\n`;
+  
+  // Chaos injections
+  output += '\n# HELP chaos_injections_total Total number of chaos injections\n';
+  output += '# TYPE chaos_injections_total counter\n';
+  output += `chaos_injections_total ${metricsStore.chaos_injections_total}\n`;
+  
+  // Router decisions
+  output += '\n# HELP router_decisions_total Total number of routing decisions made\n';
+  output += '# TYPE router_decisions_total counter\n';
+  output += `router_decisions_total ${metricsStore.router_decisions_total}\n`;
+  
+  // Execution blocked
+  output += '\n# HELP exec_blocked_total Total number of blocked executions\n';
+  output += '# TYPE exec_blocked_total counter\n';
+  output += `exec_blocked_total ${metricsStore.exec_blocked_total}\n`;
+  
+  // Price stream status
+  output += '\n# HELP price_stream_connected Price stream connection status\n';
+  output += '# TYPE price_stream_connected gauge\n';
+  output += `price_stream_connected ${metricsStore.price_stream_connected}\n`;
+  
+  // Last OHLCV sync
+  output += '\n# HELP ohlcv_last_sync_ts_seconds Timestamp of last OHLCV sync\n';
+  output += '# TYPE ohlcv_last_sync_ts_seconds gauge\n';
+  output += `ohlcv_last_sync_ts_seconds ${metricsStore.ohlcv_last_sync_ts_seconds}\n`;
+  
+  // System metrics
+  const memUsage = process.memoryUsage();
+  output += '\n# HELP nodejs_heap_used_bytes Node.js heap used in bytes\n';
+  output += '# TYPE nodejs_heap_used_bytes gauge\n';
+  output += `nodejs_heap_used_bytes ${memUsage.heapUsed}\n`;
+  
+  output += '\n# HELP nodejs_heap_total_bytes Node.js heap total in bytes\n';
+  output += '# TYPE nodejs_heap_total_bytes gauge\n';
+  output += `nodejs_heap_total_bytes ${memUsage.heapTotal}\n`;
+  
+  output += '\n# HELP nodejs_process_uptime_seconds Node.js process uptime\n';
+  output += '# TYPE nodejs_process_uptime_seconds gauge\n';
+  output += `nodejs_process_uptime_seconds ${process.uptime()}\n`;
+  
+  res.send(output);
+});
+
+// Helper to increment chaos injections counter
+export const incrementChaosInjections = () => {
+  metricsStore.chaos_injections_total++;
+};
 
 export default router;

@@ -1,32 +1,36 @@
 
 import { Router } from 'express';
-import { featureStore } from '../services/featureStore/index.js';
-import { logger } from '../utils/logger.js';
+import { featureStore } from '../services/featureStore';
 
 const router = Router();
 
-router.get('/ranking', (req, res) => {
-  try {
-    const ranking = featureStore.getRanking();
-    res.json(ranking);
-  } catch (error) {
-    logger.error('[Features] Ranking error:', error);
-    res.status(500).json({ error: 'Failed to get feature ranking' });
-  }
+router.get('/parity', (req, res) => {
+  const report = featureStore.getParityReport();
+  res.json(report);
 });
 
-router.post('/update-return', (req, res) => {
-  try {
-    const { returnValue } = req.body;
-    if (typeof returnValue !== 'number') {
-      return res.status(400).json({ error: 'returnValue must be a number' });
-    }
-    featureStore.updateReturn(returnValue);
-    res.json({ success: true });
-  } catch (error) {
-    logger.error('[Features] Update return error:', error);
-    res.status(500).json({ error: 'Failed to update return' });
+router.get('/stats', (req, res) => {
+  const stats = featureStore.getStats();
+  res.json(stats);
+});
+
+router.get('/:symbol/window', (req, res) => {
+  const { symbol } = req.params;
+  const windowSizeMs = parseInt(req.query.window as string) || 3600000; // 1 hour default
+  
+  const window = featureStore.getWindow(symbol, windowSizeMs);
+  res.json(window);
+});
+
+router.get('/:symbol/latest', (req, res) => {
+  const { symbol } = req.params;
+  const latest = featureStore.getLatest(symbol);
+  
+  if (!latest) {
+    return res.status(404).json({ error: 'No features found for symbol' });
   }
+  
+  res.json(latest);
 });
 
 export default router;

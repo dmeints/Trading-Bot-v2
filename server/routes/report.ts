@@ -1,154 +1,114 @@
-import express from 'express';
 
-const router = express.Router();
+import { Router } from 'express';
 
-/**
- * Attribution & Risk Reporting API Routes
- */
+const router = Router();
 
-// GET /api/report/alpha-pnl
-router.get('/alpha-pnl', async (req, res) => {
-  try {
-    const { window = '7d' } = req.query;
-    
-    // Dynamic alpha performance with learning
-    const baseTime = Date.now();
-    const timeVariation = Math.sin(baseTime / (1000 * 60 * 5)) * 0.02; // 5-min cycle
-    
-    const alphas = [
-      { 
-        id: 'momentum', 
-        pnl: 0.034 + timeVariation, 
-        contribution: 0.15 + (timeVariation * 2),
-        trades: Math.floor(50 + Math.random() * 20),
-        sharpe: 1.2 + timeVariation * 5
-      },
-      { 
-        id: 'mean_revert', 
-        pnl: -0.012 + (timeVariation * 0.5), 
-        contribution: -0.05 + timeVariation,
-        trades: Math.floor(30 + Math.random() * 15),
-        sharpe: 0.3 + timeVariation * 2
-      },
-      { 
-        id: 'volatility', 
-        pnl: 0.087 - timeVariation, 
-        contribution: 0.40 - (timeVariation * 1.5),
-        trades: Math.floor(70 + Math.random() * 25),
-        sharpe: 1.8 - timeVariation * 3
-      },
-      { 
-        id: 'microstructure', 
-        pnl: 0.015 + (timeVariation * 1.2), 
-        contribution: 0.08 + timeVariation,
-        trades: Math.floor(80 + Math.random() * 30),
-        sharpe: 0.9 + timeVariation * 4
-      },
-      { 
-        id: 'options_flow', 
-        pnl: 0.003 + (timeVariation * 0.3), 
-        contribution: 0.02 + (timeVariation * 0.5),
-        trades: Math.floor(25 + Math.random() * 10),
-        sharpe: 0.5 + timeVariation * 1.5
-      }
-    ];
+// Mock data generators for reports
+const generateAlphaPnL = (window: string) => {
+  const days = window === '7d' ? 7 : window === '30d' ? 30 : 1;
+  const alphas = ['momentum', 'mean_reversion', 'breakout', 'volatility'];
+  
+  return alphas.map(alpha => ({
+    alpha,
+    pnl: (Math.random() - 0.5) * 1000,
+    contribution: Math.random() * 0.3 - 0.15,
+    sharpe: Math.random() * 2 + 0.5,
+    trades: Math.floor(Math.random() * 100) + 10,
+    winRate: Math.random() * 0.4 + 0.4,
+    avgWin: Math.random() * 50 + 20,
+    avgLoss: Math.random() * 30 + 10
+  }));
+};
 
-    // Sort by performance and prune worst decile
-    const sortedAlphas = alphas.sort((a, b) => b.sharpe - a.sharpe);
-    const pruneCount = Math.ceil(alphas.length * 0.1); // Remove worst 10%
-    const activeAlphas = sortedAlphas.slice(0, -pruneCount);
-    const prunedAlphas = sortedAlphas.slice(-pruneCount);
-    
-    const totalPnl = activeAlphas.reduce((sum, alpha) => sum + alpha.pnl, 0);
-    
-    const report = {
-      window,
-      alphas: activeAlphas,
-      prunedAlphas: prunedAlphas.map(a => ({ id: a.id, reason: 'Low Sharpe ratio', sharpe: a.sharpe })),
-      totalPnl,
-      totalTrades: activeAlphas.reduce((sum, alpha) => sum + alpha.trades, 0),
-      avgSharpe: activeAlphas.reduce((sum, alpha) => sum + alpha.sharpe, 0) / activeAlphas.length,
-      learningCycle: Math.floor(baseTime / (1000 * 60 * 5)), // 5-min learning cycles
-      generatedAt: new Date().toISOString()
-    };
-    
-    res.json(report);
-  } catch (error) {
-    res.status(500).json({ error: String(error) });
-  }
+const generateRiskReport = (window: string) => {
+  return {
+    realizedVol: Math.random() * 0.3 + 0.1,
+    targetVol: 0.2,
+    cvar95: Math.random() * 0.15 + 0.05,
+    maxDrawdown: Math.random() * 0.2 + 0.05,
+    turnover: Math.random() * 2 + 0.5,
+    avgSlippage: Math.random() * 0.002 + 0.001,
+    riskAdjustedReturn: Math.random() * 0.15 + 0.05,
+    betaToMarket: Math.random() * 0.4 + 0.8,
+    trackingError: Math.random() * 0.05 + 0.02
+  };
+};
+
+const generateVenueReport = (window: string) => {
+  const venues = ['binance', 'coinbase', 'kraken', 'deribit'];
+  
+  return venues.map(venue => ({
+    venue,
+    winRate: Math.random() * 0.3 + 0.5,
+    avgSlippage: Math.random() * 0.003 + 0.001,
+    downtimeMinutes: Math.floor(Math.random() * 60),
+    fillRate: Math.random() * 0.1 + 0.9,
+    avgFillTime: Math.random() * 1000 + 200,
+    totalVolume: Math.random() * 1000000 + 100000,
+    commissionPaid: Math.random() * 1000 + 100
+  }));
+};
+
+router.get('/alpha-pnl', (req, res) => {
+  const window = req.query.window as string || '7d';
+  const report = generateAlphaPnL(window);
+  
+  res.json({
+    window,
+    timestamp: Date.now(),
+    alphas: report,
+    totalPnL: report.reduce((sum, alpha) => sum + alpha.pnl, 0),
+    bestAlpha: report.reduce((best, current) => 
+      current.pnl > best.pnl ? current : best
+    )
+  });
 });
 
-// GET /api/report/risk
-router.get('/risk', async (req, res) => {
-  try {
-    const { window = '7d' } = req.query;
-    const report = {
-      window,
-      var95: 0.023,
-      cvar95: 0.045,
-      maxDrawdown: 0.056,
-      sharpe: 1.34,
-      generatedAt: new Date().toISOString()
-    };
-    res.json(report);
-  } catch (error) {
-    res.status(500).json({ error: String(error) });
-  }
+router.get('/risk', (req, res) => {
+  const window = req.query.window as string || '7d';
+  const report = generateRiskReport(window);
+  
+  res.json({
+    window,
+    timestamp: Date.now(),
+    ...report
+  });
 });
 
-// GET /api/report/performance (New endpoint as per the intention, combining alpha and risk data)
-router.get('/performance', async (req, res) => {
-  try {
-    const { window = '30d' } = req.query;
-
-    // Mock data for alpha PnL
-    const alphaPnLData = {
-      window,
-      alphas: [
-        { id: 'momentum', pnl: 0.034, contribution: 0.15 },
-        { id: 'mean_revert', pnl: -0.012, contribution: -0.05 },
-        { id: 'volatility', pnl: 0.087, contribution: 0.40 }
-      ],
-      totalPnl: 0.109,
-    };
-
-    // Mock data for risk metrics
-    const riskMetricsData = {
-      window,
-      var95: 0.023,
-      cvar95: 0.045,
-      maxDrawdown: 0.056,
-      sharpe: 1.34,
-    };
-
-    const performanceReport = {
-      window: window,
-      alpha: {
-        totalPnL: alphaPnLData.totalPnl,
-        alphaCount: alphaPnLData.alphas.length,
-        sharpeRatio: riskMetricsData.sharpe,
-        // Assuming informationRatio can be derived or mocked similarly
-        informationRatio: 0.85,
-      },
-      risk: {
-        var95: riskMetricsData.var95,
-        cvar95: riskMetricsData.cvar95,
-        maxDrawdown: riskMetricsData.maxDrawdown,
-      },
-      execution: {
-        avgSlippage: 2.5, // Mocked value
-        turnover: 1.2, // Mocked value
-        fillRate: 0.98
-      },
-      generatedAt: new Date().toISOString()
-    };
-
-    res.json(performanceReport);
-
-  } catch (error) {
-    res.status(500).json({ error: String(error) });
-  }
+router.get('/venue', (req, res) => {
+  const window = req.query.window as string || '7d';
+  const report = generateVenueReport(window);
+  
+  res.json({
+    window,
+    timestamp: Date.now(),
+    venues: report,
+    bestVenue: report.reduce((best, current) => 
+      current.winRate > best.winRate ? current : best
+    )
+  });
 });
 
+// Performance attribution report
+router.get('/attribution', (req, res) => {
+  const window = req.query.window as string || '7d';
+  
+  res.json({
+    window,
+    timestamp: Date.now(),
+    attribution: {
+      market: Math.random() * 0.1 - 0.05,
+      selection: Math.random() * 0.15 - 0.075,
+      timing: Math.random() * 0.1 - 0.05,
+      interaction: Math.random() * 0.05 - 0.025
+    },
+    factors: {
+      momentum: Math.random() * 0.08 - 0.04,
+      value: Math.random() * 0.06 - 0.03,
+      volatility: Math.random() * 0.1 - 0.05,
+      size: Math.random() * 0.04 - 0.02
+    }
+  });
+});
 
 export default router;

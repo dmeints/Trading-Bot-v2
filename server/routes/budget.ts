@@ -1,9 +1,9 @@
-
 import { Router } from 'express';
-import { budgeter } from '../services/Budgeter.js';
+import { budgeter as originalBudgeter } from '../services/Budgeter.js';
 import { logger } from '../utils/logger.js';
 
 const router = Router();
+const budgeter = new originalBudgeter();
 
 // GET /api/budget/status - Get current budget status for all providers
 router.get('/status', (req, res) => {

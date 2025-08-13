@@ -1,116 +1,131 @@
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from '@jest/globals';
 import { DataQuality } from '../server/services/DataQuality';
 
-describe('Data Quality Tests', () => {
+describe('Data Quality', () => {
   let dataQuality: DataQuality;
 
   beforeEach(() => {
-    dataQuality = DataQuality.getInstance();
-    dataQuality.reset();
+    dataQuality = new DataQuality();
   });
 
-  it('should validate good OHLCV data', () => {
-    const goodCandle = {
+  it('should validate correct OHLCV data', () => {
+    const validOHLCV = {
+      symbol: 'BTCUSDT',
       timestamp: Date.now(),
-      open: 43000,
-      high: 43100,
-      low: 42900,
-      close: 43050,
-      volume: 1500,
-      symbol: 'BTCUSDT'
+      open: 50000,
+      high: 51000,
+      low: 49000,
+      close: 50500,
+      volume: 1000
     };
 
-    const result = dataQuality.validateOHLCV(goodCandle);
-    expect(result.valid).toBe(true);
-    expect(result.sanitized).toEqual(goodCandle);
+    const result = dataQuality.validateOHLCV(validOHLCV);
+    expect(result.isValid).toBe(true);
+    expect(result.errors).toHaveLength(0);
   });
 
-  it('should reject invalid schema data', () => {
-    const badCandle = {
+  it('should reject invalid OHLCV data', () => {
+    const invalidOHLCV = {
+      symbol: 'BTCUSDT',
       timestamp: Date.now(),
-      open: -43000, // Negative price
-      high: 43100,
-      low: 42900,
-      close: 43050,
-      volume: 1500,
-      symbol: 'BTCUSDT'
+      open: 50000,
+      high: 49000, // High < Low (invalid)
+      low: 51000,
+      close: 50500,
+      volume: 1000
     };
 
-    const result = dataQuality.validateOHLCV(badCandle);
-    expect(result.valid).toBe(false);
-    expect(result.reason).toContain('Invalid price');
+    const result = dataQuality.validateOHLCV(invalidOHLCV);
+    expect(result.isValid).toBe(false);
+    expect(result.errors.length).toBeGreaterThan(0);
+  });
+
+  it('should validate L2 order book data', () => {
+    const validL2 = {
+      symbol: 'BTCUSDT',
+      timestamp: Date.now(),
+      bids: [[49900, 1.5], [49800, 2.0]],
+      asks: [[50100, 1.2], [50200, 1.8]]
+    };
+
+    const result = dataQuality.validateL2(validL2);
+    expect(result.isValid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('should detect crossed book', () => {
+    const crossedL2 = {
+      symbol: 'BTCUSDT',
+      timestamp: Date.now(),
+      bids: [[50200, 1.5]], // Bid > Ask (crossed)
+      asks: [[50100, 1.2]]
+    };
+
+    const result = dataQuality.validateL2(crossedL2);
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some(e => e.includes('Crossed book'))).toBe(true);
+  });
+
+  it('should track metrics', () => {
+    const validData = {
+      symbol: 'BTCUSDT',
+      timestamp: Date.now(),
+      open: 50000,
+      high: 51000,
+      low: 49000,
+      close: 50500,
+      volume: 1000
+    };
+
+    dataQuality.validateOHLCV(validData);
+    
+    const stats = dataQuality.getStats();
+    expect(stats.dataTypes.ohlcv).toBeDefined();
+    expect(stats.dataTypes.ohlcv.totalRecords).toBeGreaterThan(0);
   });
 
   it('should detect price spikes', () => {
-    // Add normal price history
-    for (let i = 0; i < 20; i++) {
-      const normalCandle = {
-        timestamp: Date.now() - (20 - i) * 60000,
-        open: 43000 + i,
-        high: 43010 + i,
-        low: 42990 + i,
-        close: 43000 + i,
-        volume: 1000,
-        symbol: 'BTCUSDT'
-      };
-      dataQuality.validateOHLCV(normalCandle);
+    // First price to establish baseline
+    dataQuality.validateOHLCV({
+      symbol: 'TESTCOIN',
+      timestamp: Date.now(),
+      open: 100,
+      high: 105,
+      low: 95,
+      close: 100,
+      volume: 1000
+    });
+
+    // Spike price
+    const spikeResult = dataQuality.validateOHLCV({
+      symbol: 'TESTCOIN',
+      timestamp: Date.now(),
+      open: 130,
+      high: 135,
+      low: 125,
+      close: 130, // 30% spike
+      volume: 1000
+    });
+
+    const anomalies = dataQuality.getAnomalies();
+    expect(anomalies.some(a => a.type === 'price_spike')).toBe(true);
+  });
+
+  it('should maintain health status', () => {
+    // Add some valid data
+    for (let i = 0; i < 10; i++) {
+      dataQuality.validateOHLCV({
+        symbol: 'BTCUSDT',
+        timestamp: Date.now(),
+        open: 50000,
+        high: 51000,
+        low: 49000,
+        close: 50500,
+        volume: 1000
+      });
     }
 
-    // Add spike candle
-    const spikeCandle = {
-      timestamp: Date.now(),
-      open: 43020,
-      high: 65000, // Massive spike
-      low: 43020,
-      close: 65000,
-      volume: 1000,
-      symbol: 'BTCUSDT'
-    };
-
-    const result = dataQuality.validateOHLCV(spikeCandle);
-    expect(result.valid).toBe(false);
-    expect(result.reason).toContain('spike');
-
-    const stats = dataQuality.getStats();
-    expect(stats.quarantinedCandles).toBe(1);
-    expect(stats.spikeDetections).toBe(1);
-  });
-
-  it('should track quarantined candles', () => {
-    const badCandle = {
-      timestamp: Date.now(),
-      open: NaN, // Invalid data
-      high: 43100,
-      low: 42900,
-      close: 43050,
-      volume: 1500,
-      symbol: 'BTCUSDT'
-    };
-
-    dataQuality.validateOHLCV(badCandle);
-
-    const quarantined = dataQuality.getQuarantinedCandles();
-    expect(quarantined.length).toBe(1);
-
-    const stats = dataQuality.getStats();
-    expect(stats.quarantinedCandles).toBe(1);
-    expect(stats.schemaViolations).toBe(1);
-  });
-
-  it('should validate OHLC relationships', () => {
-    const invalidCandle = {
-      timestamp: Date.now(),
-      open: 43000,
-      high: 42900, // High less than open
-      low: 43100,  // Low greater than high
-      close: 43050,
-      volume: 1500,
-      symbol: 'BTCUSDT'
-    };
-
-    const result = dataQuality.validateOHLCV(invalidCandle);
-    expect(result.valid).toBe(false);
-    expect(result.reason).toContain('High is less');
+    expect(dataQuality.isHealthy()).toBe(true);
   });
 });

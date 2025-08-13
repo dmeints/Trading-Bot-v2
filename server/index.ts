@@ -6,9 +6,6 @@ import { errorHandler } from "./middleware/errorHandler.js";
 import { notFound } from "./middleware/notFound.js";
 import { bootSanityChecks } from "./bootstrap/sanity.js";
 import { setupVite, serveStatic } from "./vite.js";
-import { notFoundHandler, errorHandler } from "./utils/errorHandler.js";
-import { registerRoutes } from "./routes.js";
-import { env } from "./config/env.js";
 import { logger } from "./utils/logger.js";
 import { createTradingConformalPredictor } from './brain/conformal.js';
 import stevieCore from './routes/stevieCore.js';
@@ -25,6 +22,10 @@ import chartDataRoutes from './routes/chart-data.js';
 import { bookMaintainer } from './services/l2/BookMaintainer.js';
 
 const app = express();
+
+// Load environment variables
+import dotenv from 'dotenv';
+dotenv.config();
 
 // Boot sanity checks
 bootSanityChecks();
@@ -101,19 +102,15 @@ app.use((req, res, next) => {
     serveStatic(app);
   }
 
-  // 404 handler for unknown routes (after frontend routing)
-  app.use(notFound);
+  // Add error handling middleware after all routes
+  app.use(notFound);      // 404 -> AppError
+  app.use(errorHandler);  // Any error -> JSON envelope
 
-  // Global error handler
-  app.use(errorHandler);
+  // Start server
+  const PORT = Number(process.env.PORT || 5000);
 
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = env.PORT;
-  server.listen(port, "0.0.0.0", async () => {
-    logger.info(`[Server] HTTP server listening on port ${port}`);
+  const httpServer = app.listen(PORT, "0.0.0.0", async () => {
+    logger.info(`[Server] HTTP server listening on port ${PORT}`);
     logger.info(`[Server] WebSocket server ready`);
     logger.info(`[Server] Environment: ${process.env.NODE_ENV || 'development'}`);
 
@@ -146,3 +143,9 @@ import burninDashboardRouter from './routes/burninDashboard.js';
 
 // Add burn-in dashboard routes
 app.use('/api/burnin-dashboard', burninDashboardRouter);
+
+// Test error route for debugging
+app.get('/api/_throw', (_req, _res) => {
+  const { AppError } = require('../shared/errors.js');
+  throw new AppError('BAD_REQUEST', 'Intentional test error', { why: 'manual' }, true);
+});

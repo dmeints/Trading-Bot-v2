@@ -1,0 +1,357 @@
+You are a build agent. Deliver runnable code, not plans.
+Goal: Seed missing modules with strict TypeScript stubs (compilable today) and implement the first working slice of the “Stevie cortex”: Context Router (Bayesian TS), Execution with uncertainty sizing, Feature Gating, Regime BOCPD, Promotion SPA, Portfolio CVaR/Vol, Off-policy counterfactuals, Meta-Monitor, Metrics/Health++, and Data Contracts/Provenance.
+Rules: Minimal deps; modify real files; add tests per task. After changes, always run:
+
+bash
+Copy
+Edit
+npm ci
+npm run type-check
+npm run build
+npm test
+npm start & sleep 2
+Paste the actual logs and curl/jq outputs for each acceptance step. If anything fails, fix and re-run until green.
+
+0) Seed stubs (compilable today)
+Create these files with minimal, typed exports so code compiles before filling bodies. Use ESM with .js extensions in relative imports where NodeNext requires.
+
+server/services/StrategyRouter.ts
+
+server/services/regime/bo_cpd.ts
+
+server/services/ExecutionRouter.ts
+
+server/services/execution/LiquidityModels.ts
+
+server/services/Counterfactuals.ts
+
+server/services/portfolio.ts
+
+server/services/promotion.ts
+
+server/services/Calibration.ts
+
+server/services/MetaMonitor.ts
+
+server/services/featureStore/index.ts
+
+server/services/modelRegistry.ts
+
+server/services/RiskGuards.ts
+
+server/services/DataQuality.ts
+
+server/services/BlueGreen.ts
+
+server/services/Budgeter.ts
+
+server/services/Playbooks.ts
+
+server/services/IncidentManager.ts
+
+server/contracts/*.ts (ohlcv, routerIO, exec, portfolio)
+
+server/middleware/provenance.ts
+
+Each stub must export typed functions and interfaces and a default instance where appropriate.
+
+Acceptance: show the file list and npm run type-check passing before implementations.
+
+1) Context Router — Bayesian Thompson Sampling
+Implement: StrategyRouter.ts with Bayesian linear TS:
+
+Posterior per policy 
+𝜃
+𝑖
+∼
+𝑁
+(
+𝜇
+𝑖
+,
+Σ
+𝑖
+)
+θ 
+i
+​
+ ∼N(μ 
+i
+​
+ ,Σ 
+i
+​
+ ).
+
+choose(context) returns {policyId, score, explorationBonus}.
+
+update(policyId, reward, context) Bayesian update.
+
+Routes: server/routes/strategyRouter.ts
+
+POST /api/router/choose {context}
+
+POST /api/router/update {policyId,reward,context}
+
+Tests: tests/router_ts.spec.ts (converges to better policy on synthetic data).
+
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s -X POST localhost:5000/api/router/choose -H "Content-Type: application/json" \
+  -d '{"context":{"regime":"bull","vol":0.2,"trend":1.1,"funding":0.01,"sentiment":0.3}}' | jq
+curl -s -X POST localhost:5000/api/router/update -H "Content-Type: application/json" \
+  -d '{"policyId":"p_sma","reward":0.004,"context":{"regime":"bull"}}' | jq
+npm test -- -t router_ts
+2) Execution with Uncertainty-Scaled Sizing (+ Liquidity model)
+Implement: ExecutionRouter.ts
+
+plan(context) calls router → {policyId, signal}.
+
+size(signal, uncertaintyWidth) using 
+𝑠
+=
+𝑠
+𝑚
+𝑎
+𝑥
+⋅
+𝜎
+(
+−
+𝑤
+/
+𝑤
+\*
+)
+s=s 
+max
+​
+ ⋅σ(−w/w 
+\*
+ ).
+
+Use LiquidityModels.ts to estimate impact/slippage and select TWAP/VWAP/POV/Immediate.
+
+execute(plan) calls existing paper order route; returns execution record.
+
+Route: POST /api/exec/plan-and-execute {symbol} → execution record.
+
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s -X POST localhost:5000/api/exec/plan-and-execute -H "Content-Type: application/json" \
+  -d '{"symbol":"BTCUSDT"}' | jq
+curl -s localhost:5000/api/trading/positions | jq '.[0]'
+3) Feature Gating (IC + HSIC-lite + drift)
+Implement: tools/features/gating.ts
+
+Rolling IC (EWMA Pearson of feature at t vs return t+1).
+
+HSIC-lite proxy via RBF similarities in small batches.
+
+Page–Hinkley or BOCPD drift trigger → disable lowest decile weekly.
+
+Route: GET /api/features/ranking → [ { feature, ic, hsic, score, disabled } ]
+
+Test: tests/features_gating.spec.ts (predictive vs noise features ranking).
+
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/features/ranking | jq '.[0:5]'
+npm test -- -t features_gating
+4) Regime — BOCPD
+Implement: regime/bo_cpd.ts
+
+Maintain run-length posterior with hazard h.
+
+Labels {bull,bear,sideways,volatile} from rolling vol/trend.
+
+getCurrentRegime() and updateWithReturn(r).
+
+Route: GET /api/regime/state → { regime, runLength, lastChangeAt }
+
+Test: tests/regime_bocpd.spec.ts (synthetic drift → regime flip).
+
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/regime/state | jq
+npm test -- -t regime_bocpd
+5) Promotion — SPA (Champion/Challenger)
+Implement: promotion.ts
+
+Hansen SPA / Deflated Sharpe on OOS paper PnL series.
+
+Promote only if p < 0.05.
+
+Routes: GET /api/promotion/status
+
+Test: tests/promotion_spa.spec.ts (synthetic outperformer promoted).
+
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/promotion/status | jq
+npm test -- -t promotion_spa
+6) Portfolio — CVaR budget + Vol targeting + Kelly-lite
+Implement: portfolio.ts
+
+Estimate vol/CVaR from recent returns.
+
+Solve weights with projected gradient: sum(w_i*CVaR_i) ≤ B, portfolio vol ~ target σ*.
+
+Kelly-lite 
+𝑓
+≈
+𝜅
+𝜇
+/
+𝜎
+2
+f≈κμ/σ 
+2
+  as advisory sizing.
+
+Route: POST /api/portfolio/optimize {symbols,cvarBudget,volTarget}
+
+Test: tests/portfolio_constraints.spec.ts (constraints satisfied within tolerance).
+
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s -X POST localhost:5000/api/portfolio/optimize \
+  -H "Content-Type: application/json" \
+  -d '{"symbols":["BTCUSDT","ETHUSDT"],"cvarBudget":0.05,"volTarget":0.02}' | jq
+npm test -- -t portfolio_constraints
+7) Off-policy Counterfactuals (Doubly-Robust)
+Implement: Counterfactuals.ts
+
+Record shadow actions; compute off-policy PnL via DR estimator.
+
+Summarize by policy and regime.
+
+Route: GET /api/cf/summary
+
+Test: tests/cf_dr.spec.ts (synthetic logged policy vs target).
+
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/cf/summary | jq
+npm test -- -t cf_dr
+8) Meta-Monitor (self-tuning)
+Implement: MetaMonitor.ts
+
+Reliability diagrams, Brier score, regret vs baselines (hold/VWAP), excess CVaR.
+
+Emit nudges { routerPriorDelta, sizingCapDelta } with small bounds.
+
+Route to apply nudges safely.
+
+Routes:
+
+GET /api/meta/quality
+
+POST /api/meta/apply-nudges {}
+
+Test: tests/meta_monitor.spec.ts (calibration improves; nudges bounded).
+
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/meta/quality | jq
+curl -s -X POST localhost:5000/api/meta/apply-nudges -H "Content-Type: application/json" -d '{}' | jq
+npm test -- -t meta_monitor
+9) Health++ / Metrics / Provenance
+Implement:
+
+/api/health: add db.latencyMs, ws.clients, router.decisionsLastMin, exec.blockedLastMin.
+
+/metrics: Prometheus counters (router_decisions_total, exec_blocked_total, price_stream_connected, ohlcv_last_sync_ts_seconds).
+
+middleware/provenance.ts: hash of inputs (feature window/context) + outputs; attach to audit logs.
+
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/health | jq
+curl -s localhost:5000/metrics | head -n 20
+curl -s localhost:5000/api/audit/latest?limit=1 | jq '.[0] | {hash,context,policy,order}'
+10) Data Contracts (zod) at boundaries
+Implement: server/contracts/* (ohlcv, routerIO, exec, portfolio). Validate inbound/outbound and coerce types.
+
+Test: tests/data_contracts.spec.ts (invalid payloads rejected; valid pass).
+
+Acceptance:
+
+bash
+Copy
+Edit
+npm test -- -t data_contracts
+11) Safety Rails (RiskGuards)
+Implement: RiskGuards.ts
+
+Global & per-symbol notional caps, rapid-fire throttle, rolling DD breaker.
+
+Integrated in ExecutionRouter.execute(); blocked returns {blocked:true,reason}.
+
+Route: GET /api/guards/state
+
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/guards/state | jq
+# Attempt to exceed caps → show blocked response with reason
+BONUS: add these now (small, high ROI)
+Clock guard & embargo sanity
+
+Verify system clock skew; refuse data newer than now; enforce label embargo in tests.
+
+Cost/Rate Budgeter
+
+Track API quotas/cost per provider; degrade gracefully to cheaper source; /api/budget/status.
+
+Chaos toggles
+
+WS flap & API timeout injectors in dev; tests ensure graceful degradation.
+
+Model Registry & Rollback
+
+Version router/policies; rollback endpoint; attach version to audit/provenance.
+
+Snapshot/Backfill Jobs
+
+Nightly backfill of OHLCV/derivatives/on-chain to keep DB consistent with backtests.
+
+Acceptance: lightweight routes + tests for each (OK to include in this patch set).
+
+FINAL RETURN (paste only)
+List of files changed/created.
+
+Diffs or full contents for all new/updated files.
+
+Logs from type-check, build, test, start.
+
+curl/jq outputs for each task’s Acceptance steps above.

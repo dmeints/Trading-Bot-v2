@@ -20,6 +20,10 @@ export interface RouterContext {
   funding_rate?: number;
   sentiment_score?: number;
   whale_activity?: number;
+  vol?: number;
+  trend?: number;
+  funding?: number;
+  sentiment?: number;
 }
 
 export interface PolicyChoice {
@@ -32,7 +36,18 @@ export interface PolicyChoice {
 export interface PolicyUpdate {
   policyId: string;
   reward: number;
-  context: RouterContext;
+  context?: RouterContext;
+}
+
+export interface PolicyPosterior {
+  alpha: number;
+  beta: number;
+  count: number;
+  sumReward: number;
+  sumRewardSq: number;
+  mean: number;
+  variance: number;
+  updateCount: number;
 }
 
 interface PolicyStats {
@@ -51,7 +66,7 @@ class StrategyRouter {
 
   constructor() {
     // Initialize known policies
-    const defaultPolicies = ['p_sma', 'p_ema', 'p_breakout', 'p_mean_revert', 'p_momentum'];
+    const defaultPolicies = ['p_sma', 'p_ema', 'p_breakout', 'p_mean_revert', 'p_momentum', 'p_trend', 'p_meanrev'];
     for (const policyId of defaultPolicies) {
       this.policies.set(policyId, {
         alpha: 1,
@@ -65,10 +80,22 @@ class StrategyRouter {
     // Initialize feature weights
     this.featureWeights.set('regime_bull', 0.1);
     this.featureWeights.set('regime_bear', -0.1);
+    this.featureWeights.set('regime_sideways', 0.05);
     this.featureWeights.set('sigmaHAR', -0.2);
     this.featureWeights.set('obi', 0.3);
     this.featureWeights.set('spread_bps', -0.1);
     this.featureWeights.set('rr25', 0.15);
+    this.featureWeights.set('vol', -0.2);
+    this.featureWeights.set('trend', 0.25);
+    this.featureWeights.set('funding', -0.1);
+    this.featureWeights.set('sentiment', 0.2);
+  }
+
+  /**
+   * Choose policy using Thompson Sampling with contextual features
+   */
+  choose(context: RouterContext): PolicyChoice {
+    return this.choosePolicy(context);
   }
 
   /**
@@ -88,7 +115,7 @@ class StrategyRouter {
       const contextualScore = this.computeContextualScore(featureVector, policyId);
       const totalScore = sampledMean + contextualScore;
       
-      // Exploration bonus based on uncertainty
+      // Exploration bonus based on uncertainty (UCB-style)
       const explorationBonus = Math.sqrt(2 * Math.log(this.getTotalCount()) / Math.max(1, stats.count));
       const finalScore = totalScore + explorationBonus;
 
@@ -117,7 +144,15 @@ class StrategyRouter {
   /**
    * Update policy performance with observed reward
    */
-  updatePolicy(update: PolicyUpdate): void {
+  update(policyId: string, reward: number, context?: RouterContext): PolicyPosterior {
+    const update: PolicyUpdate = { policyId, reward, context };
+    return this.updatePolicy(update);
+  }
+
+  /**
+   * Update policy performance with observed reward
+   */
+  updatePolicy(update: PolicyUpdate): PolicyPosterior {
     const { policyId, reward, context } = update;
     
     if (!this.policies.has(policyId)) {
@@ -138,17 +173,63 @@ class StrategyRouter {
     stats.sumReward += reward;
     stats.sumRewardSq += reward * reward;
 
-    // Update feature weights using simple gradient
-    const featureVector = this.contextToFeatures(context);
-    const learningRate = 0.01;
-    
-    for (const [feature, value] of featureVector) {
-      const currentWeight = this.featureWeights.get(feature) || 0;
-      const gradient = reward * value;
-      this.featureWeights.set(feature, currentWeight + learningRate * gradient);
+    // Update feature weights using simple gradient if context provided
+    if (context) {
+      const featureVector = this.contextToFeatures(context);
+      const learningRate = 0.01;
+      
+      for (const [feature, value] of featureVector) {
+        const currentWeight = this.featureWeights.get(feature) || 0;
+        const gradient = reward * value;
+        this.featureWeights.set(feature, currentWeight + learningRate * gradient);
+      }
     }
 
     logger.debug(`[StrategyRouter] Updated ${policyId}: α=${stats.alpha.toFixed(2)}, β=${stats.beta.toFixed(2)}, reward=${reward.toFixed(4)}`);
+
+    // Return posterior summary
+    const mean = stats.count > 0 ? stats.sumReward / stats.count : 0;
+    const variance = stats.count > 1 
+      ? (stats.sumRewardSq / stats.count) - Math.pow(mean, 2)
+      : 1;
+
+    return {
+      alpha: stats.alpha,
+      beta: stats.beta,
+      count: stats.count,
+      sumReward: stats.sumReward,
+      sumRewardSq: stats.sumRewardSq,
+      mean,
+      variance,
+      updateCount: stats.count
+    };
+  }
+
+  /**
+   * Get policies map for inspection
+   */
+  getPolicies(): Map<string, PolicyPosterior> {
+    const posteriors = new Map<string, PolicyPosterior>();
+    
+    for (const [policyId, stats] of this.policies) {
+      const mean = stats.count > 0 ? stats.sumReward / stats.count : 0;
+      const variance = stats.count > 1 
+        ? (stats.sumRewardSq / stats.count) - Math.pow(mean, 2)
+        : 1;
+
+      posteriors.set(policyId, {
+        alpha: stats.alpha,
+        beta: stats.beta,
+        count: stats.count,
+        sumReward: stats.sumReward,
+        sumRewardSq: stats.sumRewardSq,
+        mean,
+        variance,
+        updateCount: stats.count
+      });
+    }
+    
+    return posteriors;
   }
 
   /**
@@ -185,6 +266,7 @@ class StrategyRouter {
     // Volatility features
     features.set('sigmaHAR', context.sigmaHAR || 0);
     features.set('sigmaGARCH', context.sigmaGARCH || 0);
+    features.set('vol', context.vol || 0);
     features.set('vol_ratio', context.sigmaHAR && context.sigmaGARCH ? context.sigmaHAR / context.sigmaGARCH : 1);
     
     // Microstructure features
@@ -201,8 +283,11 @@ class StrategyRouter {
     
     // Other features
     features.set('funding_rate', context.funding_rate || 0);
+    features.set('funding', context.funding || 0);
     features.set('sentiment_score', context.sentiment_score || 0);
+    features.set('sentiment', context.sentiment || 0);
     features.set('whale_activity', context.whale_activity || 0);
+    features.set('trend', context.trend || 0);
     
     return features;
   }
@@ -223,6 +308,12 @@ class StrategyRouter {
       score += 0.1;
     }
     if (policyId === 'p_mean_revert' && Math.abs(features.get('obi')!) < 0.05) {
+      score += 0.1;
+    }
+    if (policyId === 'p_trend' && features.get('trend')! > 1) {
+      score += 0.15;
+    }
+    if (policyId === 'p_meanrev' && Math.abs(features.get('trend')!) < 0.1) {
       score += 0.1;
     }
     
@@ -258,6 +349,13 @@ class StrategyRouter {
    */
   private getTotalCount(): number {
     return Array.from(this.policies.values()).reduce((sum, stats) => sum + stats.count, 0) + 1;
+  }
+
+  /**
+   * Get router status for health check
+   */
+  getStatus(): string {
+    return 'active';
   }
 }
 

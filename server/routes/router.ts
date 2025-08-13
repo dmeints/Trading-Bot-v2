@@ -15,11 +15,16 @@ const router = Router();
  */
 router.post('/choose', (req, res) => {
   try {
-    const context: RouterContext = req.body.context || {};
+    const context: RouterContext = req.body.context || req.body || {};
     
-    const choice = strategyRouter.choosePolicy(context);
+    const choice = strategyRouter.choose(context);
     
-    res.json(choice);
+    res.json({
+      policyId: choice.policyId,
+      score: choice.score,
+      explorationBonus: choice.explorationBonus,
+      confidence: choice.confidence
+    });
   } catch (error) {
     logger.error('[RouterRoutes] Error choosing policy:', error);
     res.status(500).json({ error: 'Failed to choose policy' });
@@ -32,15 +37,26 @@ router.post('/choose', (req, res) => {
  */
 router.post('/update', (req, res) => {
   try {
-    const update: PolicyUpdate = req.body;
+    const { policyId, reward, context } = req.body;
     
-    if (!update.policyId || typeof update.reward !== 'number') {
+    if (!policyId || typeof reward !== 'number') {
       return res.status(400).json({ error: 'Missing policyId or reward' });
     }
     
-    strategyRouter.updatePolicy(update);
+    const posterior = strategyRouter.update(policyId, reward, context);
     
-    res.json({ success: true });
+    res.json({
+      success: true,
+      policyId,
+      posterior: {
+        alpha: posterior.alpha,
+        beta: posterior.beta,
+        count: posterior.count,
+        mean: posterior.mean,
+        variance: posterior.variance,
+        updateCount: posterior.updateCount
+      }
+    });
   } catch (error) {
     logger.error('[RouterRoutes] Error updating policy:', error);
     res.status(500).json({ error: 'Failed to update policy' });

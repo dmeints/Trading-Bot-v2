@@ -1,0 +1,56 @@
+Block 5 — Run the codemod (dry‑run first)
+node tools/codemod_server_entry.js --dry
+# If it looks good:
+node tools/codemod_server_entry.js
+
+Block 6 — Add client‑side error reporter (optional)
+
+If you have a React entry at client/src/main.tsx or index.tsx, wire it:
+
+for entry in client/src/main.tsx client/src/main.jsx client/src/index.tsx client/src/index.jsx; do
+  if [ -f "$entry" ]; then
+    grep -q "mountClientErrorReporter" "$entry" || sed -i '1i import { mountClientErrorReporter } from "./lib/errorReporter";' "$entry"
+    grep -q "mountClientErrorReporter()" "$entry" || echo "mountClientErrorReporter();" >> "$entry"
+    echo "🔗 wired client error reporter in $entry"
+    break
+  fi
+done
+
+Block 7 — Helpful package scripts (idempotent)
+node - <<'NODE'
+const fs=require('fs');
+if(!fs.existsSync('package.json')){console.log('No package.json');process.exit(0)}
+const pkg=JSON.parse(fs.readFileSync('package.json','utf8'));
+pkg.scripts=pkg.scripts||{};
+pkg.scripts["start:logged"]=pkg.scripts["start:logged"]||"node server/index.js 2>&1 | tee -a logs/app.log";
+pkg.scripts["triage"]=pkg.scripts["triage"]||"node scripts/triage.js";
+pkg.scripts["test:contract"]=pkg.scripts["test:contract"]||"bash scripts/start_and_test.sh";
+pkg.scripts["ready:check"]=pkg.scripts["ready:check"]||"node server/bootstrap/dbReady.ts";
+fs.writeFileSync('package.json',JSON.stringify(pkg,null,2));
+console.log('✅ scripts ensured');
+NODE
+
+Block 8 — Environment (Replit Secrets)
+
+Add these via Secrets (lock icon in left sidebar):
+
+PORT=5000
+SAFE_MODE=false
+CHAOS_PROB=0
+RATE_LIMIT_WINDOW_MS=60000
+RATE_LIMIT_MAX=600
+# Optional if you have a DB:
+# DATABASE_URL=postgres://... | mysql://... | file:./dev.sqlite
+
+Block 9 — Boot & quick health checks
+npm run start:logged &
+sleep 3
+echo "🌡️  Health:  $(curl -s localhost:5000/api/health)"
+echo "🩺 Ready:   $(curl -s localhost:5000/api/ready)"
+echo "📊 Metrics (first lines):"
+curl -s localhost:5000/metrics | head -20
+
+Block 10 — Contract sweep (non‑destructive)
+npm run test:contract || true
+echo "📄 Reports (if any failures):"
+ls -1 reports | tail -n +1 || true

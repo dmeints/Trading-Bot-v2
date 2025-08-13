@@ -1,5 +1,5 @@
 
-import { logger } from '../utils/logger';
+import { logger } from '../utils/logger.js';
 
 export interface PolicyPerformance {
   policyId: string;
@@ -196,7 +196,7 @@ export class PromotionService {
     return sign * y;
   }
 
-  getPoliciesStatus(): PolicyPerformance[] {
+  getStatus(): PolicyPerformance[] {
     return Array.from(this.policies.values())
       .sort((a, b) => b.sharpeRatio - a.sharpeRatio);
   }

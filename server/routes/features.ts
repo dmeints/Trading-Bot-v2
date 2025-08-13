@@ -1,63 +1,31 @@
-/**
- * Features API Route
- * Unified endpoint for all feature calculations
- */
 
-import { Router } from "express";
-import { z } from "zod";
-import { calculateUnifiedFeatures } from "../features";
-import { logger } from "../utils/logger";
+import { Router } from 'express';
+import { featureStore } from '../services/featureStore/index.js';
+import { logger } from '../utils/logger.js';
 
 const router = Router();
 
-// Request validation schema
-const featuresQuerySchema = z.object({
-  symbol: z.string().min(1).max(20),
-  from: z.string().datetime(),
-  to: z.string().datetime(),
-  tf: z.string().optional().default('5m')
+router.get('/ranking', (req, res) => {
+  try {
+    const ranking = featureStore.getRanking();
+    res.json(ranking);
+  } catch (error) {
+    logger.error('[Features] Ranking error:', error);
+    res.status(500).json({ error: 'Failed to get feature ranking' });
+  }
 });
 
-/**
- * GET /api/features
- * Calculate unified features for a symbol and time range
- */
-router.get('/', async (req, res) => {
+router.post('/update-return', (req, res) => {
   try {
-    const { symbol, from, to, tf } = featuresQuerySchema.parse(req.query);
-    
-    const fromTs = new Date(from);
-    const toTs = new Date(to);
-    
-    logger.info('[FeaturesAPI] Calculating unified features', {
-      symbol,
-      from: fromTs.toISOString(),
-      to: toTs.toISOString(),
-      timeframe: tf
-    });
-
-    const features = await calculateUnifiedFeatures(symbol, fromTs, toTs, tf);
-    
-    res.json({
-      success: true,
-      ...features
-    });
-
-  } catch (error) {
-    logger.error('[FeaturesAPI] Feature calculation failed', error);
-    
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid request parameters',
-        details: error.errors
-      });
+    const { returnValue } = req.body;
+    if (typeof returnValue !== 'number') {
+      return res.status(400).json({ error: 'returnValue must be a number' });
     }
-
-    res.status(500).json({
-      success: false,
-      error: 'Failed to calculate features'
-    });
+    featureStore.updateReturn(returnValue);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('[Features] Update return error:', error);
+    res.status(500).json({ error: 'Failed to update return' });
   }
 });
 

@@ -1,141 +1,114 @@
 import { Router } from 'express';
-import { metricsService } from '../services/metricsService';
-import { isAuthenticated } from '../replitAuth';
-import { adminAuth } from '../middleware/adminAuth';
-import { rateLimiters } from '../middleware/rateLimiter';
-
-const isDevelopment = process.env.NODE_ENV === 'development';
-const devBypass = (req: any, res: any, next: any) => {
-  if (isDevelopment && !req.user) {
-    req.user = { claims: { sub: 'dev-user-123' } };
-  }
-  next();
-};
+import { strategyRouter } from '../services/StrategyRouter.js';
+import { executionRouter } from '../services/ExecutionRouter.js';
+import { dataQuality } from '../services/DataQuality.js';
+import { riskGuards } from '../services/RiskGuards.js';
+import { metaMonitor } from '../services/MetaMonitor.js';
 
 const router = Router();
 
-// Prometheus-style metrics endpoint (public for monitoring tools)
-router.get('/prometheus', async (req, res) => {
+// Simple Prometheus metrics counter
+class MetricsCounter {
+  private counters: Map<string, number> = new Map();
+  private gauges: Map<string, number> = new Map();
+
+  increment(name: string, value: number = 1): void {
+    this.counters.set(name, (this.counters.get(name) || 0) + value);
+  }
+
+  setGauge(name: string, value: number): void {
+    this.gauges.set(name, value);
+  }
+
+  getCounters(): Map<string, number> {
+    return this.counters;
+  }
+
+  getGauges(): Map<string, number> {
+    return this.gauges;
+  }
+}
+
+const metrics = new MetricsCounter();
+
+// Update metrics periodically
+setInterval(() => {
+  updateMetrics();
+}, 30000); // Every 30 seconds
+
+function updateMetrics(): void {
+  // Strategy Router metrics
+  const policies = strategyRouter.getPolicies();
+  metrics.setGauge('router_active_policies', policies.size);
+
+  let totalUpdates = 0;
+  for (const policy of policies.values()) {
+    totalUpdates += policy.updateCount;
+  }
+  metrics.setGauge('router_total_updates', totalUpdates);
+
+  // Execution metrics
+  const execRecords = executionRouter.getExecutionRecords();
+  metrics.setGauge('execution_total_count', execRecords.length);
+
+  const blockedCount = execRecords.filter(r => r.side === 'hold').length;
+  metrics.setGauge('execution_blocked_total', blockedCount);
+
+  // Data Quality metrics
+  const dqStats = dataQuality.getStats();
+  metrics.setGauge('data_quality_total_candles', dqStats.totalCandles);
+  metrics.setGauge('data_quality_quarantined_candles', dqStats.quarantinedCandles);
+  metrics.setGauge('data_quality_schema_violations', dqStats.schemaViolations);
+  metrics.setGauge('data_quality_spike_detections', dqStats.spikeDetections);
+
+  // Risk Guards metrics
+  const guardState = riskGuards.getState();
+  metrics.setGauge('risk_guards_total_notional', guardState.totalNotional);
+  metrics.setGauge('risk_guards_drawdown_breaker_active', guardState.drawdownBreaker.active ? 1 : 0);
+
+  // Meta Monitor metrics
+  const quality = metaMonitor.getQuality();
+  metrics.setGauge('meta_monitor_brier_score', quality.brierScore);
+  metrics.setGauge('meta_monitor_regret_vs_hold', quality.regretVsHold);
+  metrics.setGauge('meta_monitor_calibration', quality.calibration);
+
+  // Price stream metrics (mock)
+  metrics.setGauge('price_stream_connected', 1);
+  metrics.setGauge('ohlcv_last_sync_ts_seconds', Math.floor(Date.now() / 1000));
+}
+
+router.get('/', (req, res) => {
   try {
-    const metrics = await metricsService.getPrometheusMetrics();
+    updateMetrics();
+
+    let output = '';
+
+    // Export counters
+    for (const [name, value] of metrics.getCounters().entries()) {
+      output += `# TYPE ${name} counter\n`;
+      output += `${name} ${value}\n`;
+    }
+
+    // Export gauges
+    for (const [name, value] of metrics.getGauges().entries()) {
+      output += `# TYPE ${name} gauge\n`;
+      output += `${name} ${value}\n`;
+    }
+
+    // Add timestamp
+    output += `# TYPE metrics_generation_timestamp_seconds gauge\n`;
+    output += `metrics_generation_timestamp_seconds ${Math.floor(Date.now() / 1000)}\n`;
+
     res.set('Content-Type', 'text/plain');
-    res.send(metrics);
+    res.send(output);
   } catch (error) {
-    console.error('[Metrics] Error generating Prometheus metrics:', error);
-    res.status(500).send('# Error generating metrics\n');
+    res.status(500).send('Error generating metrics');
   }
 });
 
-// Get system metrics with time range
-router.get('/system', rateLimiters.admin, isDevelopment ? devBypass : adminAuth, async (req: any, res) => {
-  try {
-    const timeRange = req.query.range as '1h' | '24h' | '7d' | '30d' || '24h';
-    const metrics = await metricsService.getMetrics(timeRange);
-    res.json(metrics);
-  } catch (error) {
-    console.error('[Metrics] Error fetching system metrics:', error);
-    res.status(500).json({ error: 'Failed to fetch metrics' });
-  }
-});
-
-// Get active alerts
-router.get('/alerts', rateLimiters.admin, adminAuth, async (req: any, res) => {
-  try {
-    const alerts = await metricsService.getActiveAlerts();
-    res.json(alerts);
-  } catch (error) {
-    console.error('[Metrics] Error fetching alerts:', error);
-    res.status(500).json({ error: 'Failed to fetch alerts' });
-  }
-});
-
-// Acknowledge an alert
-router.put('/alerts/:alertId/acknowledge', rateLimiters.admin, adminAuth, async (req: any, res) => {
-  try {
-    const { alertId } = req.params;
-    const success = await metricsService.acknowledgeAlert(alertId);
-    
-    if (success) {
-      res.json({ success: true, message: 'Alert acknowledged' });
-    } else {
-      res.status(404).json({ error: 'Alert not found' });
-    }
-  } catch (error) {
-    console.error('[Metrics] Error acknowledging alert:', error);
-    res.status(500).json({ error: 'Failed to acknowledge alert' });
-  }
-});
-
-// Add a new alert rule
-router.post('/alert-rules', rateLimiters.admin, adminAuth, async (req: any, res) => {
-  try {
-    const { metric, threshold, operator, severity, description } = req.body;
-    
-    if (!metric || threshold === undefined || !operator || !severity || !description) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-
-    const ruleId = await metricsService.addAlertRule({
-      metric,
-      threshold,
-      operator,
-      severity,
-      description,
-      enabled: true
-    });
-
-    res.json({ success: true, ruleId });
-  } catch (error) {
-    console.error('[Metrics] Error adding alert rule:', error);
-    res.status(500).json({ error: 'Failed to add alert rule' });
-  }
-});
-
-// Remove an alert rule
-router.delete('/alert-rules/:ruleId', rateLimiters.admin, adminAuth, async (req: any, res) => {
-  try {
-    const { ruleId } = req.params;
-    const success = await metricsService.removeAlertRule(ruleId);
-    
-    if (success) {
-      res.json({ success: true, message: 'Alert rule removed' });
-    } else {
-      res.status(404).json({ error: 'Alert rule not found' });
-    }
-  } catch (error) {
-    console.error('[Metrics] Error removing alert rule:', error);
-    res.status(500).json({ error: 'Failed to remove alert rule' });
-  }
-});
-
-// Personal metrics for authenticated users
-router.get('/personal', isAuthenticated, async (req: any, res) => {
-  try {
-    const userId = req.user.claims.sub;
-    const timeRange = req.query.range as '1h' | '24h' | '7d' | '30d' || '24h';
-    
-    // Get user-specific metrics (simplified)
-    const metrics = {
-      timeRange,
-      timestamp: new Date(),
-      trading: {
-        totalTrades: 0,
-        winRate: 0,
-        totalPnL: 0,
-        avgTradeSize: 0
-      },
-      ai: {
-        recommendationsFollowed: 0,
-        avgConfidence: 0,
-        successRate: 0
-      }
-    };
-
-    res.json(metrics);
-  } catch (error) {
-    console.error('[Metrics] Error fetching personal metrics:', error);
-    res.status(500).json({ error: 'Failed to fetch personal metrics' });
-  }
-});
+// Helper function to increment counters from other services
+export function incrementCounter(name: string, value: number = 1): void {
+  metrics.increment(name, value);
+}
 
 export default router;

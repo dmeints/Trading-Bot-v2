@@ -1,5 +1,5 @@
 
-import { logger } from '../../utils/logger';
+import { logger } from '../../utils/logger.js';
 
 export interface RegimeState {
   regime: 'bull' | 'bear' | 'sideways' | 'volatile';

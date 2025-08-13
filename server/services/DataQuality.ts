@@ -1,4 +1,3 @@
-
 import { logger } from '../utils/logger';
 
 interface OHLCVData {
@@ -11,7 +10,7 @@ interface OHLCVData {
   symbol: string;
 }
 
-interface DataQualityStats {
+export interface DataQualityStats {
   totalCandles: number;
   quarantinedCandles: number;
   schemaViolations: number;
@@ -224,3 +223,5 @@ export class DataQuality {
     logger.info('[DataQuality] Reset stats and data');
   }
 }
+
+export const dataQuality = DataQuality.getInstance();

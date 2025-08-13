@@ -1,48 +1,40 @@
 
-import { Router, Request, Response } from 'express';
-import { strategyRouter, Context } from '../services/StrategyRouter.js';
+import { Router } from 'express';
+import { strategyRouter } from '../services/StrategyRouter.js';
+import { ContextSchema, UpdateRequestSchema } from '../contracts/routerIO.js';
 import { logger } from '../utils/logger.js';
 
 const router = Router();
 
-// POST /api/router/choose
-router.post('/choose', async (req: Request, res: Response) => {
+router.post('/choose', (req, res) => {
   try {
-    const context: Context = req.body.context || {};
+    const context = ContextSchema.parse(req.body.context || req.body);
     const result = strategyRouter.choose(context);
-    
     res.json(result);
   } catch (error) {
-    logger.error('[StrategyRouter] Choose error:', { error: String(error) });
-    res.status(500).json({ error: 'Failed to choose strategy' });
+    logger.error('[StrategyRouter] Choose error:', error);
+    res.status(400).json({ error: 'Invalid context' });
   }
 });
 
-// POST /api/router/update
-router.post('/update', async (req: Request, res: Response) => {
+router.post('/update', (req, res) => {
   try {
-    const { policyId, reward, context } = req.body;
-    
-    if (!policyId || typeof reward !== 'number') {
-      return res.status(400).json({ error: 'policyId and reward are required' });
-    }
-    
-    const posterior = strategyRouter.update(policyId, reward, context || {});
-    
-    res.json({
-      policyId,
-      posterior: {
-        mean: posterior.mean,
-        variance: posterior.variance,
-        alpha: posterior.alpha,
-        beta: posterior.beta,
-        updateCount: posterior.updateCount
-      }
-    });
+    const updateRequest = UpdateRequestSchema.parse(req.body);
+    const result = strategyRouter.update(
+      updateRequest.policyId,
+      updateRequest.reward,
+      updateRequest.context
+    );
+    res.json(result);
   } catch (error) {
-    logger.error('[StrategyRouter] Update error:', { error: String(error) });
-    res.status(500).json({ error: 'Failed to update strategy' });
+    logger.error('[StrategyRouter] Update error:', error);
+    res.status(400).json({ error: 'Invalid update request' });
   }
+});
+
+router.get('/policies', (req, res) => {
+  const policies = Object.fromEntries(strategyRouter.getPolicies());
+  res.json(policies);
 });
 
 export default router;

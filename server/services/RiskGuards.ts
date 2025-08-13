@@ -1,6 +1,5 @@
 
-import { logger } from '../utils/logger';
-import { ExecutionRecord } from '../types/execution';
+import { logger } from '../utils/logger.js';
 
 interface GuardConfig {
   maxNotional: number;
@@ -13,7 +12,7 @@ interface GuardConfig {
 interface GuardState {
   totalNotional: number;
   symbolNotionals: Record<string, number>;
-  recentTrades: ExecutionRecord[];
+  recentTrades: any[];
   drawdownBreaker: {
     active: boolean;
     activatedAt?: Date;
@@ -164,7 +163,7 @@ export class RiskGuards {
     }
   }
 
-  recordExecution(execution: ExecutionRecord): void {
+  recordExecution(execution: any): void {
     try {
       // Add to recent trades
       this.state.recentTrades.push(execution);
@@ -269,3 +268,5 @@ export class RiskGuards {
     logger.info('[RiskGuards] State reset');
   }
 }
+
+export const riskGuards = RiskGuards.getInstance();

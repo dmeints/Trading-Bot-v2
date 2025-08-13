@@ -1,211 +1,185 @@
+import { logger } from '../../server/utils/logger.js';
 
-import { logger } from '../../server/utils/logger';
-
-export interface FeatureScore {
+export interface FeatureRanking {
   feature: string;
   ic: number;
   hsic: number;
   score: number;
   disabled: boolean;
-}
-
-export interface FeatureData {
-  name: string;
-  values: number[];
-  timestamps: Date[];
+  lastUpdate: Date;
 }
 
 export class FeatureGating {
-  private features: Map<string, number[]> = new Map();
-  private returns: number[] = [];
-  private icWindow: number = 50;
-  private hsicWindow: number = 30;
-  private disableThreshold: number = 0.1; // Bottom 10%
-  private ewmaAlpha: number = 0.1;
-  private featureScores: Map<string, FeatureScore> = new Map();
+  private rankings: Map<string, FeatureRanking> = new Map();
+  private featureHistory: Map<string, number[]> = new Map();
+  private returnHistory: number[] = [];
+  private ewmaAlpha = 0.1; // EWMA decay factor
+  private disableThreshold = 0.1; // Bottom 10% get disabled
 
   constructor() {
-    // Initialize with some dummy features for testing
-    this.features.set('momentum_5d', []);
-    this.features.set('volatility_20d', []);
-    this.features.set('volume_ratio', []);
-    this.features.set('funding_rate', []);
-    this.features.set('social_sentiment', []);
+    // Initialize with some default features
+    this.initializeFeature('rsi', 0.15);
+    this.initializeFeature('volume', 0.08);
+    this.initializeFeature('momentum', 0.12);
+    this.initializeFeature('noise_feature', 0.02);
   }
 
-  addFeature(name: string, value: number): void {
-    if (!this.features.has(name)) {
-      this.features.set(name, []);
-    }
-    
-    const values = this.features.get(name)!;
-    values.push(value);
-    
-    // Keep only recent history
-    if (values.length > this.icWindow * 2) {
-      values.splice(0, values.length - this.icWindow);
-    }
+  private initializeFeature(name: string, initialIC: number): void {
+    this.rankings.set(name, {
+      feature: name,
+      ic: initialIC,
+      hsic: 0.0,
+      score: initialIC,
+      disabled: false,
+      lastUpdate: new Date()
+    });
+    this.featureHistory.set(name, []);
   }
 
-  addReturn(returnValue: number): void {
-    this.returns.push(returnValue);
-    
-    // Keep only recent history
-    if (this.returns.length > this.icWindow * 2) {
-      this.returns.splice(0, this.returns.length - this.icWindow);
-    }
-    
-    this.updateFeatureScores();
-  }
-
-  getFeatureRanking(): FeatureScore[] {
-    const scores = Array.from(this.featureScores.values());
-    return scores.sort((a, b) => b.score - a.score);
-  }
-
-  isFeatureEnabled(featureName: string): boolean {
-    const score = this.featureScores.get(featureName);
-    return score ? !score.disabled : true;
-  }
-
-  private updateFeatureScores(): void {
-    if (this.returns.length < 10) return;
-
-    const scores: FeatureScore[] = [];
-
-    for (const [featureName, values] of this.features.entries()) {
-      if (values.length < 10) continue;
-
-      const ic = this.computeInformationCoefficient(values);
-      const hsic = this.computeHSICLite(values);
-      const combinedScore = 0.7 * Math.abs(ic) + 0.3 * hsic;
-
-      scores.push({
-        feature: featureName,
-        ic,
-        hsic,
-        score: combinedScore,
-        disabled: false
-      });
+  updateFeatureValue(feature: string, value: number): void {
+    if (!this.featureHistory.has(feature)) {
+      this.featureHistory.set(feature, []);
     }
 
-    // Sort by score and disable bottom decile
-    scores.sort((a, b) => b.score - a.score);
-    const disableCount = Math.floor(scores.length * this.disableThreshold);
-    
-    for (let i = scores.length - disableCount; i < scores.length; i++) {
-      scores[i].disabled = true;
-    }
+    const history = this.featureHistory.get(feature)!;
+    history.push(value);
 
-    // Update feature scores map
-    for (const score of scores) {
-      this.featureScores.set(score.feature, score);
+    // Keep only last 100 values for efficiency
+    if (history.length > 100) {
+      history.shift();
     }
-
-    logger.info(`[FeatureGating] Updated scores for ${scores.length} features, disabled ${disableCount}`);
   }
 
-  private computeInformationCoefficient(featureValues: number[]): number {
-    const minLength = Math.min(featureValues.length, this.returns.length, this.icWindow);
-    if (minLength < 5) return 0;
+  updateReturn(returnValue: number): void {
+    this.returnHistory.push(returnValue);
 
-    // Align the arrays - feature at t, return at t+1
-    const features = featureValues.slice(-minLength, -1); // t
-    const futureReturns = this.returns.slice(-minLength + 1); // t+1
+    // Keep only last 100 returns
+    if (this.returnHistory.length > 100) {
+      this.returnHistory.shift();
+    }
 
-    if (features.length !== futureReturns.length || features.length < 2) return 0;
-
-    return this.pearsonCorrelation(features, futureReturns);
+    // Update IC for all features if we have enough data
+    if (this.returnHistory.length >= 20) {
+      this.updateInformationCoefficients();
+      this.updateHSICScores();
+      this.updateFeatureScores();
+      this.disableLowPerformers();
+    }
   }
 
-  private computeHSICLite(featureValues: number[]): number {
-    const minLength = Math.min(featureValues.length, this.returns.length, this.hsicWindow);
-    if (minLength < 5) return 0;
-
-    const features = featureValues.slice(-minLength);
-    const returns = this.returns.slice(-minLength);
-
-    // Compute RBF kernel similarities
-    const sigma = 1.0; // RBF bandwidth
-    const n = features.length;
-    
-    let hsic = 0;
-    const sampleSize = Math.min(n, 20); // Subsample for efficiency
-
-    for (let i = 0; i < sampleSize; i++) {
-      for (let j = 0; j < sampleSize; j++) {
-        const kFeature = this.rbfKernel(features[i], features[j], sigma);
-        const kReturn = this.rbfKernel(returns[i], returns[j], sigma);
-        hsic += kFeature * kReturn;
+  private updateInformationCoefficients(): void {
+    for (const [featureName, history] of this.featureHistory.entries()) {
+      if (history.length >= 20) {
+        const ic = this.computeIC(history, this.returnHistory);
+        const ranking = this.rankings.get(featureName);
+        if (ranking) {
+          // EWMA update
+          ranking.ic = (1 - this.ewmaAlpha) * ranking.ic + this.ewmaAlpha * ic;
+          ranking.lastUpdate = new Date();
+        }
       }
     }
-
-    // Normalize by sample size
-    hsic /= (sampleSize * sampleSize);
-    
-    // Apply centering approximation (simplified)
-    const meanKFeature = this.computeMeanKernel(features, sigma);
-    const meanKReturn = this.computeMeanKernel(returns, sigma);
-    
-    hsic = hsic - 2 * meanKFeature * meanKReturn + meanKFeature * meanKReturn;
-    
-    return Math.max(0, hsic); // HSIC is non-negative
   }
 
-  private rbfKernel(x: number, y: number, sigma: number): number {
-    const diff = x - y;
-    return Math.exp(-(diff * diff) / (2 * sigma * sigma));
-  }
+  private computeIC(features: number[], returns: number[]): number {
+    // Information Coefficient: correlation between feature at t and return at t+1
+    const minLength = Math.min(features.length, returns.length - 1);
+    if (minLength < 10) return 0;
 
-  private computeMeanKernel(values: number[], sigma: number): number {
-    const n = values.length;
-    let sum = 0;
-    
-    for (let i = 0; i < n; i++) {
-      for (let j = 0; j < n; j++) {
-        sum += this.rbfKernel(values[i], values[j], sigma);
-      }
-    }
-    
-    return sum / (n * n);
+    const featuresAligned = features.slice(-minLength);
+    const returnsAligned = returns.slice(1, 1 + minLength); // t+1 returns
+
+    return this.pearsonCorrelation(featuresAligned, returnsAligned);
   }
 
   private pearsonCorrelation(x: number[], y: number[]): number {
-    if (x.length !== y.length || x.length < 2) return 0;
-
     const n = x.length;
-    const sumX = x.reduce((sum, val) => sum + val, 0);
-    const sumY = y.reduce((sum, val) => sum + val, 0);
-    const sumXY = x.reduce((sum, val, i) => sum + val * y[i], 0);
-    const sumX2 = x.reduce((sum, val) => sum + val * val, 0);
-    const sumY2 = y.reduce((sum, val) => sum + val * val, 0);
+    if (n === 0) return 0;
 
-    const numerator = n * sumXY - sumX * sumY;
-    const denominator = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
+    const meanX = x.reduce((sum, val) => sum + val, 0) / n;
+    const meanY = y.reduce((sum, val) => sum + val, 0) / n;
 
+    let numerator = 0;
+    let sumXSquared = 0;
+    let sumYSquared = 0;
+
+    for (let i = 0; i < n; i++) {
+      const xDiff = x[i] - meanX;
+      const yDiff = y[i] - meanY;
+      numerator += xDiff * yDiff;
+      sumXSquared += xDiff * xDiff;
+      sumYSquared += yDiff * yDiff;
+    }
+
+    const denominator = Math.sqrt(sumXSquared * sumYSquared);
     return denominator === 0 ? 0 : numerator / denominator;
   }
 
-  // Simulate some features for testing
-  simulateFeatures(): void {
-    const momentum = Math.random() * 0.2 - 0.1;
-    const volatility = Math.random() * 0.05 + 0.01;
-    const volumeRatio = Math.random() * 2 + 0.5;
-    const fundingRate = Math.random() * 0.001 - 0.0005;
-    const sentiment = Math.random() * 2 - 1;
+  private updateHSICScores(): void {
+    // HSIC-lite proxy using RBF similarities in small batches
+    for (const [featureName, history] of this.featureHistory.entries()) {
+      if (history.length >= 20) {
+        const hsic = this.computeHSICLite(history, this.returnHistory);
+        const ranking = this.rankings.get(featureName);
+        if (ranking) {
+          ranking.hsic = (1 - this.ewmaAlpha) * ranking.hsic + this.ewmaAlpha * hsic;
+        }
+      }
+    }
+  }
 
-    this.addFeature('momentum_5d', momentum);
-    this.addFeature('volatility_20d', volatility);
-    this.addFeature('volume_ratio', volumeRatio);
-    this.addFeature('funding_rate', fundingRate);
-    this.addFeature('social_sentiment', sentiment);
+  private computeHSICLite(features: number[], returns: number[]): number {
+    // Simplified HSIC using RBF kernel similarities
+    const batchSize = Math.min(20, features.length);
+    const gamma = 1.0; // RBF bandwidth
 
-    // Add a predictive feature that correlates with future returns
-    const predictiveSignal = momentum * 0.5 + Math.random() * 0.05;
-    this.addFeature('predictive_signal', predictiveSignal);
-    
-    // Add noise feature
-    this.addFeature('noise_feature', Math.random() * 2 - 1);
+    let hsicSum = 0;
+    for (let i = 0; i < batchSize - 1; i++) {
+      for (let j = i + 1; j < batchSize; j++) {
+        // RBF kernel for features
+        const featureSim = Math.exp(-gamma * Math.pow(features[i] - features[j], 2));
+        // RBF kernel for returns  
+        const returnSim = Math.exp(-gamma * Math.pow(returns[i] - returns[j], 2));
+        hsicSum += featureSim * returnSim;
+      }
+    }
+
+    return hsicSum / (batchSize * (batchSize - 1) / 2);
+  }
+
+  private updateFeatureScores(): void {
+    for (const ranking of this.rankings.values()) {
+      // Combine IC and HSIC with weights
+      ranking.score = 0.7 * Math.abs(ranking.ic) + 0.3 * ranking.hsic;
+    }
+  }
+
+  private disableLowPerformers(): void {
+    const sortedRankings = Array.from(this.rankings.values())
+      .sort((a, b) => b.score - a.score);
+
+    const disableCount = Math.floor(sortedRankings.length * this.disableThreshold);
+
+    // Enable all first
+    for (const ranking of sortedRankings) {
+      ranking.disabled = false;
+    }
+
+    // Disable bottom performers
+    for (let i = sortedRankings.length - disableCount; i < sortedRankings.length; i++) {
+      sortedRankings[i].disabled = true;
+      logger.info(`[FeatureGating] Disabled feature ${sortedRankings[i].feature} (score: ${sortedRankings[i].score.toFixed(4)})`);
+    }
+  }
+
+  getRanking(): FeatureRanking[] {
+    return Array.from(this.rankings.values())
+      .sort((a, b) => b.score - a.score);
+  }
+
+  isFeatureEnabled(feature: string): boolean {
+    const ranking = this.rankings.get(feature);
+    return ranking ? !ranking.disabled : true; // Default to enabled
   }
 }
 

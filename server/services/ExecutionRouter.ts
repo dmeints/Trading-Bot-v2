@@ -1,4 +1,3 @@
-
 import { logger } from '../utils/logger.js';
 import { strategyRouter } from './StrategyRouter.js';
 import { liquidityModels } from './execution/LiquidityModels.js';
@@ -26,6 +25,27 @@ export interface SizingSnapshot {
   timestamp: Date;
   confidence: number;
 }
+
+interface ExecutionParams {
+  symbol: string;
+  side: 'buy' | 'sell';
+  quantity: number;
+  price?: number;
+  orderType: 'market' | 'limit';
+  timeInForce?: 'GTC' | 'IOC' | 'FOK';
+}
+
+interface ExecutionResult {
+  success: boolean;
+  orderId: string;
+  executedQuantity: number;
+  executedPrice: number;
+  timestamp: Date;
+  blocked?: boolean;
+  reason?: string;
+  limits?: any;
+}
+
 
 export class ExecutionRouter {
   private static instance: ExecutionRouter;
@@ -59,7 +79,7 @@ export class ExecutionRouter {
 
       // Convert policy to signal
       const signal = this.policyToSignal(choice);
-      
+
       // Size with uncertainty
       const uncertaintyWidth = this.getConformalUncertainty(symbol);
       const sizing = this.computeUncertaintyScaledSize(symbol, baseSize * signal.sizeMultiplier, uncertaintyWidth);
@@ -102,6 +122,76 @@ export class ExecutionRouter {
       throw error;
     }
   }
+
+  async execute(params: ExecutionParams): Promise<ExecutionResult> {
+    try {
+      const { symbol, side, quantity, price, orderType, timeInForce = 'GTC' } = params;
+
+      logger.info(`[ExecutionRouter] Executing order: ${symbol} ${side} ${quantity} @ ${price || 'market'}`);
+
+      // Risk guard check
+      const estimatedPrice = price || 50000; // Use provided price or estimate for market orders
+      const notionalSize = quantity * estimatedPrice;
+
+      const riskCheck = riskGuards.checkExecution(symbol, side, notionalSize);
+
+      if (!riskCheck.allowed) {
+        logger.warn(`[ExecutionRouter] Order blocked by risk guards: ${riskCheck.reason}`);
+        return {
+          success: false,
+          orderId: '',
+          executedQuantity: 0,
+          executedPrice: 0,
+          timestamp: new Date(),
+          blocked: true,
+          reason: riskCheck.reason,
+          limits: riskCheck.limits
+        };
+      }
+
+      // Simulate order execution
+      const simulatedExecutionTime = Math.random() * 100; // ms
+      await new Promise(resolve => setTimeout(resolve, simulatedExecutionTime));
+
+      const executionPrice = price || this.getMockFillPrice(symbol);
+      const executedQuantity = quantity; // Assume full fill for simulation
+
+      const result: ExecutionResult = {
+        success: true,
+        orderId: `order_${Math.random().toString(36).substr(2, 9)}`,
+        executedQuantity: executedQuantity,
+        executedPrice: executionPrice,
+        timestamp: new Date(),
+      };
+
+      // Record execution for risk tracking
+      if (result.success && result.executedQuantity > 0) {
+        riskGuards.recordExecution({
+          symbol,
+          side,
+          finalSize: result.executedQuantity,
+          fillPrice: result.executedPrice,
+          timestamp: result.timestamp
+        });
+      }
+
+      logger.info(`[ExecutionRouter] Order executed successfully: ${result.orderId}`);
+
+      return result;
+    } catch (error) {
+      logger.error(`[ExecutionRouter] Execution failed:`, error);
+      return {
+        success: false,
+        orderId: '',
+        executedQuantity: 0,
+        executedPrice: 0,
+        timestamp: new Date(),
+        blocked: true, // Treat errors as blocked for simplicity
+        reason: error instanceof Error ? error.message : 'Unknown execution error',
+      };
+    }
+  }
+
 
   computeUncertaintyScaledSize(
     symbol: string,

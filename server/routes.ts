@@ -100,6 +100,8 @@ import portfolioRoutes from './routes/portfolio.js';
 import policyRoutes from './routes/policies.js';
 import auditRoutes from './routes/audit.js';
 import guardsRoutes from './routes/guards.js';
+import budgetRoutes from './routes/budget.js';
+import deployRoutes from './routes/deploy.js';
 import provenanceRoutes from './middleware/provenance.js';
 import metricsRoutes from './routes/metrics.js';
 import dataQualityRoutes from './routes/data-quality.js';
@@ -117,25 +119,8 @@ import portfolioRoutes from './routes/portfolio.js';
 import policyRoutes from './routes/policies.js';
 import auditRoutes from './routes/audit.js';
 import guardsRoutes from './routes/guards.js';
-import provenanceRoutes from './middleware/provenance.js';
-import metricsRoutes from './routes/metrics.js';
-import dataQualityRoutes from './routes/data-quality.js';
-import wsStatusRoutes from './routes/ws-status.js';
-import canaryRoutes from './routes/canary.js';
-import flagsRoutes from './routes/flags.js';
-import routerSnapshotRoutes from './routes/router-snapshot.js';
-import microstructureRoutes from './routes/microstructure.js';
-import volRoutes from './routes/vol.js';
-// Import route modules
-import healthRoutes from './routes/health.js';
-import tradingRoutes from './routes/trading.js';
-import backtestRoutes from './routes/backtestRoutes.js';
-import strategyRouterRoutes from './routes/strategyRouter.js';
-import executionRoutes from './routes/execution.js';
-import portfolioRoutes from './routes/portfolio.js';
-import policyRoutes from './routes/policies.js';
-import auditRoutes from './routes/audit.js';
-import guardsRoutes from './routes/guards.js';
+import budgetRoutes from './routes/budget.js';
+import deployRoutes from './routes/deploy.js';
 import provenanceRoutes from './middleware/provenance.js';
 import metricsRoutes from './routes/metrics.js';
 import dataQualityRoutes from './routes/data-quality.js';
@@ -155,6 +140,8 @@ import portfolioRoutes from './routes/portfolio.js';
 import policyRoutes from './routes/policies.js';
 import auditRoutes from './routes/audit.js';
 import guardsRoutes from './routes/guards.js';
+import budgetRoutes from './routes/budget.js';
+import deployRoutes from './routes/deploy.js';
 import provenanceRoutes from './middleware/provenance.js';
 import metricsRoutes from './routes/metrics.js';
 import dataQualityRoutes from './routes/data-quality.js';
@@ -174,6 +161,29 @@ import portfolioRoutes from './routes/portfolio.js';
 import policyRoutes from './routes/policies.js';
 import auditRoutes from './routes/audit.js';
 import guardsRoutes from './routes/guards.js';
+import budgetRoutes from './routes/budget.js';
+import deployRoutes from './routes/deploy.js';
+import provenanceRoutes from './middleware/provenance.js';
+import metricsRoutes from './routes/metrics.js';
+import dataQualityRoutes from './routes/data-quality.js';
+import wsStatusRoutes from './routes/ws-status.js';
+import canaryRoutes from './routes/canary.js';
+import flagsRoutes from './routes/flags.js';
+import routerSnapshotRoutes from './routes/router-snapshot.js';
+import microstructureRoutes from './routes/microstructure.js';
+import volRoutes from './routes/vol.js';
+// Import route modules
+import healthRoutes from './routes/health.js';
+import tradingRoutes from './routes/trading.js';
+import backtestRoutes from './routes/backtestRoutes.js';
+import strategyRouterRoutes from './routes/strategyRouter.js';
+import executionRoutes from './routes/execution.js';
+import portfolioRoutes from './routes/portfolio.js';
+import policyRoutes from './routes/policies.js';
+import auditRoutes from './routes/audit.js';
+import guardsRoutes from './routes/guards.js';
+import budgetRoutes from './routes/budget.js';
+import deployRoutes from './routes/deploy.js';
 import provenanceRoutes from './middleware/provenance.js';
 import metricsRoutes from './routes/metrics.js';
 import dataQualityRoutes from './routes/data-quality.js';
@@ -1933,15 +1943,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }
 
   // Wire strategy router routes
-  app.use('/api/health', healthRoutes);
-  // Assuming errorRoutes is defined and imported elsewhere if it's intended to be used.
-  // app.use('/api/errors', errorRoutes);
-  app.use('/api/portfolio', portfolioRoutes);
-  // Assuming chartDataRoutes is defined and imported elsewhere if it's intended to be used.
-  // app.use('/api/chart-data', chartDataRoutes);
   app.use('/api/router', routerRoutes);
-  app.use('/api/events', eventsRoutes);
-  app.use('/api/policies', policiesRoutes);
+  app.use('/api/guards', guardsRoutes);
+  app.use('/api/budget', budgetRoutes);
+  app.use('/api/deploy', deployRoutes);
+  app.use('/api', healthRoutes);
 
   // Core API routes
   app.use('/api/health', healthRoutes);

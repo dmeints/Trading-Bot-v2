@@ -1,0 +1,168 @@
+4) Context Router — Bayesian Thompson Sampling
+server/services/StrategyRouter.ts: Bayesian linear Thompson Sampling over policies with context vector including regime, vol forecasts, microstructure, options metrics, funding/basis, sentiment/on-chain (stubs ok).
+
+Routes:
+
+POST /api/router/choose {context} → {policyId, score, explorationBonus}
+
+POST /api/router/update {policyId, reward, context}
+
+GET /api/router/snapshot → last choice + sampled scores + feature vector used
+
+Proof:
+
+bash
+Copy
+Edit
+curl -s -X POST localhost:5000/api/router/choose -H "Content-Type: application/json" \
+  -d '{"context":{"regime":"bull","sigmaHAR":0.02,"obi":0.2,"rr25":0.1}}' | jq
+curl -s -X POST localhost:5000/api/router/update -H "Content-Type: application/json" \
+  -d '{"policyId":"p_sma","reward":0.004,"context":{"regime":"bull"}}' | jq
+curl -s localhost:5000/api/router/snapshot | jq
+Tests: tests/router_ts.spec.ts (converges to better policy on synthetic).
+
+5) L2 Depth — True Snapshot + Delta Reconciliation
+server/services/l2/OrderBook.ts: in-memory book (price→size maps), best bid/ask, top-k aggregates, sequence tracking.
+
+server/services/l2/BookMaintainer.ts: per venue symbol: snapshot via REST, apply WS deltas, resync on seq gaps.
+
+Route: GET /api/l2/:venue/:symbol → { bids, asks, seq, ts }.
+
+Feed top-k aggregates to Microstructure features.
+
+Proof:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/l2/binance/BTCUSDT | jq '.bids[0], .asks[0], .seq'
+Tests: tests/l2_reconciliation.spec.ts.
+
+6) Cross-Venue Smart Router
+server/services/venues/VenueRegistry.ts: track per-venue metrics (latency, spread_bps, topDepth, feeBps, reliability, rateRemaining).
+
+server/services/venues/SmartVenueRouter.ts: score & choose venue per symbol/size.
+
+Routes:
+
+GET /api/venues/registry
+
+POST /api/venues/score {symbol,size} → {venue,score,reasons}
+
+ExecutionRouter should include chosen venue in audit (paper only).
+
+Proof:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/venues/registry | jq '.[0:3]'
+curl -s -X POST localhost:5000/api/venues/score -H "Content-Type: application/json" \
+  -d '{"symbol":"BTCUSDT","size":0.02}' | jq
+Tests: tests/venues_router.spec.ts.
+
+7) Execution — Uncertainty-Scaled Sizing + Impact-Aware Planner
+server/services/ExecutionRouter.ts:
+
+plan(context) → router choose; derive signal (long/flat/target).
+
+size(signal, uncertaintyWidth) with 
+𝑠
+=
+𝑠
+max
+⁡
+⋅
+𝜎
+(
+−
+𝑤
+/
+𝑤
+\*
+)
+s=s 
+max
+​
+ ⋅σ(−w/w 
+\*
+ ) and vol targeting using forecastVol.
+
+Integrate CVaR budget via portfolio.ts.
+
+Use server/services/execution/Planner.ts for Immediate/TWAP/VWAP/POV based on spread/depth/micro-vol & urgency; include cost model 
+𝑘
+⋅
+size
+𝛼
++
+spread
+/
+2
+k⋅size 
+α
+ +spread/2.
+
+execute(plan) → call paper order route; persist execution record.
+
+Route: POST /api/exec/plan-and-execute {symbol} → execution record
+
+Route: POST /api/exec/simulate {symbol,size} → plan & cost preview
+
+Route: GET /api/exec/sizing/last → last sizing snapshot
+
+Proof:
+
+bash
+Copy
+Edit
+curl -s -X POST localhost:5000/api/exec/simulate -H "Content-Type: application/json" \
+  -d '{"symbol":"BTCUSDT","size":0.02}' | jq
+curl -s -X POST localhost:5000/api/exec/plan-and-execute -H "Content-Type: application/json" \
+  -d '{"symbol":"BTCUSDT"}' | jq
+curl -s localhost:5000/api/exec/sizing/last | jq
+Tests: tests/execution_planner.spec.ts.
+
+8) Portfolio — CVaR Budget + Vol Targeting + Kelly-lite
+server/services/portfolio.ts: estimate vol/CVaR (hist sim), projected-gradient weights with 
+∑
+𝑤
+𝑖
+CVaR
+𝑖
+≤
+𝐵
+∑w 
+i
+​
+ CVaR 
+i
+​
+ ≤B, target vol 
+𝜎
+\*
+σ 
+\*
+ . Provide Kelly-lite advisory 
+𝑓
+≈
+𝜅
+𝜇
+/
+𝜎
+2
+f≈κμ/σ 
+2
+  (clipped).
+
+Route: POST /api/portfolio/optimize {symbols,cvarBudget,volTarget}
+
+Proof:
+
+bash
+Copy
+Edit
+curl -s -X POST localhost:5000/api/portfolio/optimize \
+  -H "Content-Type: application/json" \
+  -d '{"symbols":["BTCUSDT","ETHUSDT"],"cvarBudget":0.05,"volTarget":0.02}' | jq
+Tests: tests/portfolio_constraints.spec.ts.

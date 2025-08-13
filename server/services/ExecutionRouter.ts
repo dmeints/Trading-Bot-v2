@@ -1,276 +1,281 @@
-import { logger } from '../utils/logger.js';
-import { strategyRouter } from './StrategyRouter.js';
-import { liquidityModels } from './execution/LiquidityModels.js';
-import { riskGuards } from './RiskGuards.js';
 
-export interface ExecutionRecord {
-  id: string;
-  timestamp: Date;
+import { bayesianRouter } from './StrategyRouter.js';
+import { volatilityModels } from './volatility/Models.js';
+import { microstructureFeatures } from './microstructure/Features.js';
+import { riskGuards } from './RiskGuards.js';
+import { logger } from '../utils/logger.js';
+
+interface ExecutionPlan {
   symbol: string;
-  policyId: string;
-  requestedSize: number;
-  finalSize: number;
-  fillPrice: number;
-  side: 'buy' | 'sell' | 'hold';
-  context: any;
-  uncertaintyWidth: number;
-  confidence: number;
+  signal: 'long' | 'flat' | 'short';
+  targetSize: number;
+  executionStyle: 'immediate' | 'twap' | 'vwap' | 'pov';
+  urgency: number; // 0-1
+  estimatedCost: number;
+  riskBudget: number;
+  timestamp: number;
 }
 
-export interface SizingSnapshot {
+interface ExecutionRecord {
+  id: string;
+  plan: ExecutionPlan;
+  status: 'pending' | 'filled' | 'cancelled' | 'blocked';
+  fillPrice?: number;
+  fillSize?: number;
+  blockReason?: string;
+  timestamp: number;
+}
+
+interface SizingSnapshot {
   symbol: string;
   baseSize: number;
-  uncertaintyWidth: number;
+  uncertaintyScale: number;
+  volTargetScale: number;
   finalSize: number;
-  timestamp: Date;
   confidence: number;
+  timestamp: number;
 }
 
-interface ExecutionParams {
-  symbol: string;
-  side: 'buy' | 'sell';
-  quantity: number;
-  price?: number;
-  orderType: 'market' | 'limit';
-  timeInForce?: 'GTC' | 'IOC' | 'FOK';
-}
-
-interface ExecutionResult {
-  success: boolean;
-  orderId: string;
-  executedQuantity: number;
-  executedPrice: number;
-  timestamp: Date;
-  blocked?: boolean;
-  reason?: string;
-  limits?: any;
-}
-
-
-export class ExecutionRouter {
-  private static instance: ExecutionRouter;
-  private executionLog: ExecutionRecord[] = [];
+class ExecutionRouter {
+  private executions: Map<string, ExecutionRecord> = new Map();
   private lastSizing: SizingSnapshot | null = null;
-
-  public static getInstance(): ExecutionRouter {
-    if (!ExecutionRouter.instance) {
-      ExecutionRouter.instance = new ExecutionRouter();
-    }
-    return ExecutionRouter.instance;
-  }
-
-  constructor() {
-    logger.info('[ExecutionRouter] Initialized');
-  }
-
-  async planAndExecute(symbol: string, baseSize: number = 1000): Promise<ExecutionRecord> {
+  private readonly maxSize = 1000000; // $1M max per trade
+  
+  async plan(context: any = {}): Promise<ExecutionPlan> {
     try {
-      // Plan: Get policy choice from StrategyRouter
-      const context = {
-        regime: 'bull', // Mock regime detection
-        vol: 0.02,
-        trend: 0.1,
-        funding: 0.0001,
-        sentiment: 0.3
-      };
-
-      const choice = strategyRouter.choose(context);
-      logger.info(`[ExecutionRouter] Strategy choice: ${choice.policyId} (score: ${choice.score.toFixed(4)})`);
-
-      // Convert policy to signal
-      const signal = this.policyToSignal(choice);
-
-      // Size with uncertainty
-      const uncertaintyWidth = this.getConformalUncertainty(symbol);
-      const sizing = this.computeUncertaintyScaledSize(symbol, baseSize * signal.sizeMultiplier, uncertaintyWidth);
-
-      // Check risk guards
-      const guardResult = riskGuards.checkExecution(symbol, signal.side, sizing.finalSize * this.getMockFillPrice(symbol));
-      if (!guardResult.allowed) {
-        throw new Error(`Execution blocked: ${guardResult.reason}`);
-      }
-
-      // Get liquidity estimate
-      const liquidityEst = liquidityModels.estimateImpact(symbol, sizing.finalSize, 'MEDIUM');
-
-      // Execute in paper mode
-      const executionRecord: ExecutionRecord = {
-        id: `exec_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`,
-        timestamp: new Date(),
+      // Get strategy signal from Bayesian router
+      const choice = bayesianRouter.choosePolicy(context);
+      
+      // Determine signal from policy
+      const signal = this.policyToSignal(choice.policyId);
+      
+      // Get volatility forecast
+      const symbol = context.symbol || 'BTCUSDT';
+      const volForecast = volatilityModels.forecastVol(symbol, 60);
+      
+      // Get microstructure data
+      const microData = microstructureFeatures.getSnapshot(symbol);
+      
+      // Calculate target size with uncertainty scaling
+      const targetSize = this.calculateSize(signal, volForecast, microData, context);
+      
+      // Determine execution style based on market conditions
+      const executionStyle = this.chooseExecutionStyle(microData, targetSize);
+      
+      // Estimate transaction costs
+      const estimatedCost = this.estimateCost(targetSize, microData, executionStyle);
+      
+      const plan: ExecutionPlan = {
         symbol,
-        policyId: choice.policyId,
-        requestedSize: baseSize * signal.sizeMultiplier,
-        finalSize: sizing.finalSize,
-        fillPrice: this.getMockFillPrice(symbol),
-        side: signal.side,
-        context,
-        uncertaintyWidth,
-        confidence: sizing.confidence
+        signal,
+        targetSize,
+        executionStyle,
+        urgency: Math.abs(choice.score) / 0.1, // Normalize to 0-1
+        estimatedCost,
+        riskBudget: context.riskBudget || 0.02,
+        timestamp: Date.now()
       };
-
-      // Store execution record
-      this.executionLog.push(executionRecord);
-
-      // Simulate paper position update
-      await this.updatePaperPosition(executionRecord);
-
-      logger.info(`[ExecutionRouter] Plan-and-execute complete: ${JSON.stringify(executionRecord)}`);
-      return executionRecord;
-
+      
+      return plan;
+      
     } catch (error) {
-      logger.error(`[ExecutionRouter] Plan-and-execute failed:`, error);
-      throw error;
-    }
-  }
-
-  async execute(params: ExecutionParams): Promise<ExecutionResult> {
-    try {
-      const { symbol, side, quantity, price, orderType, timeInForce = 'GTC' } = params;
-
-      logger.info(`[ExecutionRouter] Executing order: ${symbol} ${side} ${quantity} @ ${price || 'market'}`);
-
-      // Risk guard check
-      const estimatedPrice = price || 50000; // Use provided price or estimate for market orders
-      const notionalSize = quantity * estimatedPrice;
-
-      const riskCheck = riskGuards.checkExecution(symbol, side, notionalSize);
-
-      if (!riskCheck.allowed) {
-        logger.warn(`[ExecutionRouter] Order blocked by risk guards: ${riskCheck.reason}`);
-        return {
-          success: false,
-          orderId: '',
-          executedQuantity: 0,
-          executedPrice: 0,
-          timestamp: new Date(),
-          blocked: true,
-          reason: riskCheck.reason,
-          limits: riskCheck.limits
-        };
-      }
-
-      // Simulate order execution
-      const simulatedExecutionTime = Math.random() * 100; // ms
-      await new Promise(resolve => setTimeout(resolve, simulatedExecutionTime));
-
-      const executionPrice = price || this.getMockFillPrice(symbol);
-      const executedQuantity = quantity; // Assume full fill for simulation
-
-      const result: ExecutionResult = {
-        success: true,
-        orderId: `order_${Math.random().toString(36).substr(2, 9)}`,
-        executedQuantity: executedQuantity,
-        executedPrice: executionPrice,
-        timestamp: new Date(),
-      };
-
-      // Record execution for risk tracking
-      if (result.success && result.executedQuantity > 0) {
-        riskGuards.recordExecution({
-          symbol,
-          side,
-          finalSize: result.executedQuantity,
-          fillPrice: result.executedPrice,
-          timestamp: result.timestamp
-        });
-      }
-
-      logger.info(`[ExecutionRouter] Order executed successfully: ${result.orderId}`);
-
-      return result;
-    } catch (error) {
-      logger.error(`[ExecutionRouter] Execution failed:`, error);
+      logger.error('Error creating execution plan:', { error: String(error) });
+      
+      // Fallback plan
       return {
-        success: false,
-        orderId: '',
-        executedQuantity: 0,
-        executedPrice: 0,
-        timestamp: new Date(),
-        blocked: true, // Treat errors as blocked for simplicity
-        reason: error instanceof Error ? error.message : 'Unknown execution error',
+        symbol: context.symbol || 'BTCUSDT',
+        signal: 'flat',
+        targetSize: 0,
+        executionStyle: 'immediate',
+        urgency: 0,
+        estimatedCost: 0,
+        riskBudget: 0.01,
+        timestamp: Date.now()
       };
     }
   }
-
-
-  computeUncertaintyScaledSize(
-    symbol: string,
-    baseSize: number,
-    uncertaintyWidth: number = 0.1
-  ): SizingSnapshot {
-    // Sigmoid function: size = baseSize * sigmoid(-uncertaintyWidth)
-    // Higher uncertainty -> smaller size
-    const scalingFactor = this.sigmoid(-uncertaintyWidth * 10); // Scale for reasonable range
-    const finalSize = baseSize * scalingFactor;
-
-    // Confidence based on inverse of uncertainty
-    const confidence = Math.max(0, Math.min(1, 1 - uncertaintyWidth));
-
-    const snapshot: SizingSnapshot = {
-      symbol,
-      baseSize,
-      uncertaintyWidth,
-      finalSize,
-      timestamp: new Date(),
-      confidence
-    };
-
-    this.lastSizing = snapshot;
-
-    logger.info(`[ExecutionRouter] Uncertainty sizing: ${symbol} base=${baseSize.toFixed(4)} uncertainty=${uncertaintyWidth.toFixed(4)} final=${finalSize.toFixed(4)} confidence=${confidence.toFixed(3)}`);
-
-    return snapshot;
-  }
-
-  getLastSizing(): SizingSnapshot | null {
-    return this.lastSizing;
-  }
-
-  getExecutionRecords(): ExecutionRecord[] {
-    return this.executionLog.slice(-50); // Return last 50 executions
-  }
-
-  private sigmoid(x: number): number {
-    return 1 / (1 + Math.exp(-x));
-  }
-
-  // Mock conformal predictor uncertainty for demo
-  private getConformalUncertainty(symbol: string): number {
-    // Simulate varying uncertainty levels
-    const baseUncertainty = 0.05 + Math.random() * 0.15; // 5-20%
-
-    // Add symbol-specific factors
-    if (symbol.includes('BTC')) return baseUncertainty * 0.8; // BTC is more predictable
-    if (symbol.includes('ETH')) return baseUncertainty * 0.9;
-    return baseUncertainty; // Default uncertainty
-  }
-
-  private policyToSignal(choice: any): { side: 'buy' | 'sell' | 'hold', sizeMultiplier: number } {
-    // Simple policy mapping - extend based on actual policy logic
-    if (choice.score > 0.6) {
-      return { side: 'buy', sizeMultiplier: 1.0 };
-    } else if (choice.score < -0.6) {
-      return { side: 'sell', sizeMultiplier: 1.0 };
-    } else {
-      return { side: 'hold', sizeMultiplier: 0.0 };
+  
+  async execute(plan: ExecutionPlan): Promise<ExecutionRecord> {
+    const id = `exec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    try {
+      // Check risk guards
+      const notional = Math.abs(plan.targetSize * 45000); // Rough price approximation
+      const riskCheck = riskGuards.checkOrder(plan.symbol, notional);
+      
+      if (!riskCheck.allowed) {
+        const record: ExecutionRecord = {
+          id,
+          plan,
+          status: 'blocked',
+          blockReason: riskCheck.reason,
+          timestamp: Date.now()
+        };
+        
+        this.executions.set(id, record);
+        logger.warn(`Execution blocked for ${plan.symbol}:`, riskCheck.reason);
+        return record;
+      }
+      
+      // For paper trading, simulate execution
+      const simulatedFill = this.simulateExecution(plan);
+      
+      const record: ExecutionRecord = {
+        id,
+        plan,
+        status: 'filled',
+        fillPrice: simulatedFill.price,
+        fillSize: simulatedFill.size,
+        timestamp: Date.now()
+      };
+      
+      this.executions.set(id, record);
+      
+      // Record with risk guards
+      riskGuards.recordOrder(plan.symbol, notional);
+      
+      logger.info(`Executed ${plan.symbol} ${plan.signal}:`, {
+        size: simulatedFill.size,
+        price: simulatedFill.price,
+        cost: plan.estimatedCost
+      });
+      
+      return record;
+      
+    } catch (error) {
+      logger.error('Error executing plan:', { error: String(error) });
+      
+      const record: ExecutionRecord = {
+        id,
+        plan,
+        status: 'cancelled',
+        blockReason: String(error),
+        timestamp: Date.now()
+      };
+      
+      this.executions.set(id, record);
+      return record;
     }
   }
-
-  private getMockFillPrice(symbol: string): number {
-    // Mock price - in real system, get from market data
-    const basePrices: Record<string, number> = {
-      'BTCUSDT': 43000,
-      'ETHUSDT': 2500,
-      'SOLUSDT': 100
+  
+  private calculateSize(
+    signal: string, 
+    volForecast: any, 
+    microData: any, 
+    context: any
+  ): number {
+    if (signal === 'flat') return 0;
+    
+    // Base size from context or default
+    const sMax = context.maxSize || 0.1; // 0.1 BTC default
+    
+    // Uncertainty width from volatility models
+    const uncertaintyWidth = Math.max(volForecast.sigmaHAR, volForecast.sigmaGARCH);
+    const wStar = context.targetVol || 0.02; // 2% target vol
+    
+    // Kelly-lite sizing with uncertainty discount
+    const kellyFraction = Math.min(0.25, sMax * Math.exp(-uncertaintyWidth / wStar));
+    
+    // Vol targeting adjustment
+    const volTargetScale = wStar / uncertaintyWidth;
+    
+    // Microstructure adjustment (reduce size if low liquidity)
+    const microScale = microData ? 
+      Math.min(1, 1 / (1 + microData.spread_bps / 10)) : 1;
+    
+    const finalSize = kellyFraction * volTargetScale * microScale * (signal === 'short' ? -1 : 1);
+    
+    // Store sizing snapshot
+    this.lastSizing = {
+      symbol: context.symbol || 'BTCUSDT',
+      baseSize: sMax,
+      uncertaintyScale: Math.exp(-uncertaintyWidth / wStar),
+      volTargetScale,
+      finalSize: Math.abs(finalSize),
+      confidence: volForecast.confidence || 0.5,
+      timestamp: Date.now()
     };
-    const basePrice = basePrices[symbol] || 1000;
-    return basePrice * (1 + (Math.random() - 0.5) * 0.001); // Small random spread
+    
+    return Math.max(-this.maxSize, Math.min(this.maxSize, finalSize));
   }
-
-  private async updatePaperPosition(execution: ExecutionRecord): Promise<void> {
-    // Mock paper position update - in real system, integrate with trading engine
-    logger.info(`[ExecutionRouter] Updated paper position: ${execution.symbol} ${execution.side} ${execution.finalSize}`);
+  
+  private chooseExecutionStyle(microData: any, targetSize: number): ExecutionPlan['executionStyle'] {
+    if (!microData) return 'immediate';
+    
+    const sizeUsd = Math.abs(targetSize * 45000);
+    
+    // Large orders need careful execution
+    if (sizeUsd > 50000) {
+      return microData.micro_vol > 0.01 ? 'vwap' : 'twap';
+    }
+    
+    // High urgency or good liquidity
+    if (microData.spread_bps < 5 && microData.obi < 0.3) {
+      return 'immediate';
+    }
+    
+    return 'pov'; // Participation of volume
+  }
+  
+  private estimateCost(targetSize: number, microData: any, style: string): number {
+    const sizeUsd = Math.abs(targetSize * 45000);
+    const alpha = 1.5; // Impact exponent
+    
+    // Market impact: k * size^alpha
+    const impactCost = 0.0001 * Math.pow(sizeUsd / 10000, alpha);
+    
+    // Spread cost
+    const spreadCost = microData ? (microData.spread_bps / 10000) / 2 : 0.0005;
+    
+    // Style-dependent adjustment
+    const styleMultiplier = {
+      'immediate': 1.0,
+      'twap': 0.7,
+      'vwap': 0.8,
+      'pov': 0.6
+    }[style] || 1.0;
+    
+    return (impactCost + spreadCost) * styleMultiplier;
+  }
+  
+  private simulateExecution(plan: ExecutionPlan): { price: number; size: number } {
+    // Simulate realistic execution with slippage
+    const basePrice = plan.symbol === 'BTCUSDT' ? 45000 : 3000;
+    const slippage = plan.estimatedCost * (Math.random() + 0.5); // 0.5-1.5x expected cost
+    
+    const fillPrice = plan.signal === 'long' ? 
+      basePrice * (1 + slippage) : 
+      basePrice * (1 - slippage);
+    
+    const fillRatio = 0.8 + Math.random() * 0.2; // 80-100% fill
+    const fillSize = plan.targetSize * fillRatio;
+    
+    return { price: fillPrice, size: fillSize };
+  }
+  
+  private policyToSignal(policyId: string): ExecutionPlan['signal'] {
+    // Map policy to trading signal
+    const policySignals: Record<string, ExecutionPlan['signal']> = {
+      'p_momentum': 'long',
+      'p_breakout': 'long', 
+      'p_mean_revert': 'short',
+      'p_sma': 'long',
+      'p_vol_target': 'flat'
+    };
+    
+    return policySignals[policyId] || 'flat';
+  }
+  
+  getLastSizing(): SizingSnapshot | null {
+    return this.lastSizing ? { ...this.lastSizing } : null;
+  }
+  
+  getExecutionHistory(limit = 10): ExecutionRecord[] {
+    return Array.from(this.executions.values())
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, limit);
   }
 }
 
-export const executionRouter = ExecutionRouter.getInstance();
+export const executionRouter = new ExecutionRouter();
+export type { ExecutionPlan, ExecutionRecord, SizingSnapshot };

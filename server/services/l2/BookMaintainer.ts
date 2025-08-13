@@ -1,194 +1,261 @@
 
-/**
- * Book Maintainer - Manages L2 books per venue/symbol
- */
-
-import { OrderBook, type OrderBookSnapshot, type OrderBookDelta } from './OrderBook.js';
+import { OrderBook, BookSnapshot, BookDelta } from './OrderBook.js';
 import { logger } from '../../utils/logger.js';
 
 interface VenueConfig {
-  restEndpoint: string;
-  wsEndpoint: string;
-  rateLimit: number;
+  restUrl: string;
+  wsUrl: string;
+  auth?: {
+    apiKey: string;
+    secret: string;
+  };
 }
 
-class BookMaintainer {
-  private books = new Map<string, OrderBook>();
-  private resyncTimers = new Map<string, NodeJS.Timeout>();
-  private venueConfigs = new Map<string, VenueConfig>();
+export class BookMaintainer {
+  private books: Map<string, OrderBook> = new Map();
+  private wsConnections: Map<string, WebSocket> = new Map();
+  private resyncTimers: Map<string, NodeJS.Timeout> = new Map();
+  
+  private venues: Map<string, VenueConfig> = new Map([
+    ['binance', {
+      restUrl: 'https://api.binance.com/api/v3',
+      wsUrl: 'wss://stream.binance.com:9443/ws'
+    }],
+    ['coinbase', {
+      restUrl: 'https://api.exchange.coinbase.com',
+      wsUrl: 'wss://ws-feed.exchange.coinbase.com'
+    }]
+  ]);
 
   constructor() {
-    // Initialize venue configurations
-    this.venueConfigs.set('binance', {
-      restEndpoint: 'https://api.binance.com/api/v3/depth',
-      wsEndpoint: 'wss://stream.binance.com:9443/ws',
-      rateLimit: 1200 // per minute
-    });
-    
-    this.venueConfigs.set('coinbase', {
-      restEndpoint: 'https://api.exchange.coinbase.com/products',
-      wsEndpoint: 'wss://ws-feed.exchange.coinbase.com',
-      rateLimit: 10 // per second
-    });
+    this.initializeBooks();
   }
 
-  /**
-   * Initialize book for venue/symbol
-   */
-  async initializeBook(venue: string, symbol: string): Promise<OrderBook> {
-    const key = `${venue}:${symbol}`;
+  private initializeBooks(): void {
+    const symbols = ['BTCUSDT', 'ETHUSDT', 'ADAUSDT', 'SOLUSDT', 'DOTUSDT'];
     
-    if (this.books.has(key)) {
-      return this.books.get(key)!;
+    for (const venue of this.venues.keys()) {
+      for (const symbol of symbols) {
+        const key = `${venue}:${symbol}`;
+        this.books.set(key, new OrderBook(venue, symbol));
+      }
     }
+  }
 
-    const book = new OrderBook(venue, symbol);
-    this.books.set(key, book);
-
-    // Fetch initial snapshot
+  // Fetch snapshot via REST
+  private async fetchSnapshot(venue: string, symbol: string): Promise<BookSnapshot | null> {
     try {
-      const snapshot = await this.fetchSnapshot(venue, symbol);
-      book.applySnapshot(snapshot);
-      
-      // Schedule periodic resync
-      this.scheduleResync(venue, symbol);
-      
-      logger.info(`[BookMaintainer] Initialized book for ${key}`);
-    } catch (error) {
-      logger.error(`[BookMaintainer] Failed to initialize book for ${key}:`, error);
-    }
+      const config = this.venues.get(venue);
+      if (!config) {
+        logger.error(`Unknown venue: ${venue}`);
+        return null;
+      }
 
-    return book;
+      let url: string;
+      if (venue === 'binance') {
+        url = `${config.restUrl}/depth?symbol=${symbol}&limit=100`;
+      } else if (venue === 'coinbase') {
+        // Convert BTCUSDT -> BTC-USD format
+        const cbSymbol = symbol.replace('USDT', '-USD').replace('USDC', '-USD');
+        url = `${config.restUrl}/products/${cbSymbol}/book?level=2`;
+      } else {
+        logger.warn(`Snapshot not implemented for venue: ${venue}`);
+        return this.generateMockSnapshot(symbol);
+      }
+
+      const response = await fetch(url);
+      if (!response.ok) {
+        logger.error(`Failed to fetch snapshot: ${response.status}`);
+        return this.generateMockSnapshot(symbol);
+      }
+
+      const data = await response.json();
+      return this.parseSnapshot(venue, data);
+      
+    } catch (error) {
+      logger.error(`Error fetching snapshot for ${venue}:${symbol}:`, error);
+      return this.generateMockSnapshot(symbol);
+    }
   }
 
-  /**
-   * Apply delta update to book
-   */
-  applyDelta(venue: string, symbol: string, delta: OrderBookDelta): void {
+  private parseSnapshot(venue: string, data: any): BookSnapshot {
+    let bids: Array<{price: number, size: number}> = [];
+    let asks: Array<{price: number, size: number}> = [];
+    
+    if (venue === 'binance') {
+      bids = data.bids?.map(([price, qty]: [string, string]) => ({
+        price: parseFloat(price),
+        size: parseFloat(qty)
+      })) || [];
+      asks = data.asks?.map(([price, qty]: [string, string]) => ({
+        price: parseFloat(price),
+        size: parseFloat(qty)
+      })) || [];
+    } else if (venue === 'coinbase') {
+      bids = data.bids?.map(([price, size]: [string, string]) => ({
+        price: parseFloat(price),
+        size: parseFloat(size)
+      })) || [];
+      asks = data.asks?.map(([price, size]: [string, string]) => ({
+        price: parseFloat(price),
+        size: parseFloat(size)
+      })) || [];
+    }
+
+    return {
+      bids,
+      asks,
+      seq: data.lastUpdateId || Date.now(),
+      timestamp: Date.now()
+    };
+  }
+
+  private generateMockSnapshot(symbol: string): BookSnapshot {
+    // Generate realistic mock data for demo
+    const basePrice = symbol.includes('BTC') ? 45000 : 
+                     symbol.includes('ETH') ? 3000 :
+                     symbol.includes('SOL') ? 100 :
+                     symbol.includes('ADA') ? 0.5 : 1000;
+    
+    const spread = basePrice * 0.0001; // 1 bps spread
+    
+    const bids = [];
+    const asks = [];
+    
+    for (let i = 0; i < 10; i++) {
+      bids.push({
+        price: basePrice - spread/2 - i * spread/10,
+        size: Math.random() * 10 + 0.1
+      });
+      asks.push({
+        price: basePrice + spread/2 + i * spread/10,
+        size: Math.random() * 10 + 0.1
+      });
+    }
+
+    return {
+      bids,
+      asks,
+      seq: Date.now(),
+      timestamp: Date.now()
+    };
+  }
+
+  // Start maintaining book for venue:symbol
+  async startMaintaining(venue: string, symbol: string): Promise<void> {
     const key = `${venue}:${symbol}`;
     const book = this.books.get(key);
     
     if (!book) {
-      logger.warn(`[BookMaintainer] No book found for ${key}, ignoring delta`);
+      logger.error(`No book found for ${key}`);
       return;
     }
 
-    const success = book.applyDelta(delta);
-    
-    if (!success) {
-      // Sequence gap detected, trigger resync
-      logger.warn(`[BookMaintainer] Triggering resync for ${key} due to sequence gap`);
-      this.triggerResync(venue, symbol);
+    // Fetch initial snapshot
+    const snapshot = await this.fetchSnapshot(venue, symbol);
+    if (snapshot) {
+      book.applySnapshot(snapshot);
+      logger.info(`Initialized book for ${key}`);
     }
+
+    // Start WebSocket for deltas (mock for now)
+    this.startWebSocketMock(venue, symbol);
   }
 
-  /**
-   * Get book for venue/symbol
-   */
-  getBook(venue: string, symbol: string): OrderBook | null {
+  private startWebSocketMock(venue: string, symbol: string): void {
     const key = `${venue}:${symbol}`;
-    return this.books.get(key) || null;
-  }
-
-  /**
-   * Get all active books
-   */
-  getAllBooks(): Map<string, OrderBook> {
-    return new Map(this.books);
-  }
-
-  /**
-   * Fetch snapshot from REST API
-   */
-  private async fetchSnapshot(venue: string, symbol: string): Promise<OrderBookSnapshot> {
-    const config = this.venueConfigs.get(venue);
+    const book = this.books.get(key);
     
-    if (!config) {
-      throw new Error(`Unknown venue: ${venue}`);
-    }
+    if (!book) return;
 
-    // Mock implementation - would connect to real APIs
-    const mockSnapshot: OrderBookSnapshot = {
-      venue,
-      symbol,
-      bids: this.generateMockDepth('bid', 10),
-      asks: this.generateMockDepth('ask', 10),
-      seq: Math.floor(Math.random() * 1000000),
-      timestamp: new Date()
-    };
+    // Mock WebSocket updates
+    const interval = setInterval(() => {
+      const delta: BookDelta = {
+        type: Math.random() > 0.9 ? 'delete' : 'update',
+        side: Math.random() > 0.5 ? 'bid' : 'ask',
+        price: 45000 + (Math.random() - 0.5) * 100,
+        size: Math.random() * 5,
+        seq: book.getSequence() + 1
+      };
 
-    logger.debug(`[BookMaintainer] Fetched snapshot for ${venue}:${symbol}, seq=${mockSnapshot.seq}`);
-    
-    return mockSnapshot;
-  }
+      const success = book.applyDelta(delta);
+      if (!success) {
+        logger.warn(`Delta failed for ${key}, triggering resync`);
+        this.scheduleResync(venue, symbol);
+      }
+    }, 1000 + Math.random() * 2000); // Random interval 1-3s
 
-  /**
-   * Generate mock depth levels
-   */
-  private generateMockDepth(side: 'bid' | 'ask', count: number): Array<{ price: number; size: number }> {
-    const basePrice = 50000; // Mock BTC price
-    const levels: Array<{ price: number; size: number }> = [];
-    
-    for (let i = 0; i < count; i++) {
-      const offset = (i + 1) * 10;
-      const price = side === 'bid' ? basePrice - offset : basePrice + offset;
-      const size = 0.1 + Math.random() * 2;
-      
-      levels.push({ price, size });
-    }
-    
-    return levels;
-  }
-
-  /**
-   * Schedule periodic resync
-   */
-  private scheduleResync(venue: string, symbol: string): void {
-    const key = `${venue}:${symbol}`;
-    const interval = 30000; // 30 seconds
-    
-    // Clear existing timer
+    // Store interval for cleanup
     const existingTimer = this.resyncTimers.get(key);
     if (existingTimer) {
       clearInterval(existingTimer);
     }
-
-    const timer = setInterval(() => {
-      const book = this.books.get(key);
-      if (book && book.needsResync()) {
-        this.triggerResync(venue, symbol);
-      }
-    }, interval);
-
-    this.resyncTimers.set(key, timer);
+    this.resyncTimers.set(key, interval);
   }
 
-  /**
-   * Trigger immediate resync
-   */
-  private async triggerResync(venue: string, symbol: string): Promise<void> {
-    try {
-      const snapshot = await this.fetchSnapshot(venue, symbol);
-      const book = this.books.get(`${venue}:${symbol}`);
-      
-      if (book) {
-        book.applySnapshot(snapshot);
-        logger.info(`[BookMaintainer] Resynced ${venue}:${symbol}`);
+  private scheduleResync(venue: string, symbol: string): void {
+    const key = `${venue}:${symbol}`;
+    
+    // Debounce resyncs
+    const existingTimer = this.resyncTimers.get(`${key}:resync`);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+
+    const timer = setTimeout(async () => {
+      logger.info(`Resyncing book for ${key}`);
+      await this.startMaintaining(venue, symbol);
+    }, 5000);
+
+    this.resyncTimers.set(`${key}:resync`, timer);
+  }
+
+  // Get book snapshot
+  getBook(venue: string, symbol: string): BookSnapshot | null {
+    const key = `${venue}:${symbol}`;
+    const book = this.books.get(key);
+    
+    if (!book) {
+      logger.error(`No book found for ${key}`);
+      return null;
+    }
+
+    return book.getTopLevels(20);
+  }
+
+  // Get aggregates for microstructure features
+  getAggregates(venue: string, symbol: string) {
+    const key = `${venue}:${symbol}`;
+    const book = this.books.get(key);
+    
+    if (!book) return null;
+    
+    return book.getAggregates();
+  }
+
+  // Initialize all books
+  async initializeAll(): Promise<void> {
+    const symbols = ['BTCUSDT', 'ETHUSDT'];
+    
+    for (const venue of this.venues.keys()) {
+      for (const symbol of symbols) {
+        await this.startMaintaining(venue, symbol);
       }
-    } catch (error) {
-      logger.error(`[BookMaintainer] Failed to resync ${venue}:${symbol}:`, error);
     }
   }
 
-  /**
-   * Cleanup resources
-   */
-  cleanup(): void {
+  // Cleanup
+  destroy(): void {
     for (const timer of this.resyncTimers.values()) {
+      clearTimeout(timer);
       clearInterval(timer);
     }
     this.resyncTimers.clear();
-    this.books.clear();
+    
+    for (const ws of this.wsConnections.values()) {
+      ws.close();
+    }
+    this.wsConnections.clear();
   }
 }
 

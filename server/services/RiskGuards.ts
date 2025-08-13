@@ -1,272 +1,148 @@
 
-import { logger } from '../utils/logger.js';
-
-interface GuardConfig {
-  maxNotional: number;
-  symbolNotionalCap: number;
-  maxDrawdown: number;
-  ordersPerMinuteLimit: number;
-  breakerCooldownMs: number;
+interface RiskLimits {
+  globalNotionalCap: number;
+  symbolNotionalCaps: Map<string, number>;
+  ordersPerMinute: number;
+  maxDrawdownPct: number;
+  resetTimeoutMs: number;
 }
 
-interface GuardState {
-  totalNotional: number;
-  symbolNotionals: Record<string, number>;
-  recentTrades: any[];
-  drawdownBreaker: {
-    active: boolean;
-    activatedAt?: Date;
-    reason?: string;
-  };
-  orderCounts: Record<string, { count: number; windowStart: Date }>;
-  lastCheck: Date;
+interface RiskState {
+  globalNotional: number;
+  symbolNotionals: Map<string, number>;
+  recentOrders: number[];
+  peakEquity: number;
+  currentEquity: number;
+  isBlocked: boolean;
+  blockReason?: string;
+  lastReset: number;
 }
 
-interface GuardResult {
-  allowed: boolean;
-  blocked?: boolean;
-  reason?: string;
-  limits?: {
-    notionalUsed: number;
-    notionalLimit: number;
-    symbolNotionalUsed: number;
-    symbolNotionalLimit: number;
-  };
-}
-
-export class RiskGuards {
-  private static instance: RiskGuards;
-  private config: GuardConfig;
-  private state: GuardState;
-
-  public static getInstance(): RiskGuards {
-    if (!RiskGuards.instance) {
-      RiskGuards.instance = new RiskGuards();
-    }
-    return RiskGuards.instance;
-  }
-
+class RiskGuards {
+  private limits: RiskLimits;
+  private state: RiskState;
+  
   constructor() {
-    this.config = {
-      maxNotional: parseFloat(process.env.MAX_NOTIONAL || '250000'), // $250k default
-      symbolNotionalCap: parseFloat(process.env.SYMBOL_NOTIONAL_CAP || '50000'), // $50k per symbol
-      maxDrawdown: parseFloat(process.env.MAX_DRAWDOWN || '0.05'), // 5% max drawdown
-      ordersPerMinuteLimit: parseInt(process.env.ORDERS_PER_MINUTE_LIMIT || '10'),
-      breakerCooldownMs: 15 * 60 * 1000 // 15 minutes
+    this.limits = {
+      globalNotionalCap: 250000,
+      symbolNotionalCaps: new Map([
+        ['BTCUSDT', 100000],
+        ['ETHUSDT', 50000],
+        ['DEFAULT', 25000]
+      ]),
+      ordersPerMinute: 60,
+      maxDrawdownPct: 0.05, // 5%
+      resetTimeoutMs: 15 * 60 * 1000 // 15 minutes
     };
-
-    this.state = {
-      totalNotional: 0,
-      symbolNotionals: {},
-      recentTrades: [],
-      drawdownBreaker: { active: false },
-      orderCounts: {},
-      lastCheck: new Date()
-    };
-
-    logger.info('[RiskGuards] Initialized with config:', this.config);
-  }
-
-  checkExecution(symbol: string, side: 'buy' | 'sell', notionalSize: number): GuardResult {
-    try {
-      this.updateState();
-
-      // Check global notional cap
-      if (side === 'buy' && this.state.totalNotional + notionalSize > this.config.maxNotional) {
-        return {
-          allowed: false,
-          blocked: true,
-          reason: `Global notional limit exceeded (${this.state.totalNotional + notionalSize} > ${this.config.maxNotional})`,
-          limits: {
-            notionalUsed: this.state.totalNotional,
-            notionalLimit: this.config.maxNotional,
-            symbolNotionalUsed: this.state.symbolNotionals[symbol] || 0,
-            symbolNotionalLimit: this.config.symbolNotionalCap
-          }
-        };
-      }
-
-      // Check symbol notional cap
-      const symbolNotional = this.state.symbolNotionals[symbol] || 0;
-      if (side === 'buy' && symbolNotional + notionalSize > this.config.symbolNotionalCap) {
-        return {
-          allowed: false,
-          blocked: true,
-          reason: `Symbol ${symbol} notional limit exceeded (${symbolNotional + notionalSize} > ${this.config.symbolNotionalCap})`,
-          limits: {
-            notionalUsed: this.state.totalNotional,
-            notionalLimit: this.config.maxNotional,
-            symbolNotionalUsed: symbolNotional,
-            symbolNotionalLimit: this.config.symbolNotionalCap
-          }
-        };
-      }
-
-      // Check drawdown breaker
-      if (this.state.drawdownBreaker.active) {
-        const cooldownRemaining = this.state.drawdownBreaker.activatedAt 
-          ? (this.state.drawdownBreaker.activatedAt.getTime() + this.config.breakerCooldownMs) - Date.now()
-          : 0;
-        
-        if (cooldownRemaining > 0) {
-          return {
-            allowed: false,
-            blocked: true,
-            reason: `Drawdown breaker active. Cooldown remaining: ${Math.ceil(cooldownRemaining / 1000)}s`
-          };
-        } else {
-          // Reset breaker after cooldown
-          this.state.drawdownBreaker.active = false;
-          this.state.drawdownBreaker.activatedAt = undefined;
-          this.state.drawdownBreaker.reason = undefined;
-        }
-      }
-
-      // Check order rate limit
-      const now = new Date();
-      const orderCount = this.state.orderCounts[symbol];
-      if (orderCount) {
-        const windowElapsed = now.getTime() - orderCount.windowStart.getTime();
-        if (windowElapsed < 60000) { // Within 1 minute window
-          if (orderCount.count >= this.config.ordersPerMinuteLimit) {
-            return {
-              allowed: false,
-              blocked: true,
-              reason: `Order rate limit exceeded for ${symbol} (${orderCount.count}/${this.config.ordersPerMinuteLimit} per minute)`
-            };
-          }
-        } else {
-          // Reset window
-          this.state.orderCounts[symbol] = { count: 0, windowStart: now };
-        }
-      } else {
-        this.state.orderCounts[symbol] = { count: 0, windowStart: now };
-      }
-
-      return {
-        allowed: true,
-        limits: {
-          notionalUsed: this.state.totalNotional,
-          notionalLimit: this.config.maxNotional,
-          symbolNotionalUsed: symbolNotional,
-          symbolNotionalLimit: this.config.symbolNotionalCap
-        }
-      };
-
-    } catch (error) {
-      logger.error('[RiskGuards] Check execution error:', error);
-      return {
-        allowed: false,
-        blocked: true,
-        reason: 'Risk guard system error'
-      };
-    }
-  }
-
-  recordExecution(execution: any): void {
-    try {
-      // Add to recent trades
-      this.state.recentTrades.push(execution);
-      
-      // Keep only last 100 trades for performance
-      if (this.state.recentTrades.length > 100) {
-        this.state.recentTrades = this.state.recentTrades.slice(-100);
-      }
-
-      // Update notional tracking
-      const notionalAmount = execution.finalSize * execution.fillPrice;
-      
-      if (execution.side === 'buy') {
-        this.state.totalNotional += notionalAmount;
-        this.state.symbolNotionals[execution.symbol] = (this.state.symbolNotionals[execution.symbol] || 0) + notionalAmount;
-      } else if (execution.side === 'sell') {
-        this.state.totalNotional = Math.max(0, this.state.totalNotional - notionalAmount);
-        this.state.symbolNotionals[execution.symbol] = Math.max(0, (this.state.symbolNotionals[execution.symbol] || 0) - notionalAmount);
-      }
-
-      // Update order count
-      const symbol = execution.symbol;
-      if (this.state.orderCounts[symbol]) {
-        this.state.orderCounts[symbol].count++;
-      } else {
-        this.state.orderCounts[symbol] = { count: 1, windowStart: new Date() };
-      }
-
-      // Check for drawdown breaker
-      this.checkDrawdownBreaker();
-
-      logger.info(`[RiskGuards] Recorded execution: ${execution.symbol} ${execution.side} ${execution.finalSize}. Total notional: ${this.state.totalNotional}`);
-
-    } catch (error) {
-      logger.error('[RiskGuards] Record execution error:', error);
-    }
-  }
-
-  private updateState(): void {
-    this.state.lastCheck = new Date();
     
-    // Clean up old order counts
-    const now = Date.now();
-    for (const symbol in this.state.orderCounts) {
-      const orderCount = this.state.orderCounts[symbol];
-      if (now - orderCount.windowStart.getTime() > 60000) {
-        delete this.state.orderCounts[symbol];
-      }
-    }
-  }
-
-  private checkDrawdownBreaker(): void {
-    if (this.state.recentTrades.length < 10) return; // Need minimum trades
-
-    // Calculate rolling max drawdown over last 20 trades
-    const recentTrades = this.state.recentTrades.slice(-20);
-    let peak = 0;
-    let currentPnL = 0;
-    let maxDrawdown = 0;
-
-    for (const trade of recentTrades) {
-      // Simple PnL calculation (buy = negative, sell = positive for this calculation)
-      const tradePnL = trade.side === 'buy' ? -trade.finalSize * trade.fillPrice : trade.finalSize * trade.fillPrice;
-      currentPnL += tradePnL;
-      
-      if (currentPnL > peak) {
-        peak = currentPnL;
-      }
-      
-      const drawdown = (peak - currentPnL) / Math.max(peak, 1);
-      if (drawdown > maxDrawdown) {
-        maxDrawdown = drawdown;
-      }
-    }
-
-    if (maxDrawdown > this.config.maxDrawdown && !this.state.drawdownBreaker.active) {
-      this.state.drawdownBreaker.active = true;
-      this.state.drawdownBreaker.activatedAt = new Date();
-      this.state.drawdownBreaker.reason = `Max drawdown exceeded: ${(maxDrawdown * 100).toFixed(2)}%`;
-      
-      logger.warn(`[RiskGuards] Drawdown breaker activated: ${this.state.drawdownBreaker.reason}`);
-    }
-  }
-
-  getState(): GuardState & { config: GuardConfig } {
-    this.updateState();
-    return {
-      ...this.state,
-      config: this.config
-    };
-  }
-
-  reset(): void {
     this.state = {
-      totalNotional: 0,
-      symbolNotionals: {},
-      recentTrades: [],
-      drawdownBreaker: { active: false },
-      orderCounts: {},
-      lastCheck: new Date()
+      globalNotional: 0,
+      symbolNotionals: new Map(),
+      recentOrders: [],
+      peakEquity: 100000, // Starting equity
+      currentEquity: 100000,
+      isBlocked: false,
+      lastReset: Date.now()
     };
-    logger.info('[RiskGuards] State reset');
+  }
+  
+  checkOrder(symbol: string, notional: number): { allowed: boolean; reason?: string } {
+    // Check if blocked by drawdown breaker
+    if (this.state.isBlocked) {
+      return { allowed: false, reason: this.state.blockReason || 'Risk limits breached' };
+    }
+    
+    // Check global notional cap
+    if (this.state.globalNotional + notional > this.limits.globalNotionalCap) {
+      return { 
+        allowed: false, 
+        reason: `Global notional cap exceeded: ${this.state.globalNotional + notional} > ${this.limits.globalNotionalCap}` 
+      };
+    }
+    
+    // Check symbol-specific cap
+    const symbolCap = this.limits.symbolNotionalCaps.get(symbol) || 
+                     this.limits.symbolNotionalCaps.get('DEFAULT')!;
+    const symbolNotional = this.state.symbolNotionals.get(symbol) || 0;
+    
+    if (symbolNotional + notional > symbolCap) {
+      return { 
+        allowed: false, 
+        reason: `${symbol} notional cap exceeded: ${symbolNotional + notional} > ${symbolCap}` 
+      };
+    }
+    
+    // Check rate limiting
+    const now = Date.now();
+    const recentOrders = this.state.recentOrders.filter(ts => now - ts < 60000); // Last minute
+    
+    if (recentOrders.length >= this.limits.ordersPerMinute) {
+      return { 
+        allowed: false, 
+        reason: `Order rate limit exceeded: ${recentOrders.length} orders/min >= ${this.limits.ordersPerMinute}` 
+      };
+    }
+    
+    return { allowed: true };
+  }
+  
+  recordOrder(symbol: string, notional: number): void {
+    // Update notionals
+    this.state.globalNotional += notional;
+    const symbolNotional = this.state.symbolNotionals.get(symbol) || 0;
+    this.state.symbolNotionals.set(symbol, symbolNotional + notional);
+    
+    // Add to recent orders
+    this.state.recentOrders.push(Date.now());
+    
+    // Clean old order timestamps
+    const cutoff = Date.now() - 60000;
+    this.state.recentOrders = this.state.recentOrders.filter(ts => ts > cutoff);
+  }
+  
+  updateEquity(newEquity: number): void {
+    this.state.currentEquity = newEquity;
+    
+    // Update peak
+    if (newEquity > this.state.peakEquity) {
+      this.state.peakEquity = newEquity;
+    }
+    
+    // Check drawdown
+    const drawdown = (this.state.peakEquity - this.state.currentEquity) / this.state.peakEquity;
+    
+    if (drawdown > this.limits.maxDrawdownPct && !this.state.isBlocked) {
+      this.state.isBlocked = true;
+      this.state.blockReason = `Drawdown breaker triggered: ${(drawdown * 100).toFixed(2)}% > ${(this.limits.maxDrawdownPct * 100).toFixed(2)}%`;
+      this.state.lastReset = Date.now();
+      
+      // Schedule automatic reset
+      setTimeout(() => {
+        this.reset();
+      }, this.limits.resetTimeoutMs);
+    }
+  }
+  
+  reset(): void {
+    this.state.isBlocked = false;
+    this.state.blockReason = undefined;
+    this.state.lastReset = Date.now();
+    
+    // Reset notionals (conservative reset)
+    this.state.globalNotional *= 0.5;
+    for (const [symbol, notional] of this.state.symbolNotionals) {
+      this.state.symbolNotionals.set(symbol, notional * 0.5);
+    }
+  }
+  
+  getState(): RiskState {
+    return { ...this.state };
+  }
+  
+  updateLimits(newLimits: Partial<RiskLimits>): void {
+    this.limits = { ...this.limits, ...newLimits };
   }
 }
 
-export const riskGuards = RiskGuards.getInstance();
+export const riskGuards = new RiskGuards();
+export type { RiskLimits, RiskState };

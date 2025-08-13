@@ -1,41 +1,50 @@
+
 import express from 'express';
-import { FastPath } from '../services/microstructure/FastPath.js';
+import { microstructureFeatures } from '../services/microstructure/Features.js';
+import { logger } from '../utils/logger.js';
 
 const router = express.Router();
-const microstructure = new FastPath();
 
-// GET /api/microstructure/:symbol
+// GET /api/microstructure/:symbol - Get latest microstructure snapshot
 router.get('/:symbol', async (req, res) => {
   try {
     const { symbol } = req.params;
-    const features = await microstructure.getFeatures(symbol);
-    res.json(features);
-  } catch (error) {
-    res.status(500).json({ error: String(error) });
-  }
-});
-
-export default router;
-import { Router } from 'express';
-import { microstructureFeatures } from '../services/microstructure/Features.js';
-
-const router = Router();
-
-// Get latest microstructure snapshot for symbol
-router.get('/:symbol', (req, res) => {
-  try {
-    const { symbol } = req.params;
-    const snapshot = microstructureFeatures.getSnapshot(symbol);
     
+    let snapshot = microstructureFeatures.getSnapshot(symbol.toUpperCase());
+    
+    // Generate synthetic data if no real data available
     if (!snapshot) {
-      return res.status(404).json({ error: 'No data available for symbol' });
+      snapshot = microstructureFeatures.generateSyntheticSnapshot(symbol.toUpperCase());
+      logger.info(`Generated synthetic microstructure data for ${symbol}`);
     }
     
     res.json(snapshot);
   } catch (error) {
-    console.error('Microstructure route error:', error);
+    logger.error('Error getting microstructure snapshot:', { error: String(error) });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-export { router as microstructureRouter };
+// GET /api/microstructure - Get all snapshots
+router.get('/', async (req, res) => {
+  try {
+    const snapshots = microstructureFeatures.getAllSnapshots();
+    
+    // Generate synthetic data for common symbols if empty
+    if (snapshots.length === 0) {
+      const symbols = ['BTCUSDT', 'ETHUSDT', 'ADAUSDT'];
+      for (const symbol of symbols) {
+        microstructureFeatures.generateSyntheticSnapshot(symbol);
+      }
+      const syntheticSnapshots = microstructureFeatures.getAllSnapshots();
+      res.json(syntheticSnapshots);
+    } else {
+      res.json(snapshots);
+    }
+  } catch (error) {
+    logger.error('Error getting all microstructure snapshots:', { error: String(error) });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+export default router;

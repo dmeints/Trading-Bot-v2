@@ -5,6 +5,7 @@
  */
 
 import { logger } from '../../utils/logger';
+import { fastPath } from './FastPath';
 
 export interface MicrostructureSnapshot {
   symbol: string;
@@ -48,19 +49,41 @@ class MicrostructureFeatures {
   updateOrderBook(orderBook: OrderBookSnapshot): MicrostructureSnapshot {
     const { symbol, bids, asks, timestamp } = orderBook;
 
-    // Calculate Order Book Imbalance (OBI) using top-k depth
-    const obi = this.calculateOBI(bids, asks, 5); // top 5 levels
+    // Try fast path first, fallback to TypeScript
+    if (fastPath.isWasmAvailable()) {
+      try {
+        const trades = this.tradeHistory.get(symbol) || [];
+        const metrics = fastPath.calculateMetrics(bids, asks, trades);
+        
+        const snapshot: MicrostructureSnapshot = {
+          symbol,
+          timestamp,
+          obi: metrics.obi,
+          ti: metrics.ti,
+          spread_bps: metrics.spread_bps,
+          micro_vol: metrics.micro_vol,
+          cancel_rate: this.estimateCancelRate(symbol)
+        };
 
-    // Get trade imbalance from recent trades
+        this.snapshots.set(symbol, snapshot);
+        this.updatePriceHistory(symbol, bids, asks, timestamp);
+        
+        // Update fast path with new data
+        const midPrice = (bids[0]?.price + asks[0]?.price) / 2;
+        fastPath.rollUpdate(midPrice);
+
+        logger.debug(`[MicrostructureFeatures] Updated ${symbol} (WASM): OBI=${snapshot.obi.toFixed(3)}, TI=${snapshot.ti.toFixed(3)}, Spread=${snapshot.spread_bps.toFixed(1)}bps`);
+        return snapshot;
+      } catch (error) {
+        logger.warn('[MicrostructureFeatures] Fast path failed, using TypeScript fallback:', error);
+      }
+    }
+
+    // TypeScript fallback
+    const obi = this.calculateOBI(bids, asks, 5);
     const ti = this.getTradeImbalance(symbol);
-
-    // Calculate spread in basis points
     const spread_bps = this.calculateSpreadBPS(bids, asks);
-
-    // Calculate micro volatility from recent price moves
     const micro_vol = this.calculateMicroVolatility(symbol, timestamp);
-
-    // Estimate cancel rate from message frequency
     const cancel_rate = this.estimateCancelRate(symbol);
 
     const snapshot: MicrostructureSnapshot = {

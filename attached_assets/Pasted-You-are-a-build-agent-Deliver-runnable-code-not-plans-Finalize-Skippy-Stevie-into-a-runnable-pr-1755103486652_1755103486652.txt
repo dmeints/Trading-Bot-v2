@@ -1,0 +1,57 @@
+You are a build agent. Deliver runnable code, not plans.
+Finalize Skippy/Stevie into a runnable, provable stack: fix server build/ESM, then implement and smoke-test microstructure features, vol models, options smile, Bayesian router, L2 depth, venue scoring, execution planner + sizing (CVaR/vol targeting), portfolio optimizer, feature gating, promotion via SPA, counterfactuals, meta-monitor, events embeddings (stub ok), risk guards, budgeter, blue/green, chaos, data quality, contracts + feature store + provenance, reports, health/metrics.
+Rules:
+
+Strict TypeScript, NodeNext ESM; all relative server imports end with .js after build.
+
+Minimal deps. Modify real files. Add unit/integration tests for each task.
+
+Use dev stubs/mocks if live keys not present (never block the run).
+
+After each task-set, run and paste the outputs:
+
+bash
+Copy
+Edit
+npm ci
+npm run type-check
+npm run build
+npm test
+npm start & sleep 2
+For every task, paste the exact curl/jq proofs specified. If anything fails, fix and re-run until all GREEN.
+
+Return only: list of files changed/created, diffs or file bodies, build/test/start logs, and curl outputs.
+
+FINAL RETURN (paste only)
+List of files changed/created
+
+Diffs or full file bodies
+
+Logs from type-check, build, test, start
+
+All required curl/jq proofs
+
+Tiny “extras” to include in this same patch
+.env.example with safe defaults (dev stubs on by default):
+
+ini
+Copy
+Edit
+NODE_ENV=development
+PORT=5000
+DB_URL=postgres://user:pass@localhost:5432/skippy
+MAX_NOTIONAL=250000
+SYMBOL_NOTIONAL_CAP=100000
+DB indices migrations:
+
+market_bars(symbol,timeframe,timestamp)
+
+l2_logs(venue,symbol,seq)
+
+audits(policyId,ts)
+
+Mock providers that auto-activate if keys missing (Binance/Deribit/news).
+
+CI workflow: run npm ci, npm run type-check, npm run build, npm test on PR; artifact the curl proofs from a smoke job (or mark as optional if networking blocked).
+
+Dev guard for dangerous routes** (chaos, model promote/rollback, flags).

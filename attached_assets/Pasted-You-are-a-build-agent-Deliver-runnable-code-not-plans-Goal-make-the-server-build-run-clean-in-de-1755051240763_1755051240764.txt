@@ -1,0 +1,114 @@
+You are a build agent. Deliver runnable code, not plans.
+Goal: make the server build/run clean in dev & prod, then prove the key endpoints (router, microstructure, vol, options, L2, execution simulate, portfolio, promotion, reports).
+Rules: strict TS; NodeNext ESM with .js in relative imports; add missing config; keep existing functionality.
+
+TASK 0 — Server build config (fix “noEmit”)
+Create tsconfig.server.json:
+
+json
+Copy
+Edit
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": ".",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "allowImportingTsExtensions": true,
+    "sourceMap": true,
+    "strict": true
+  },
+  "include": ["server/**/*", "shared/**/*"]
+}
+Ensure all relative imports in server/** end with .js after build (fix any stragglers).
+
+Leave tsconfig.json as-is (noEmit true) for Vite client.
+
+Confirm .replit deploy block: build = ["npm","run","build"] and run = ["npm","run","start"].
+
+Acceptance:
+
+bash
+Copy
+Edit
+npm ci
+npm run type-check
+npm run build
+npm start & sleep 2
+curl -s http://localhost:5000/api/health | jq
+TASK 1 — Smoke the critical endpoints
+Router (choose/update/snapshot):
+
+bash
+Copy
+Edit
+curl -s -X POST localhost:5000/api/router/choose -H "Content-Type: application/json" \
+  -d '{"context":{"regime":"bull","sigmaHAR":0.02,"obi":0.2}}' | jq
+curl -s -X POST localhost:5000/api/router/update -H "Content-Type: application/json" \
+  -d '{"policyId":"p_sma","reward":0.004,"context":{"regime":"bull"}}' | jq
+curl -s localhost:5000/api/router/snapshot | jq
+Microstructure / Vol / Options:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/microstructure/BTCUSDT | jq
+curl -s "localhost:5000/api/vol/forecast/BTCUSDT?h=60" | jq
+curl -s -X POST localhost:5000/api/options/chain/BTCUSDT -H "Content-Type: application/json" \
+  -d '{"chain":[{"k":0.9,"tenor":"7d","type":"call","iv":0.6},{"k":1.1,"tenor":"7d","type":"put","iv":0.7}]}' | jq
+curl -s localhost:5000/api/options/smile/BTCUSDT | jq
+L2 & venues & execution simulate:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/l2/binance/BTCUSDT | jq
+curl -s -X POST localhost:5000/api/venues/score -H "Content-Type: application/json" \
+  -d '{"symbol":"BTCUSDT","size":0.02}' | jq
+curl -s -X POST localhost:5000/api/exec/simulate -H "Content-Type: application/json" \
+  -d '{"symbol":"BTCUSDT","size":0.02}' | jq
+Portfolio / promotion / reports:
+
+bash
+Copy
+Edit
+curl -s -X POST localhost:5000/api/portfolio/optimize -H "Content-Type: application/json" \
+  -d '{"symbols":["BTCUSDT","ETHUSDT"],"cvarBudget":0.05,"volTarget":0.02}' | jq
+curl -s localhost:5000/api/promotion/status | jq
+curl -s "localhost:5000/api/report/alpha-pnl?window=7d" | jq
+curl -s "localhost:5000/api/report/risk?window=7d" | jq
+Run tests (expect some to be unit-only; fix any trivial ESM path failures):
+
+bash
+Copy
+Edit
+npm test
+Return:
+
+Diffs for any files changed (especially tsconfig.server.json and import fixes)
+
+Logs from build/test/start
+
+All curl JSON outputs above
+
+If anything fails, here’s the likely culprit list
+Missing .js on a few server relative imports (NodeNext won’t resolve them in prod): update imports like ../utils/logger → ../utils/logger.js.
+
+A route file wasn’t exported in server/routes.ts register function: add/import and mount.
+
+A test assumes a live provider; swap to a mocked provider (many tests already do).
+
+External API calls not wrapped in Budgeter or lacking env vars; make “dev stubs” the default when keys are absent.
+
+After it runs clean — the “next 5” to prove the brain is learning
+Attribution report actually moves: run /api/report/alpha-pnl?window=7d and confirm non-zero per-alpha contribution; prune the worst decile in gating.
+
+Router snapshot: check /api/router/snapshot shifts policy as microstructure flips (feed synthetic context via choose/update).
+
+Sizing sanity: /api/exec/sizing/last shrinks as uncertainty/forecast vol rises.
+
+Promotion gate: feed synthetic paper PnLs — ensure SPA p-value gates promotion.
+
+Meta-monitor nudges: /api/meta/quality then apply-nudges — confirm priors/sizing caps adjust within bounds.

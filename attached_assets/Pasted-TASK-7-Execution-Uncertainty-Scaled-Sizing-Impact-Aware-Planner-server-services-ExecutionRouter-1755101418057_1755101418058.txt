@@ -1,0 +1,186 @@
+TASK 7 — Execution: Uncertainty-Scaled Sizing + Impact-Aware Planner
+server/services/ExecutionRouter.ts:
+
+plan(context) → router choose → signal (long/flat/target).
+
+size(signal, uncertaintyWidth) with 
+𝑠
+=
+𝑠
+max
+⁡
+⋅
+𝜎
+(
+−
+𝑤
+/
+𝑤
+\*
+)
+s=s 
+max
+​
+ ⋅σ(−w/w 
+\*
+ ) and vol targeting using vol forecasts; apply CVaR budget via portfolio.ts.
+
+Use server/services/execution/Planner.ts for Immediate/TWAP/VWAP/POV based on spread/depth/micro-vol & urgency; cost 
+𝑘
+⋅
+size
+𝛼
++
+spread
+/
+2
+k⋅size 
+α
+ +spread/2.
+
+execute(plan) → paper order; persist execution record.
+
+Routes:
+
+POST /api/exec/simulate {symbol,size} → plan & cost preview
+
+POST /api/exec/plan-and-execute {symbol} → execution record
+
+GET /api/exec/sizing/last → last sizing snapshot
+
+Tests: tests/execution_planner.spec.ts.
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s -X POST localhost:5000/api/exec/simulate -H "Content-Type: application/json" \
+  -d '{"symbol":"BTCUSDT","size":0.02}' | jq
+curl -s -X POST localhost:5000/api/exec/plan-and-execute -H "Content-Type: application/json" \
+  -d '{"symbol":"BTCUSDT"}' | jq
+curl -s localhost:5000/api/exec/sizing/last | jq
+TASK 8 — Portfolio: CVaR Budget + Vol Targeting + Kelly-lite
+server/services/portfolio.ts: estimate vol/CVaR (historical sim); solve weights with projected gradient so 
+∑
+𝑤
+𝑖
+CVaR
+𝑖
+≤
+𝐵
+∑w 
+i
+​
+ CVaR 
+i
+​
+ ≤B, portfolio vol ≈ target 
+𝜎
+∗
+σ 
+∗
+ . Provide Kelly-lite advisory 
+𝑓
+≈
+𝜅
+𝜇
+/
+𝜎
+2
+f≈κμ/σ 
+2
+  (clipped).
+
+Route: POST /api/portfolio/optimize {symbols,cvarBudget,volTarget}.
+
+Tests: tests/portfolio_constraints.spec.ts.
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s -X POST localhost:5000/api/portfolio/optimize \
+  -H "Content-Type: application/json" \
+  -d '{"symbols":["BTCUSDT","ETHUSDT"],"cvarBudget":0.05,"volTarget":0.02}' | jq
+TASK 9 — Feature Gating (IC + HSIC-lite + Drift)
+tools/features/gating.ts: EWMA IC; HSIC-lite (RBF batches); Page–Hinkley/BOCPD drift; auto-disable bottom decile weekly.
+
+Route: GET /api/features/ranking → [ { feature, ic, hsic, score, disabled } ].
+
+Tests: tests/features_gating.spec.ts.
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/features/ranking | jq '.[0:5]'
+TASK 10 — Promotion (Champion/Challenger via SPA)
+server/services/promotion.ts: Hansen SPA (or Deflated Sharpe) on OOS paper PnL; promote if 
+𝑝
+<
+0.05
+p<0.05.
+
+Route: GET /api/promotion/status.
+
+Tests: tests/promotion_spa.spec.ts.
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/promotion/status | jq
+TASK 11 — Off-Policy Learning (Doubly-Robust)
+server/services/Counterfactuals.ts: log shadow actions; DR estimator; summary by policy & regime.
+
+Route: GET /api/cf/summary.
+
+Tests: tests/cf_dr.spec.ts.
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/cf/summary | jq
+TASK 12 — Meta-Monitor (Calibration + Nudges)
+server/services/MetaMonitor.ts: reliability diagrams, Brier/ECE; compute bounded nudges {routerPriorDelta, sizingCapDelta}.
+
+Routes:
+
+GET /api/meta/quality
+
+POST /api/meta/apply-nudges {}
+
+Tests: tests/meta_monitor.spec.ts.
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/meta/quality | jq
+curl -s -X POST localhost:5000/api/meta/apply-nudges -H "Content-Type: application/json" -d '{}' | jq
+TASK 13 — Events → Embeddings (LLM-safe, stub ok)
+server/services/events.ts: summarize → embed (or stub hash) → expose for router context; placebo checks for event studies.
+
+Route: GET /api/events/embeddings.
+
+Tests: tests/events_embed.spec.ts.
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/events/embeddings | jq '.[0]'
+TASK 14 — RiskGuards (Caps, Throttle, Drawdown Breaker)
+server/services/RiskGuards.ts: global/per-symbol notional caps, orders/min throttle, rolling max-DD breaker with timed reset; enforce in ExecutionRouter.execute().
+
+Route: GET /api/guards/state.
+
+Tests: tests/risk_guards.spec.ts.
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/guards/state | jq
+# Try to exceed caps and show a blocked response with reason

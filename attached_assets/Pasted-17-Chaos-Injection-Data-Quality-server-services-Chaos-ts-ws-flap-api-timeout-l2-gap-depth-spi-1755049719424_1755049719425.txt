@@ -1,0 +1,72 @@
+17) Chaos Injection & Data Quality
+server/services/Chaos.ts: ws_flap, api_timeout, l2_gap, depth_spike (dev only).
+
+server/services/DataQuality.ts: schema/spike guards for OHLCV & L2; quarantine counts.
+
+Routes:
+
+POST /api/chaos/inject {type}
+
+GET /api/data-quality/stats
+
+Proof:
+
+bash
+Copy
+Edit
+curl -s -X POST localhost:5000/api/chaos/inject -H "Content-Type: application/json" -d '{"type":"l2_gap"}' | jq
+curl -s localhost:5000/api/data-quality/stats | jq
+Tests: tests/chaos_resilience.spec.ts, tests/data_quality.spec.ts.
+
+18) Contracts + Provenance + Feature Store Parity
+server/contracts/*.ts (zod) for OHLCV, L2, router I/O, exec I/O.
+
+server/services/featureStore/index.ts: putFeature, getWindow, parity check (online vs backtest).
+
+server/middleware/provenance.ts: hash(feature window + context + decision) into audit logs.
+
+Routes:
+
+GET /api/features/parity
+
+GET /api/audit/latest?limit=5
+
+Proof:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/features/parity | jq
+curl -s localhost:5000/api/audit/latest?limit=1 | jq '.[0]'
+Tests: tests/data_contracts.spec.ts, tests/feature_store_parity.spec.ts.
+
+19) Reports & Metrics++
+Routes:
+
+GET /api/report/alpha-pnl?window=7d (per-alpha contribution, leave-one-out/SHAP-lite)
+
+GET /api/report/risk?window=7d (realized vol, CVaR, turnover, slippage)
+
+GET /api/report/venue?window=7d (win-rate, slippage, downtime by venue)
+
+/api/health add: db.latencyMs, ws.clients, router.decisionsLastMin, exec.blockedLastMin, lastOHLCVSync.
+
+/metrics Prometheus: venue_score, l2_resyncs_total, chaos_injections_total, router_decisions_total, exec_blocked_total, price_stream_connected, ohlcv_last_sync_ts_seconds.
+
+Proof:
+
+bash
+Copy
+Edit
+curl -s "localhost:5000/api/report/alpha-pnl?window=7d" | jq
+curl -s "localhost:5000/api/report/risk?window=7d" | jq
+curl -s "localhost:5000/api/report/venue?window=7d" | jq
+curl -s localhost:5000/api/health | jq
+curl -s localhost:5000/metrics | head -n 30
+Tests: tests/report_rollups.spec.ts.
+
+20) UI Feed (API-only ok for this PR)
+Provide the JSON endpoints used by cards:
+/api/router/snapshot, /api/regime/state, /api/pbt/lineage, /api/promotion/status, /api/guards/state, /api/exec/sizing/last, /api/venues/registry, /api/l2/:venue/:symbol, /api/alpha/registry, /api/alpha/attribution, /api/report/*.
+
+Proof: paste at least 5 JSON responses (your choice).

@@ -1,0 +1,227 @@
+# Skippy Trading Platform — Deep Code Review Plan
+
+This plan is optimized for reviewing the uploaded zip: **skippy-trading-platform-complete-export.zip**. It includes a one-paste prompt for the reviewer, setup/validation commands, and a structured checklist to evaluate architecture quality, correctness, security, and the authenticity of AI/RL components.
+
+---
+
+## 0) One‑Paste Reviewer Prompt (copy into ChatGPT or your code-review assistant)
+
+**Role:** You are a principal engineer conducting a rigorous end‑to‑end review of a full-stack, TypeScript‑first crypto trading platform with RL components. Be concise but thorough; provide actionable, prioritized findings.
+
+**Objectives:**
+
+1. **Build & Boot**: Verify the project builds cleanly, tests run, and dev servers start. Identify missing steps.
+2. **Architecture & Quality**: Assess monorepo structure (`client/`, `server/`, `shared/`, `config/`, `cli/`, `tools/`, `scripts/`, `tests/`, `plugins/`). Call out coupling, dead code, layering leaks, and DI patterns.
+3. **API Surface**: Enumerate routes and compare to docs. Flag unreachable code, duplicate endpoints, inconsistent DTOs.
+4. **RL Authenticity**: Validate that PPO/agents and regime router are wired to real data flows (not stubs), and that /api/rl/predict explains decisions via live rationale. Identify any mock paths or deterministic placeholders.
+5. **Security & Ops**: Look for secret handling, authz gaps, input validation, SSRF/SQLi/XSS risks, logging/PII hygiene, rate limiting, health/metrics readiness.
+6. **Performance**: Identify N+1s, hot paths, unnecessary JSON bloat, oversized bundles, blocking work on request path, and obvious caching opportunities.
+7. **Parity vs. Docs**: Cross‑check README, PHASE\_A‑L, architecture docs and benchmarking notes against actual code paths. Call out drift.
+8. **Prioritized Fix Plan**: Provide a crisp Top‑10 list with ticket‑ready titles, acceptance criteria, and risk/impact.
+
+**Deliverables:**
+
+* A route map (table) with method, path, handler file, Zod/validator used, auth requirements.
+* A dependency graph (package‑>package, service‑>service) with cycles highlighted.
+* A short verdict on RL authenticity (pass/warn/fail) with concrete evidence lines.
+* A 2‑week remediation plan (trackable tasks).
+
+**Project Layout Hints:**
+
+* Frontend: React + TS (`client/`, Vite, Tailwind)
+* Backend: Express (`server/`), 180+ routes, shared schemas in `shared/`
+* Tooling: Drizzle, Playwright, CLI, Dockerfile, .env.example
+* Excluded: `node_modules/`, `.git/`, large artifacts
+
+**What to Produce:**
+
+* Tables and concise bullets only; no long prose. Use file paths and code snippets under 10 lines.
+
+---
+
+## 1) Quick Setup & Smoke Validation
+
+> Assumes Node 20.x LTS, npm ≥10. If Postgres is required, ensure a local instance or Docker. Replace values in `.env` from `.env.example`.
+
+```bash
+# Unpack and inspect
+unzip -q skippy-trading-platform-complete-export.zip -d skippy_export
+cd skippy_export
+
+# Monorepo install
+npm ci
+
+# Basic type & lint checks (adjust if scripts differ)
+npm run type-check || npm run tsc -- -b
+npm run lint || echo "(no lint script)"
+
+# Build all packages
+npm run build
+
+# Unit/e2e tests
+npm test || echo "(no tests or some failing)"
+
+# Optional: Playwright (headed=false assumed)
+npx playwright install --with-deps || true
+npm run test:e2e || echo "(no e2e or skipped)"
+
+# DB prepare (if using Drizzle)
+cp -n .env.example .env || true
+npm run db:generate || npx drizzle-kit generate || true
+npm run db:migrate  || npx drizzle-kit migrate  || true
+
+# Dev servers
+npm run dev &
+# or if separate:
+# npm --workspace server run dev &
+# npm --workspace client run dev &
+
+# Health checks
+sleep 3
+curl -sf localhost:5000/api/health || echo "(backend not up)"
+```
+
+**Expected:** Clean typecheck/build. Backend health responds 200. Frontend boots on Vite default (5173) unless overridden.
+
+---
+
+## 2) Automated Maps to Generate (fast wins)
+
+**Routes inventory (Express)**
+
+```bash
+# Grep for router declarations and HTTP verbs; dump a CSV‑ish map
+rg -n "\b(router|app)\.(get|post|put|patch|delete)\(" server | \
+  sed -E 's/^([^:]+):(\d+):.*\.(get|post|put|patch|delete)\("([^"]+)".*/\3,\4,\1:\2/' | \
+  sort > routes.map.csv
+wc -l routes.map.csv && head -n 20 routes.map.csv
+```
+
+**Zod/Validation presence**
+
+```bash
+rg -n "z\.(object|array|string|number|enum|union)\(" server | wc -l
+```
+
+**Dependency graph (packages)**
+
+```bash
+npx depcruise --include-only "^{client|server|shared|plugins|tools|cli}" --output-type dot . > deps.dot || true
+# Optional: convert to PNG if graphviz present
+# dot -Tpng deps.dot > deps.png
+```
+
+**Dead code candidates**
+
+```bash
+npx knip || true
+```
+
+**Bundle size (client)**
+
+```bash
+npm --workspace client run build || (cd client && npm i && npm run build)
+# Inspect dist size
+du -sh client/dist || true
+```
+
+---
+
+## 3) RL Authenticity & Wiring Checklist
+
+* **Entry points**: `/api/rl/predict`, `/api/rl/train`, CLI `skippy-train`.
+* **Trace** request → controller → service → PPO/agent layer → model weights → state features (volatility, sentiment, regime, etc.).
+* **No‑op smells**: Random/const returns, `if (MOCK) return`, short‑circuit feature flags, time‑based seeds.
+* **Data flow**: Market feeds, wallet/whale signals, regime classifier. Verify adapters and error handling (backoff, retries, timeouts).
+* **Explainability**: Live rationale string is generated from actual features; confirm references to the same state used for action selection.
+* **Retraining**: Promotion logic, overfitting tests, and audit dashboard updates write to durable storage; check for persisted metrics.
+
+**Evidence to capture**: file paths, function names, call chains, and 2–3 line snippets showing real computation.
+
+---
+
+## 4) Security, Safety, and Compliance Checklist
+
+* **Secrets**: Only from env; `.env.example` has placeholders; no hardcoded keys.
+* **AuthN/Z**: Middleware present; protected routes enforce scopes/roles; rate limiting on public endpoints.
+* **Validation**: Zod (or equivalent) for all inputs; DB queries are parameterized; avoid string‑built SQL.
+* **SSRF/XSS/CSRF**: Safe URL fetch, sanitize HTML, SameSite cookies/CSRF tokens if sessions are used.
+* **Logs/PII**: No secrets in logs; structured logs; debug toggles.
+* **Headers**: Helmet, CORS least‑privilege; TLS assumptions clear in prod docs.
+* **Dependency risk**: `npm audit`, consider `trivy fs .`, `semgrep --config p/owasp-top-ten`.
+
+---
+
+## 5) Performance Checklist
+
+* **Server**: Avoid heavy sync work in request path, cache static config, batch I/O, pool DB clients.
+* **Client**: Code‑split routes, memoize selectors, debounce network calls, avoid oversized charts.
+* **API**: Pagination limits, field selection, compression where appropriate.
+
+---
+
+## 6) Doc Parity & Feature Coverage
+
+* Cross‑walk **PHASE\_A…PHASE\_L** against code: ensure each milestone has reachable code and tests.
+* Confirm **180+ API endpoints** are discoverable; route map count ≥ documented count.
+* Verify **audit dashboard** metrics exist and update on train/predict.
+
+---
+
+## 7) Priority Fix Backlog (Template)
+
+1. **\[SEC] Missing auth on /api/...**
+   *Acceptance:* Route gated by middleware `requireAuth(role)`; e2e tests updated.
+2. **\[PERF] N+1 in audit feed**
+   *Acceptance:* Add join/batching; p95 latency < 150ms.
+3. **\[RL] MOCK path in PPO.predict**
+   *Acceptance:* Remove flag or default to real; add unit test asserting non‑constant output.
+4. **\[DX] Build script inconsistency**
+   *Acceptance:* Single `npm run build` orchestrates all packages.
+5. **\[API] DTO divergence user vs shared schema**
+   *Acceptance:* Align types in `shared/` and regenerate clients.
+
+(Continue until Top‑10 with severity, ETA, and owner.)
+
+---
+
+## 8) What to Hand Back
+
+* **Findings.md**: Summary + Top‑10 fix list + risk assessment.
+* **routes.map.csv** and **deps.dot/png** artifacts.
+* **Counts**: endpoints total, validated endpoints, % with auth, % with input validation.
+* **RL verdict** with 3–5 evidence bullets.
+
+---
+
+## 9) Optional One‑Command Script (Linux/macOS)
+
+```bash
+cat > .review.sh <<'EOF'
+set -euo pipefail
+npm ci
+npm run type-check || true
+npm run lint || true
+npm run build
+npm test || true
+cp -n .env.example .env || true
+npm run db:generate || true
+npm run db:migrate  || true
+( npm run dev & )
+sleep 3
+curl -sf localhost:5000/api/health || echo "health endpoint failed"
+rg -n "\b(router|app)\.(get|post|put|patch|delete)\(" server | sed -E 's/^([^:]+):(\d+):.*\.(get|post|put|patch|delete)\("([^"]+)".*/\3,\4,\1:\2/' | sort > routes.map.csv
+npx knip || true
+EOF
+chmod +x .review.sh
+```
+
+Run with: `bash .review.sh`
+
+---
+
+### Notes
+
+* If the project uses npm workspaces, ensure `workspaces` are declared at the root `package.json` and scripts reference them appropriately (`npm -w <pkg> run <script>`).
+* Adjust paths if servers run on non‑default ports.
+* Provide any custom seeds/datasets if required for meaningful RL evaluation.

@@ -24,7 +24,11 @@
     "ablation:features": "tsx tools/feature_ablation.ts",
     "canary:launch": "tsx tools/canary_launch.ts",
     "drill:rollback": "tsx tools/rollback_drill.ts",
-    "brain:test:math": "vitest run server/brain/models/*.spec.ts server/brain/exec*.spec.ts server/brain/safe/*.spec.ts"
+    "brain:test:math": "vitest run server/brain/models/*.spec.ts server/brain/exec*.spec.ts server/brain/safe/*.spec.ts",
+    "start:logged": "node server/index.js 2>&1 | tee -a logs/app.log",
+    "triage": "node scripts/triage.js",
+    "test:contract": "bash scripts/start_and_test.sh",
+    "ready:check": "node server/bootstrap/dbReady.ts"
   },
   "dependencies": {
     "@axe-core/playwright": "^4.10.2",

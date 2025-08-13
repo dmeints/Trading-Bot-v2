@@ -1,0 +1,45 @@
+Block 4 — (Optional but recommended) Add the server codemod
+
+This auto‑wires imports, middlewares, convenience routes, and .listen(env.PORT) into your server index.* (idempotent + backups).
+
+cat > tools/codemod_server_entry.js <<'JS'
+#!/usr/bin/env node
+const fs=require('fs'),path=require('path');
+const DRY=process.argv.includes('--dry'),ROOT=process.cwd();
+function list(d){const o=[];for(const e of fs.readdirSync(d,{withFileTypes:!0})){const p=path.join(d,e.name);e.isDirectory()?o.push(...list(p)):o.push(p)}return o}
+function read(p){try{return fs.readFileSync(p,'utf8')}catch{return''}}function write(p,s){fs.writeFileSync(p,s)}
+function backup(p){const b=`${p}.${new Date().toISOString().replace(/[:.]/g,'-')}.bak`;fs.copyFileSync(p,b);return b}
+const serverIdx=p=>p.includes(`${path.sep}server${path.sep}`)&&/^index\.(ts|js|mjs|cjs)$/i.test(path.basename(p));
+const files=list(ROOT).filter(serverIdx); if(!files.length){console.log('No server/**/index.* files found.');process.exit(0)}
+function ensureImports(s){const add=[];const need=[[`from 'express'`,`import express from 'express';`],[`from './bootstrap/config'`,`import { env } from './bootstrap/config';`],[`from './middleware/security'`,`import { securityChain } from './middleware/security';`],[`from './observability/metrics'`,`import { metricsTiming } from './observability/metrics';`],[`from './middleware/chaos'`,`import { chaos } from './middleware/chaos';`],[`from './routes/health'`,`import { health, ready } from './routes/health';`],[`from './routes/metrics'`,`import { metrics } from './routes/metrics';`],[`from './routes/clientErrors'`,`import { clientErrors } from './routes/clientErrors';`],];
+  for(const [needle,line] of need){ if(!s.includes(needle)) add.push(line) }
+  if(/\bnotFound\b/.test(s)&&!/from ['"]\.\/middleware\/notFound['"]/.test(s)) add.push(`import { notFound } from './middleware/notFound';`);
+  if(/\berrorHandler\b/.test(s)&&!/from ['"]\.\/middleware\/errorHandler['"]/.test(s)) add.push(`import { errorHandler } from './middleware/errorHandler';`);
+  if(!add.length) return s;
+  const idx=s.search(/^(?!\s*import\b)/m); return idx>-1? s.slice(0,idx)+add.join('\n')+'\n'+s.slice(idx): add.join('\n')+'\n'+s;
+}
+function ensureAppBoot(s){
+  if(!/const\s+app\s*=\s*express\(\)\s*;/.test(s)){const m=s.match(/(\n)(?!\s*import\b)/m);const i=m?m.index:-1;s=i>-1?s.slice(0,i)+`\nconst app = express();\n`+s.slice(i):`const app = express();\n`+s;}
+  if(!/app\.use\(\s*express\.json\(/.test(s)) s=s.replace(/const\s+app\s*=\s*express\(\)\s*;/,m=>`${m}\napp.use(express.json());`);
+  if(!/securityChain\(\)/.test(s)) s=s.replace(/app\.use\(\s*express\.json\([^\)]*\)\s*\)\s*;?/,m=>`${m}\nfor (const mw of securityChain()) app.use(mw);`);
+  if(!/app\.use\(\s*metricsTiming\s*\)/.test(s)) s=s.replace(/securityChain\(\)[^\n]*\n?/,m=>`${m}app.use(metricsTiming);\n`);
+  if(/\brequestId\b/.test(s)&&!/app\.use\(\s*requestId\s*\)/.test(s)) s=s.replace(/app\.use\(\s*metricsTiming\s*\)\s*;?/,m=>`${m}\napp.use(requestId);\n`);
+  if(!/app\.use\(\s*chaos\s*\)/.test(s)) s=s.replace(/(app\.use\([^\n]*\)\s*;\s*)+(?![\s\S]*app\.use\(\s*chaos)/,m=>`${m}app.use(chaos);\n`);
+  return s;
+}
+function ensureRoutesAndHandlers(s){
+  if(!/\/api\/health/.test(s)) s+=`\napp.get('/api/health', health);\n`;
+  if(!/\/api\/ready/.test(s)) s+=`app.get('/api/ready', ready);\n`;
+  if(!/\/api\/client-errors/.test(s)) s+=`app.post('/api/client-errors', clientErrors);\n`;
+  if(!/\/metrics/.test(s)) s+=`app.get('/metrics', metrics);\n`;
+  if(/\bnotFound\b/.test(s)&&!/app\.use\(\s*notFound\s*\)/.test(s)) s+=`app.use(notFound);\n`;
+  if(/\berrorHandler\b/.test(s)&&!/app\.use\(\s*errorHandler\s*\)/.test(s)) s+=`app.use(errorHandler);\n`;
+  return s;
+}
+function ensureListen(s){ s=s.replace(/reusePort\s*:\s*true\s*,?/g,''); if(!/\.listen\s*\(/.test(s)) s+=`\napp.listen(env.PORT, () => console.log(JSON.stringify({level:"info",msg:"server_listening",port:env.PORT})));\n`; return s;}
+const changed=[]; for(const f of files){ let s=read(f); if(!/express\(/i.test(s)) continue; const o=s; s=ensureImports(s); s=ensureAppBoot(s); s=ensureRoutesAndHandlers(s); s=ensureListen(s);
+  if(s!==o){ if(process.argv.includes('--dry')){console.log('Would patch:',path.relative(ROOT,f));} else {const b=backup(f); write(f,s); changed.push({file:path.relative(ROOT,f),backup:path.relative(ROOT,b)});} } }
+if(process.argv.includes('--dry')){console.log('Dry run complete.');process.exit(0)} console.log(JSON.stringify({patched:changed},null,2));
+JS
+chmod +x tools/codemod_server_entry.js
+echo "✅ Codemod ready. Try: node tools/codemod_server_entry.js --dry"

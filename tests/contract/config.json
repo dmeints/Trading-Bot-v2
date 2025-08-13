@@ -1,0 +1,23 @@
+{
+  "baseUrl": "http://localhost:5000",
+  "dangerousPathPatterns": [
+    "/trade",
+    "/execute",
+    "/order",
+    "/withdraw",
+    "/deploy",
+    "/admin",
+    "/delete",
+    "/shutdown",
+    "/retrain",
+    "/transfer",
+    "/wallet",
+    "/keys"
+  ],
+  "skipExactPaths": [
+    "/metrics",
+    "/docs"
+  ],
+  "forceJson": true,
+  "maxPerMethod": 999999
+}

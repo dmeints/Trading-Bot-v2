@@ -1,0 +1,418 @@
+# ============================
+# skippy_pro_hardening.sh
+# ============================
+set -euo pipefail
+
+echo "🚀 Skippy Pro Hardening & Auto‑Remediation — start"
+
+pm="npm"; [ -f pnpm-lock.yaml ] && pm="pnpm"; [ -f yarn.lock ] && pm="yarn"
+run(){ set +e; "$@"; ec=$?; set -e; return $ec; }
+ensure_dir(){ mkdir -p "$1"; }
+append_once(){ local file="$1"; local needle="$2"; local line="$3"; grep -qF "$needle" "$file" 2>/dev/null || echo "$line" >> "$file"; }
+
+# --------------------------------
+# Task 0) Safety backup
+# --------------------------------
+ensure_dir .replit_backups logs reports server/{middleware,utils,bootstrap,observability,docs,routes} client/src/lib client/src/components shared scripts tools
+ts=$(date +%Y%m%d_%H%M%S)
+if [ -d .git ]; then git add -A && (git commit -m "backup pre‑pro‑hardening $ts" || true); else git init && git add -A && git commit -m "init pre‑pro‑hardening $ts" || true; fi
+
+# --------------------------------
+# Task 1) Dependencies
+# --------------------------------
+echo "📦 Installing deps (helmet, cors, rate-limit, zod, prom-client, swagger)..."
+deps=( helmet cors express-rate-limit zod prom-client swagger-ui-express swagger-jsdoc )
+devdeps=( )
+if [ "$pm" = "npm" ]; then
+  run npm install "${deps[@]}"
+  [ "${#devdeps[@]}" -gt 0 ] && run npm i -D "${devdeps[@]}" || true
+elif [ "$pm" = "pnpm" ]; then
+  run pnpm add "${deps[@]}"
+  [ "${#devdeps[@]}" -gt 0 ] && run pnpm add -D "${devdeps[@]}" || true
+else
+  run yarn add "${deps[@]}"
+  [ "${#devdeps[@]}" -gt 0 ] && run yarn add -D "${devdeps[@]}" || true
+fi
+
+# --------------------------------
+# Task 2) Config guard (zod)
+# --------------------------------
+cat > server/bootstrap/config.ts <<'TS'
+import { z } from "zod";
+
+const EnvSchema = z.object({
+  NODE_ENV: z.enum(["development","test","production"]).default("development"),
+  PORT: z.coerce.number().int().positive().max(65535).default(5000),
+  SAFE_MODE: z.string().optional().transform(v => v === "true"),
+  CHAOS_PROB: z.coerce.number().min(0).max(1).default(0),
+  RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60000),
+  RATE_LIMIT_MAX: z.coerce.number().int().positive().default(600),
+  REQUIRED_ENV_VARS: z.string().optional().default(""),
+  // DB-related (optional; adjust as needed)
+  DATABASE_URL: z.string().optional(),
+});
+
+export type AppEnv = z.infer<typeof EnvSchema>;
+export const env: AppEnv = EnvSchema.parse(process.env);
+TS
+
+# --------------------------------
+# Task 3) Observability: metrics + timers + SLO guard
+# --------------------------------
+cat > server/observability/metrics.ts <<'TS'
+import type { Request, Response, NextFunction } from "express";
+import client from "prom-client";
+
+export const register = new client.Registry();
+client.collectDefaultMetrics({ register });
+
+export const httpHistogram = new client.Histogram({
+  name: "http_request_duration_seconds",
+  help: "HTTP request duration in seconds",
+  labelNames: ["method", "route", "status"] as const,
+  buckets: [0.01,0.025,0.05,0.1,0.25,0.5,1,2,5,10]
+});
+register.registerMetric(httpHistogram);
+
+export const httpErrors = new client.Counter({
+  name: "http_request_errors_total",
+  help: "Total number of error responses",
+  labelNames: ["route","status"] as const,
+});
+register.registerMetric(httpErrors);
+
+export const requestCounter = new client.Counter({
+  name: "http_requests_total",
+  help: "Total HTTP requests",
+  labelNames: ["route","status"] as const,
+});
+register.registerMetric(requestCounter);
+
+let errorBudgetBreached = false;
+export function isErrorBudgetBreached(){ return errorBudgetBreached; }
+let rolling = { req: 0, err: 0 };
+setInterval(() => {
+  const errRate = rolling.req ? (rolling.err / rolling.req) : 0;
+  // naive SLO: error rate over last interval > 2% => breach
+  errorBudgetBreached = errRate > 0.02;
+  rolling = { req: 0, err: 0 };
+}, 60_000);
+
+export function metricsTiming(req: Request, res: Response, next: NextFunction) {
+  const route = (req.route?.path || req.path || "unknown");
+  const end = httpHistogram.startTimer({ method: req.method, route });
+  res.on("finish", () => {
+    end({ status: String(res.statusCode) });
+    requestCounter.inc({ route, status: String(res.statusCode) });
+    if (res.statusCode >= 500) httpErrors.inc({ route, status: String(res.statusCode) });
+    rolling.req += 1;
+    if (res.statusCode >= 500) rolling.err += 1;
+  });
+  next();
+}
+TS
+
+# --------------------------------
+# Task 4) Security Middleware
+# --------------------------------
+cat > server/middleware/security.ts <<'TS'
+import type { Request, Response, NextFunction } from "express";
+import helmet from "helmet";
+import cors from "cors";
+import rateLimit from "express-rate-limit";
+import { env } from "../bootstrap/config";
+
+export function securityChain() {
+  const limiter = rateLimit({
+    windowMs: env.RATE_LIMIT_WINDOW_MS,
+    max: env.RATE_LIMIT_MAX,
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+  return [helmet(), cors(), limiter] as unknown as ((req:Request,res:Response,next:NextFunction)=>void)[];
+}
+TS
+
+# --------------------------------
+# Task 5) Resilience utilities (timeouts, retries, breaker)
+# --------------------------------
+cat > server/utils/resilience.ts <<'TS'
+type Fn<T> = () => Promise<T>;
+
+function sleep(ms: number){ return new Promise(r=>setTimeout(r,ms)); }
+function jitter(base: number){ return base * (0.5 + Math.random()); }
+
+export async function withRetry<T>(fn: Fn<T>, attempts = 3, baseMs = 200): Promise<T> {
+  let last: any;
+  for (let i=0;i<attempts;i++){
+    try { return await fn(); } catch (e) { last = e; await sleep(jitter(baseMs * Math.pow(2, i))); }
+  }
+  throw last;
+}
+
+export async function withTimeout<T>(p: Promise<T>, ms = 5000): Promise<T> {
+  let t: any;
+  const timeout = new Promise<T>((_, rej) => { t = setTimeout(()=>rej(new Error(`Timeout after ${ms}ms`)), ms); });
+  try { return await Promise.race([p, timeout]); } finally { clearTimeout(t); }
+}
+
+export class CircuitBreaker {
+  private failures = 0;
+  private state: "CLOSED"|"OPEN"|"HALF" = "CLOSED";
+  private openedAt = 0;
+  constructor(private thresh=5, private cooldownMs=10_000){}
+
+  canPass(){ 
+    if (this.state==="OPEN" && (Date.now()-this.openedAt)>this.cooldownMs){ this.state="HALF"; return true; }
+    return this.state!=="OPEN";
+  }
+  record(ok: boolean){
+    if (ok){ this.failures=0; this.state="CLOSED"; return; }
+    this.failures++;
+    if (this.failures>=this.thresh){ this.state="OPEN"; this.openedAt=Date.now(); }
+  }
+}
+
+export async function safeFetch(url: string, init?: RequestInit, opts?: { timeoutMs?: number; attempts?: number; breaker?: CircuitBreaker }) {
+  const doOnce = async () => {
+    if (opts?.breaker && !opts.breaker.canPass()) throw new Error("Circuit open");
+    try {
+      const res = await withTimeout(fetch(url, init), opts?.timeoutMs ?? 5000);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      opts?.breaker?.record(true);
+      return res;
+    } catch (e) {
+      opts?.breaker?.record(false);
+      throw e;
+    }
+  };
+  return withRetry(doOnce, opts?.attempts ?? 3, 200);
+}
+TS
+
+# --------------------------------
+# Task 6) Health, readiness, metrics, client error intake
+# --------------------------------
+cat > server/routes/health.ts <<'TS'
+import type { Request, Response } from "express";
+import { env } from "../bootstrap/config";
+import { isErrorBudgetBreached } from "../observability/metrics";
+
+export function health(req: Request, res: Response) {
+  const ok = true;
+  res.json({ ok, ts: Date.now(), safeMode: !!env.SAFE_MODE, sloBreached: isErrorBudgetBreached() });
+}
+
+export function ready(_req: Request, res: Response) {
+  // Adjust checks as needed (DB ping, cache ping, etc.)
+  res.json({ ok: true, ts: Date.now() });
+}
+TS
+
+cat > server/routes/metrics.ts <<'TS'
+import type { Request, Response } from "express";
+import { register } from "../observability/metrics";
+export async function metrics(_req: Request, res: Response) {
+  res.setHeader("Content-Type", register.contentType);
+  res.end(await register.metrics());
+}
+TS
+
+cat > server/routes/clientErrors.ts <<'TS'
+import type { Request, Response } from "express";
+export function clientErrors(req: Request, res: Response) {
+  // Keep lightweight; redact obvious secrets if needed
+  const payload = { ts: Date.now(), ua: req.headers['user-agent'], body: req.body };
+  console.error(JSON.stringify({ level:"warn", msg:"client_error", payload }));
+  res.json({ ok: true });
+}
+TS
+
+# --------------------------------
+# Task 7) Error journal (dev only) & chaos injection
+# --------------------------------
+cat > server/utils/errorJournal.ts <<'TS'
+let lastErrors: any[] = [];
+export function recordError(e: unknown){
+  lastErrors.unshift({ ts: Date.now(), e: (e as any)?.message || String(e) });
+  lastErrors = lastErrors.slice(0, 50);
+}
+export function getRecentErrors(){ return lastErrors; }
+TS
+
+cat > server/middleware/chaos.ts <<'TS'
+import type { Request, Response, NextFunction } from "express";
+import { env } from "../bootstrap/config";
+export function chaos(req: Request, _res: Response, next: NextFunction) {
+  if (process.env.NODE_ENV !== "development") return next();
+  if (env.CHAOS_PROB && Math.random() < env.CHAOS_PROB) {
+    // 50/50: delay or error
+    if (Math.random()<0.5) setTimeout(next, 200 + Math.random()*800);
+    else next(new Error("Injected chaos error (dev only)"));
+  } else next();
+}
+TS
+
+# --------------------------------
+# Task 8) Swagger base (docs)
+# --------------------------------
+cat > server/docs/openapi.ts <<'TS'
+import swaggerUi from "swagger-ui-express";
+import swaggerJsdoc from "swagger-jsdoc";
+import type { Express } from "express";
+
+const options = {
+  definition: {
+    openapi: "3.0.0",
+    info: { title: "Skippy API", version: "1.0.0" },
+  },
+  apis: [], // Add JSDoc paths later if desired
+};
+const spec = swaggerJsdoc(options);
+export function mountDocs(app: Express){
+  app.use("/docs", swaggerUi.serve, swaggerUi.setup(spec));
+}
+TS
+
+# --------------------------------
+# Task 9) Wire into server/index.* (imports, chain, routes)
+# --------------------------------
+node - <<'NODE'
+const fs = require('fs'); const path = require('path');
+function allFiles(dir){const o=[];for(const d of fs.readdirSync(dir,{withFileTypes:true})){const p=path.join(dir,d.name);d.isDirectory()?o.push(...allFiles(p)):o.push(p)}return o}
+function read(p){try{return fs.readFileSync(p,'utf8')}catch{return''}}
+function write(p,s){fs.writeFileSync(p,s)}
+const root=process.cwd();
+const cand = allFiles(root).filter(f=>f.includes(path.sep+'server'+path.sep) && /index\.(ts|js|mjs|cjs)$/.test(path.basename(f)));
+for (const f of cand){
+  let s = read(f); const orig = s;
+  if (!/from ['"]express['"]/.test(s)) s = `import express from 'express';\n` + s;
+  if (!/from ['"].\/middleware\/requestId['"]/.test(s)) s = `import { requestId } from './middleware/requestId';\n` + s;
+  if (!/from ['"].\/middleware\/errorHandler['"]/.test(s)) s = `import { errorHandler } from './middleware/errorHandler';\n` + s;
+  if (!/from ['"].\/middleware\/notFound['"]/.test(s)) s = `import { notFound } from './middleware/notFound';\n` + s;
+  if (!/from ['"].\/bootstrap\/sanity['"]/.test(s)) s = `import { bootSanityChecks } from './bootstrap/sanity';\n` + s;
+  if (!/from ['"].\/utils\/logger['"]/.test(s)) s = `import { logger } from './utils/logger';\n` + s;
+  if (!/from ['"].\/bootstrap\/config['"]/.test(s)) s = `import { env } from './bootstrap/config';\n` + s;
+  if (!/from ['"].\/middleware\/security['"]/.test(s)) s = `import { securityChain } from './middleware/security';\n` + s;
+  if (!/from ['"].\/observability\/metrics['"]/.test(s)) s = `import { metricsTiming } from './observability/metrics';\n` + s;
+  if (!/from ['"].\/middleware\/chaos['"]/.test(s)) s = `import { chaos } from './middleware/chaos';\n` + s;
+  if (!/from ['"].\/routes\/health['"]/.test(s)) s = `import { health, ready } from './routes/health';\n` + s;
+  if (!/from ['"].\/routes\/metrics['"]/.test(s)) s = `import { metrics } from './routes/metrics';\n` + s;
+  if (!/from ['"].\/routes\/clientErrors['"]/.test(s)) s = `import { clientErrors } from './routes/clientErrors';\n` + s;
+  if (!/from ['"].\/docs\/openapi['"]/.test(s)) s = `import { mountDocs } from './docs/openapi';\n` + s;
+
+  if (!/const\s+app\s*=\s*express\(\)/.test(s)) s = s.replace(/(import[^\n]*\n)+/s,(m)=> m + `\nconst app = express();\n`);
+
+  // boot + core chain (order matters)
+  if (!/bootSanityChecks\(\)/.test(s)) s = s.replace(/const\s+app\s*=\s*express\(\)\s*;/, `bootSanityChecks();\nconst app = express();`);
+  if (!/app\.use\(\s*express\.json\(/.test(s)) s = s.replace(/const\s+app\s*=\s*express\(\)\s*;/, (m)=> m + `\napp.use(express.json());`);
+  if (!/securityChain\(\)/.test(s)) s = s.replace(/app\.use\(\s*express\.json\([^\)]*\)\s*\)\s*;?/, (m)=> m + `\nfor (const mw of securityChain()) app.use(mw);`);
+  if (!/metricsTiming/.test(s)) s = s.replace(/securityChain\(\)[^\n]*\n?/, (m)=> `${m}app.use(metricsTiming);\n`);
+  if (!/app\.use\(\s*requestId\s*\)/.test(s)) s = s.replace(/metricsTiming[^\n]*\n?/, (m)=> `${m}app.use(requestId);\n`);
+  if (!/app\.use\(\s*chaos\s*\)/.test(s)) s = s.replace(/app\.use\(\s*requestId\s*\)\s*;?/, (m)=> `${m}\napp.use(chaos);\n`);
+
+  // convenience routes
+  if (!/\/api\/health/.test(s)) s += `\napp.get('/api/health', health);\n`;
+  if (!/\/api\/ready/.test(s)) s += `\napp.get('/api/ready', ready);\n`;
+  if (!/\/api\/client-errors/.test(s)) s += `\napp.post('/api/client-errors', clientErrors);\n`;
+  if (!/\/metrics/.test(s)) s += `\napp.get('/metrics', metrics);\n`;
+  if (!/mountDocs\(app\)/.test(s)) s += `\nmountDocs(app);\n`;
+
+  // 404/handler ordering
+  if (!/app\.use\(\s*notFound\s*\)/.test(s)) s += `\napp.use(notFound);\n`;
+  if (!/app\.use\(\s*errorHandler\s*\)/.test(s)) s += `\napp.use(errorHandler);\n`;
+
+  // listen
+  if (!/\.listen\s*\(/.test(s)) s += `\nconst server = app.listen(env.PORT, () => console.log(JSON.stringify({level:"info",msg:"server_listening",port:env.PORT})));`;
+  s = s.replace(/reusePort\s*:\s*true\s*,?/g, '');
+
+  if (s!==orig) write(f,s);
+}
+NODE
+
+# --------------------------------
+# Task 10) Client: global error reporter
+# --------------------------------
+cat > client/src/lib/errorReporter.ts <<'TS'
+export function mountClientErrorReporter(endpoint = "/api/client-errors"){
+  if (typeof window === "undefined") return;
+  const send = (payload: any) => fetch(endpoint, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(payload) }).catch(()=>{});
+  window.addEventListener("error", (e) => send({ type:"error", message: e.message, filename: (e as any).filename, lineno: (e as any).lineno, colno: (e as any).colno, stack: (e.error && e.error.stack) || null }));
+  window.addEventListener("unhandledrejection", (e: any) => send({ type:"unhandledrejection", reason: e?.reason?.message || String(e?.reason), stack: e?.reason?.stack || null }));
+}
+TS
+
+for entry in "client/src/main.tsx" "client/src/main.jsx" "client/src/index.tsx" "client/src/index.jsx"; do
+  if [ -f "$entry" ]; then
+    grep -q "errorReporter" "$entry" 2>/dev/null || sed -i.bak '1i import { mountClientErrorReporter } from "./lib/errorReporter";' "$entry"
+    grep -q "mountClientErrorReporter(" "$entry" 2>/dev/null || echo "mountClientErrorReporter();" >> "$entry"
+    echo "  + wired client error reporter in $entry"
+    break
+  fi
+done
+
+# --------------------------------
+# Task 11) README additions & scripts
+# --------------------------------
+cat > SLO_RUNBOOK.md <<'MD'
+# Skippy SLO & Safe Mode Runbook
+- SLO window: 1 minute rolling, error-rate > 2% => breach.
+- When breached, monitor /metrics & /api/health (sloBreached=true).
+- Consider setting SAFE_MODE=true to suspend risky operations.
+- Use CHAOS_PROB>0 in dev to reproduce latency/failure behavior.
+MD
+
+node - <<'NODE'
+const fs = require('fs');
+if (!fs.existsSync('package.json')) process.exit(0);
+const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
+pkg.scripts = pkg.scripts || {};
+pkg.scripts["dev:strict"] = pkg.scripts["dev:strict"] || "NODE_ENV=development PORT=${PORT:-5000} node server/index.js || NODE_ENV=development ts-node server/index.ts";
+pkg.scripts["start:logged"] = pkg.scripts["start:logged"] || "node server/index.js 2>&1 | tee -a logs/app.log";
+pkg.scripts["triage"] = pkg.scripts["triage"] || "node scripts/triage.js";
+pkg.scripts["docs"] = pkg.scripts["docs"] || "echo 'Open /docs in your browser'";
+fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
+console.log("  + scripts ensured in package.json");
+NODE
+
+cat > scripts/triage.js <<'JS'
+const fs = require('fs'); const path = require('path');
+const log = path.join('logs','app.log'); const outDir = 'reports';
+if (!fs.existsSync(outDir)) fs.mkdirSync(outDir,{recursive:true});
+const ts = new Date().toISOString().replace(/[:\.]/g,'-');
+const out = path.join(outDir, `triage-${ts}.md`);
+let data = fs.existsSync(log) ? fs.readFileSync(log,'utf8') : '';
+const lines = data.split(/\r?\n/).slice(-5000);
+const errors = lines.filter(l => /error|ERR|UnhandledPromiseRejection|uncaught/i.test(l));
+const summary = `# Triage Report (${new Date().toISOString()})
+- total lines scanned: ${lines.length}
+- error lines: ${errors.length}
+
+## Top error signatures
+${Object.entries(errors.reduce((a,l)=>{ const sig=l.replace(/\d+/g,'N').slice(0,160); a[sig]=(a[sig]||0)+1; return a;},{}))
+  .sort((a,b)=>b[1]-a[1]).slice(0,15).map(([k,v])=>`- (${v}) ${k}`).join('\n')}
+
+## Recent errors (tail)
+\`\`\`
+${errors.slice(-50).join('\n')}
+\`\`\`
+`;
+fs.writeFileSync(out, summary); console.log("Triage written:", out);
+JS
+
+# --------------------------------
+# Task 12) .env.example hints
+# --------------------------------
+append_once .env.example "PORT=" "PORT=5000"
+append_once .env.example "SAFE_MODE=" "SAFE_MODE=false"
+append_once .env.example "CHAOS_PROB=" "CHAOS_PROB=0"
+append_once .env.example "RATE_LIMIT_WINDOW_MS=" "RATE_LIMIT_WINDOW_MS=60000"
+append_once .env.example "RATE_LIMIT_MAX=" "RATE_LIMIT_MAX=600"
+append_once .env.example "REQUIRED_ENV_VARS=" "REQUIRED_ENV_VARS="
+
+echo "✅ Pro hardening complete."
+echo "Next:"
+echo " 1) Start dev: npm run dev  (or start:logged)"
+echo " 2) Metrics at: /metrics | Docs: /docs | Health: /api/health | Ready: /api/ready"
+echo " 3) Dev‑only chaos: set CHAOS_PROB=0.1 to reproduce failures"
+echo " 4) SAFE_MODE=true to suspend risky operations when SLO breached"

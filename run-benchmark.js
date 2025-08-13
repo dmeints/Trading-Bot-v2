@@ -1,37 +1,28 @@
 
-#!/usr/bin/env node
-
-/**
- * Simple Node.js wrapper for running Stevie benchmarks
- */
-
 const { spawn } = require('child_process');
-const path = require('path');
 
-// Try different approaches to run the benchmark
-async function runBenchmark() {
-  console.log('🎯 Starting Stevie Benchmark Test...\n');
+console.log('🎯 Starting Stevie Benchmark Test...\n');
+
+const approaches = [
+  // Try the CLI bench command with node
+  ['node', ['cli/bench.ts']],
   
-  const approaches = [
-    // Try the CLI bench command with node
-    ['node', ['cli/bench.ts']],
-    
-    // Try the server CLI bench
-    ['node', ['server/cli/bench.ts']],
-    
-    // Try the comprehensive benchmark suite
-    ['node', ['tools/stevie_benchmark_suite.js']],
-    
-    // Try the walk-forward benchmark
-    ['node', ['tools/bench/run_benchmark.ts']],
-    
-    // Try with npx tsx if available
-    ['npx', ['tsx', 'server/training/benchmarkTest.ts', '--version=1.7', '--days=30']]
-  ];
+  // Try the server CLI bench
+  ['node', ['server/cli/bench.ts']],
   
+  // Try the comprehensive benchmark suite
+  ['node', ['tools/stevie_benchmark_suite.js']],
+  
+  // Try the walk-forward benchmark
+  ['node', ['tools/bench/run_benchmark.ts']],
+  
+  // Try with npx tsx if available
+  ['npx', ['tsx', 'server/training/benchmarkTest.ts', '--version=1.7', '--days=30']]
+];
+
+async function main() {
   for (const [command, args] of approaches) {
-    console.log(`Trying: ${command} ${args.join(' ')}`);
-    
+    console.log(`🔧 Trying: ${command} ${args.join(' ')}`);
     try {
       const result = await runCommand(command, args);
       if (result.success) {
@@ -91,12 +82,10 @@ function runCommand(command, args) {
     
     child.stdout.on('data', (data) => {
       output += data.toString();
-      process.stdout.write(data);
     });
     
     child.stderr.on('data', (data) => {
       error += data.toString();
-      process.stderr.write(data);
     });
     
     child.on('close', (code) => {
@@ -108,10 +97,9 @@ function runCommand(command, args) {
     });
     
     child.on('error', (err) => {
-      reject(new Error(`Failed to start command: ${err.message}`));
+      reject(err);
     });
   });
 }
 
-// Run the benchmark
-runBenchmark().catch(console.error);
+main().catch(console.error);

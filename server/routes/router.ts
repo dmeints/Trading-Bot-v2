@@ -1,10 +1,7 @@
 
-/**
- * Strategy Router API Routes
- */
-
 import { Router } from 'express';
-import { strategyRouter, type RouterContext, type PolicyUpdate } from '../services/StrategyRouter.js';
+import { strategyRouter } from '../services/StrategyRouter.js';
+import { ContextSchema, UpdateRequestSchema } from '../contracts/routerIO.js';
 import { logger } from '../utils/logger.js';
 
 const router = Router();
@@ -15,7 +12,7 @@ const router = Router();
  */
 router.post('/choose', (req, res) => {
   try {
-    const context: RouterContext = req.body.context || req.body || {};
+    const context = ContextSchema.parse(req.body.context || req.body || {});
     
     const choice = strategyRouter.choose(context);
     
@@ -37,11 +34,7 @@ router.post('/choose', (req, res) => {
  */
 router.post('/update', (req, res) => {
   try {
-    const { policyId, reward, context } = req.body;
-    
-    if (!policyId || typeof reward !== 'number') {
-      return res.status(400).json({ error: 'Missing policyId or reward' });
-    }
+    const { policyId, reward, context } = UpdateRequestSchema.parse(req.body);
     
     const posterior = strategyRouter.update(policyId, reward, context);
     
@@ -64,16 +57,16 @@ router.post('/update', (req, res) => {
 });
 
 /**
- * GET /api/router/snapshot
- * Get current router state
+ * GET /api/router/policies
+ * Get all policies and their posteriors
  */
-router.get('/snapshot', (req, res) => {
+router.get('/policies', (req, res) => {
   try {
-    const snapshot = strategyRouter.getSnapshot();
-    res.json(snapshot);
+    const policies = Object.fromEntries(strategyRouter.getPolicies());
+    res.json(policies);
   } catch (error) {
-    logger.error('[RouterRoutes] Error getting snapshot:', error);
-    res.status(500).json({ error: 'Failed to get router snapshot' });
+    logger.error('[RouterRoutes] Error getting policies:', error);
+    res.status(500).json({ error: 'Failed to get policies' });
   }
 });
 

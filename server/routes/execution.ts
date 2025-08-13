@@ -1,8 +1,8 @@
 import { Router } from 'express';
-import { executionRouter } from '../services/ExecutionRouter.js';
-import { ExecutionRequestSchema } from '../contracts/exec.js';
-import { executionPlanner } from '../services/execution/Planner.js';
-import { logger } from '../utils/logger.js';
+import { executionRouter } from '../services/ExecutionRouter';
+import { ExecutionRequestSchema } from '../contracts/exec';
+import { executionPlanner } from '../services/execution/Planner';
+import { logger } from '../utils/logger';
 
 const router = Router();
 
@@ -22,9 +22,77 @@ router.get('/history', (req, res) => {
   res.json(records);
 });
 
+/**
+ * POST /api/exec/route
+ * Route an execution decision
+ */
+router.post('/route', async (req, res) => {
+  try {
+    const { symbol, side, quantity, urgency = 0.5 } = req.body;
+
+    if (!symbol || !side || !quantity) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const decision = await executionRouter.route({
+      symbol: symbol.toUpperCase(),
+      side,
+      quantity: parseFloat(quantity),
+      urgency: parseFloat(urgency)
+    });
+
+    res.json(decision);
+
+  } catch (error) {
+    logger.error('[Execution] Error routing execution:', error);
+    res.status(500).json({ error: 'Failed to route execution' });
+  }
+});
+
+/**
+ * POST /api/exec/simulate
+ * Simulate execution plan and cost preview
+ */
+router.post('/simulate', async (req, res) => {
+  try {
+    const { symbol, size, urgency = 0.5 } = req.body;
+
+    if (!symbol || !size) {
+      return res.status(400).json({ error: 'Missing symbol or size' });
+    }
+
+    const plan = await executionPlanner.createPlan(
+      symbol.toUpperCase(),
+      parseFloat(size),
+      parseFloat(urgency)
+    );
+
+    res.json(plan);
+
+  } catch (error) {
+    logger.error('[Execution] Error simulating execution:', error);
+    res.status(500).json({ error: 'Failed to simulate execution' });
+  }
+});
+
+/**
+ * GET /api/exec/sizing/last
+ * Get last execution plan for debugging
+ */
 router.get('/sizing/last', (req, res) => {
-  const sizing = executionRouter.getLastSizing();
-  res.json(sizing);
+  try {
+    const lastPlan = executionPlanner.getLastPlan();
+
+    if (!lastPlan) {
+      return res.status(404).json({ error: 'No execution plans found' });
+    }
+
+    res.json(lastPlan);
+
+  } catch (error) {
+    logger.error('[Execution] Error getting last sizing:', error);
+    res.status(500).json({ error: 'Failed to get last sizing' });
+  }
 });
 
 router.post('/plan', async (req, res) => {

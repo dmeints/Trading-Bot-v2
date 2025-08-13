@@ -1,10 +1,10 @@
 
 /**
- * Options Smile API Routes
+ * Options Smile & Skew API Routes
  */
 
 import { Router } from 'express';
-import { optionsSmile, OptionChain } from '../services/options/Smile';
+import { optionsSmile } from '../services/options/Smile';
 import { logger } from '../utils/logger';
 
 const router = Router();
@@ -16,7 +16,7 @@ const router = Router();
 router.post('/chain/:symbol', (req, res) => {
   try {
     const { symbol } = req.params;
-    const { chain, underlying_price } = req.body;
+    const { chain, spot } = req.body;
     
     if (!chain || !Array.isArray(chain)) {
       return res.status(400).json({ error: 'Invalid option chain data' });
@@ -24,39 +24,13 @@ router.post('/chain/:symbol', (req, res) => {
 
     // Validate chain structure
     for (const option of chain) {
-      if (!option.k && !option.strike) {
-        return res.status(400).json({ error: 'Missing strike price in option data' });
-      }
-      if (!option.tenor && !option.expiry) {
-        return res.status(400).json({ error: 'Missing expiry in option data' });
-      }
-      if (!option.type || !['call', 'put'].includes(option.type)) {
-        return res.status(400).json({ error: 'Invalid option type' });
-      }
-      if (typeof option.iv !== 'number') {
-        return res.status(400).json({ error: 'Invalid implied volatility' });
+      if (!option.k || !option.tenor || !option.type || typeof option.iv !== 'number') {
+        return res.status(400).json({ error: 'Invalid option data structure' });
       }
     }
 
-    // Convert to internal format
-    const optionChain: OptionChain = {
-      symbol: symbol.toUpperCase(),
-      timestamp: new Date(),
-      underlying_price: underlying_price || 50000, // Default BTC price
-      options: chain.map((opt: any) => ({
-        symbol: symbol.toUpperCase(),
-        strike: opt.k || opt.strike,
-        expiry: opt.tenor || opt.expiry,
-        type: opt.type,
-        iv: opt.iv,
-        price: opt.price,
-        delta: opt.delta,
-        volume: opt.volume
-      }))
-    };
-
-    const metrics = optionsSmile.storeChain(optionChain);
-    res.json({ success: true, metrics });
+    const storedChain = optionsSmile.storeChain(symbol.toUpperCase(), chain, spot);
+    res.json(storedChain);
 
   } catch (error) {
     logger.error('[Options] Error storing chain:', error);
@@ -66,107 +40,48 @@ router.post('/chain/:symbol', (req, res) => {
 
 /**
  * GET /api/options/smile/:symbol
- * Get smile metrics for symbol
+ * Get computed smile metrics
  */
 router.get('/smile/:symbol', (req, res) => {
   try {
     const { symbol } = req.params;
     
-    let metrics = optionsSmile.getSmileMetrics(symbol.toUpperCase());
+    let metrics = optionsSmile.getMetrics(symbol.toUpperCase());
     
-    // Generate mock data if none available
+    // Generate mock data if no real data available
     if (!metrics) {
-      const mockChain = optionsSmile.generateMockChain(symbol.toUpperCase());
-      metrics = optionsSmile.storeChain(mockChain);
-      logger.info(`[Options] Generated mock smile data for ${symbol}`);
+      optionsSmile.generateMockChain(symbol.toUpperCase());
+      metrics = optionsSmile.getMetrics(symbol.toUpperCase());
+      logger.info(`[Options] Generated mock chain for ${symbol}`);
     }
     
     res.json(metrics);
 
   } catch (error) {
-    logger.error('[Options] Error getting smile:', error);
+    logger.error('[Options] Error getting smile metrics:', error);
     res.status(500).json({ error: 'Failed to get smile metrics' });
   }
 });
 
 /**
- * POST /api/options/mock/:symbol
- * Generate mock option chain for testing
+ * GET /api/options/chain/:symbol
+ * Get stored option chain
  */
-router.post('/mock/:symbol', (req, res) => {
-  try {
-    const { symbol } = req.params;
-    const { spot_price } = req.body;
-    
-    const spotPrice = spot_price || (symbol.includes('BTC') ? 50000 : 3000);
-    const mockChain = optionsSmile.generateMockChain(symbol.toUpperCase(), spotPrice);
-    const metrics = optionsSmile.storeChain(mockChain);
-    
-    res.json({ 
-      success: true, 
-      chain: mockChain,
-      metrics 
-    });
-
-  } catch (error) {
-    logger.error('[Options] Error generating mock:', error);
-    res.status(500).json({ error: 'Failed to generate mock data' });
-  }
-});
-
-export default router;
-import { Router } from 'express';
-import { optionsSmile, type OptionChainEntry } from '../services/options/Smile.js';
-import { logger } from '../utils/logger.js';
-
-const router = Router();
-
-/**
- * POST /api/options/chain/:symbol
- * Store options chain snapshot
- */
-router.post('/chain/:symbol', (req, res) => {
-  try {
-    const { symbol } = req.params;
-    const { chain, spot } = req.body;
-
-    if (!Array.isArray(chain)) {
-      return res.status(400).json({ error: 'Chain must be an array' });
-    }
-
-    optionsSmile.storeChain(symbol, chain as OptionChainEntry[], spot || 1);
-    
-    res.json({ 
-      success: true, 
-      symbol: symbol.toUpperCase(),
-      chainSize: chain.length,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    logger.error('[OptionsRoutes] Error storing chain:', error);
-    res.status(500).json({ error: 'Failed to store options chain' });
-  }
-});
-
-/**
- * GET /api/options/smile/:symbol
- * Get smile metrics for symbol
- */
-router.get('/smile/:symbol', (req, res) => {
+router.get('/chain/:symbol', (req, res) => {
   try {
     const { symbol } = req.params;
     
-    let metrics = optionsSmile.calculateMetrics(symbol);
+    const chain = optionsSmile.getChain(symbol.toUpperCase());
     
-    // Generate mock if no real data
-    if (!metrics) {
-      metrics = optionsSmile.generateMockMetrics(symbol);
+    if (!chain) {
+      return res.status(404).json({ error: 'No option chain found for symbol' });
     }
     
-    res.json(metrics);
+    res.json(chain);
+
   } catch (error) {
-    logger.error('[OptionsRoutes] Error calculating smile:', error);
-    res.status(500).json({ error: 'Failed to calculate smile metrics' });
+    logger.error('[Options] Error getting chain:', error);
+    res.status(500).json({ error: 'Failed to get option chain' });
   }
 });
 

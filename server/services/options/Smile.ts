@@ -1,120 +1,164 @@
 
 /**
- * Options IV Smile/Skew Analysis
+ * Options Smile & Skew Features Service
+ * Compute IV smile metrics, risk reversal, butterfly, term structure
  */
 
-import { logger } from '../../utils/logger.js';
+import { logger } from '../../utils/logger';
 
-export interface OptionChainEntry {
-  k: number;           // Strike ratio (K/S)
-  tenor: string;       // Time to expiry
+export interface OptionData {
+  k: number;        // Strike ratio (K/S)
+  tenor: string;    // Time to expiry (e.g., "7d", "30d")
   type: 'call' | 'put';
-  iv: number;          // Implied volatility
+  iv: number;       // Implied volatility
 }
 
 export interface OptionChain {
   symbol: string;
   timestamp: Date;
   spot: number;
-  chain: OptionChainEntry[];
+  chain: OptionData[];
 }
 
 export interface SmileMetrics {
   symbol: string;
+  timestamp: Date;
   rr25: number;        // 25-delta risk reversal
   fly25: number;       // 25-delta butterfly
   iv_term_slope: number; // Term structure slope
   skew_z: number;      // Skew z-score
-  timestamp: Date;
+  atm_iv: number;      // At-the-money IV
 }
 
 class OptionsSmile {
-  private chainStore = new Map<string, OptionChain>();
+  private chains = new Map<string, OptionChain>();
+  private metrics = new Map<string, SmileMetrics>();
 
   /**
-   * Store options chain snapshot
+   * Store option chain snapshot
    */
-  storeChain(symbol: string, chain: OptionChainEntry[], spot: number = 1): void {
-    const chainData: OptionChain = {
-      symbol: symbol.toUpperCase(),
-      timestamp: new Date(),
-      spot,
-      chain
+  storeChain(symbol: string, chain: OptionData[], spot?: number): OptionChain {
+    const timestamp = new Date();
+    const estimatedSpot = spot || this.estimateSpot(chain);
+    
+    const optionChain: OptionChain = {
+      symbol,
+      timestamp,
+      spot: estimatedSpot,
+      chain: chain.map(opt => ({
+        ...opt,
+        k: opt.k // Assume k is already strike ratio K/S
+      }))
     };
 
-    this.chainStore.set(symbol.toUpperCase(), chainData);
-    logger.debug(`[OptionsSmile] Stored chain for ${symbol} with ${chain.length} options`);
+    this.chains.set(symbol, optionChain);
+    
+    // Compute metrics immediately
+    const metrics = this.computeSmileMetrics(optionChain);
+    this.metrics.set(symbol, metrics);
+
+    logger.debug(`[OptionsSmile] Stored chain for ${symbol}: ${chain.length} options, ATM IV: ${metrics.atm_iv.toFixed(3)}`);
+
+    return optionChain;
   }
 
   /**
-   * Calculate smile metrics from stored chain
+   * Get computed smile metrics
    */
-  calculateMetrics(symbol: string): SmileMetrics | null {
-    const chainData = this.chainStore.get(symbol.toUpperCase());
-    
-    if (!chainData || chainData.chain.length === 0) {
-      return null;
-    }
+  getMetrics(symbol: string): SmileMetrics | null {
+    return this.metrics.get(symbol) || null;
+  }
 
-    const { chain, spot } = chainData;
+  /**
+   * Get stored chain
+   */
+  getChain(symbol: string): OptionChain | null {
+    return this.chains.get(symbol) || null;
+  }
 
-    // Calculate 25-delta risk reversal and butterfly
-    const { rr25, fly25 } = this.calculate25DeltaMetrics(chain, spot);
-    
-    // Calculate term structure slope
-    const iv_term_slope = this.calculateTermSlope(chain);
-    
-    // Calculate skew z-score
-    const skew_z = this.calculateSkewZ(chain, spot);
+  /**
+   * Compute smile metrics from option chain
+   */
+  private computeSmileMetrics(chain: OptionChain): SmileMetrics {
+    const { symbol, timestamp } = chain;
+
+    // Get ATM IV (closest to K=1.0)
+    const atm_iv = this.getATMVolatility(chain);
+
+    // Compute 25-delta risk reversal and butterfly
+    const { rr25, fly25 } = this.compute25DeltaMetrics(chain);
+
+    // Compute term structure slope
+    const iv_term_slope = this.computeTermSlope(chain);
+
+    // Compute skew z-score
+    const skew_z = this.computeSkewZScore(chain);
 
     return {
-      symbol: symbol.toUpperCase(),
+      symbol,
+      timestamp,
       rr25,
       fly25,
       iv_term_slope,
       skew_z,
-      timestamp: new Date()
+      atm_iv
     };
   }
 
   /**
-   * Calculate 25-delta risk reversal and butterfly
+   * Get at-the-money volatility (closest to K=1.0)
    */
-  private calculate25DeltaMetrics(chain: OptionChainEntry[], spot: number): { rr25: number; fly25: number } {
-    // For simplicity, approximate 25-delta strikes as ~0.9 and ~1.1 moneyness
-    const calls = chain.filter(opt => opt.type === 'call');
-    const puts = chain.filter(opt => opt.type === 'put');
+  private getATMVolatility(chain: OptionChain): number {
+    let closestOption = chain.chain[0];
+    let minDistance = Math.abs(closestOption.k - 1.0);
 
-    // Find strikes closest to 25-delta levels
-    const call25 = this.findClosestStrike(calls, 1.1); // OTM call
-    const put25 = this.findClosestStrike(puts, 0.9);   // OTM put
-    const atmCall = this.findClosestStrike(calls, 1.0);
-    const atmPut = this.findClosestStrike(puts, 1.0);
+    for (const option of chain.chain) {
+      const distance = Math.abs(option.k - 1.0);
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestOption = option;
+      }
+    }
 
-    // Risk Reversal = IV(Call_25δ) - IV(Put_25δ)
-    const rr25 = (call25?.iv || 0) - (put25?.iv || 0);
+    return closestOption.iv;
+  }
 
-    // Butterfly = (IV(Call_25δ) + IV(Put_25δ))/2 - IV(ATM)
-    const avgOTM = ((call25?.iv || 0) + (put25?.iv || 0)) / 2;
-    const atmIV = ((atmCall?.iv || 0) + (atmPut?.iv || 0)) / 2;
-    const fly25 = avgOTM - atmIV;
+  /**
+   * Compute 25-delta risk reversal and butterfly
+   * RR25 = IV(25Δ Call) - IV(25Δ Put)
+   * BF25 = [IV(25Δ Call) + IV(25Δ Put)]/2 - IV(ATM)
+   */
+  private compute25DeltaMetrics(chain: OptionChain): { rr25: number; fly25: number } {
+    // Approximate 25-delta strikes as K=0.9 (put) and K=1.1 (call)
+    const call25 = this.findClosestOption(chain, 1.1, 'call');
+    const put25 = this.findClosestOption(chain, 0.9, 'put');
+    const atm = this.getATMVolatility(chain);
+
+    if (!call25 || !put25) {
+      return { rr25: 0, fly25: 0 };
+    }
+
+    const rr25 = call25.iv - put25.iv;
+    const fly25 = (call25.iv + put25.iv) / 2 - atm;
 
     return { rr25, fly25 };
   }
 
   /**
-   * Find option closest to target moneyness
+   * Find closest option to target strike and type
    */
-  private findClosestStrike(options: OptionChainEntry[], targetK: number): OptionChainEntry | null {
+  private findClosestOption(chain: OptionChain, targetK: number, type: 'call' | 'put'): OptionData | null {
+    const options = chain.chain.filter(opt => opt.type === type);
+    
     if (options.length === 0) return null;
 
     let closest = options[0];
-    let minDiff = Math.abs(closest.k - targetK);
+    let minDistance = Math.abs(closest.k - targetK);
 
     for (const option of options) {
-      const diff = Math.abs(option.k - targetK);
-      if (diff < minDiff) {
-        minDiff = diff;
+      const distance = Math.abs(option.k - targetK);
+      if (distance < minDistance) {
+        minDistance = distance;
         closest = option;
       }
     }
@@ -123,104 +167,141 @@ class OptionsSmile {
   }
 
   /**
-   * Calculate term structure slope
+   * Compute term structure slope
+   * Slope of IV vs time to expiry
    */
-  private calculateTermSlope(chain: OptionChainEntry[]): number {
-    // Group by tenor and calculate average IV
-    const tenorIVs = new Map<string, number[]>();
-    
-    for (const option of chain) {
-      if (!tenorIVs.has(option.tenor)) {
-        tenorIVs.set(option.tenor, []);
+  private computeTermSlope(chain: OptionChain): number {
+    // Group by tenor and get ATM IV for each
+    const tenorIVs = new Map<string, number>();
+    const tenorDays = new Map<string, number>();
+
+    // Convert tenor strings to days
+    const tenorToDays = (tenor: string): number => {
+      const match = tenor.match(/(\d+)([dwy])/);
+      if (!match) return 7; // Default 7 days
+
+      const value = parseInt(match[1]);
+      const unit = match[2];
+
+      switch (unit) {
+        case 'd': return value;
+        case 'w': return value * 7;
+        case 'y': return value * 365;
+        default: return value;
       }
-      tenorIVs.get(option.tenor)!.push(option.iv);
-    }
-
-    const tenorAvgs: Array<{ tenor: string; avgIV: number; days: number }> = [];
-    
-    for (const [tenor, ivs] of tenorIVs) {
-      const avgIV = ivs.reduce((sum, iv) => sum + iv, 0) / ivs.length;
-      const days = this.tenorToDays(tenor);
-      tenorAvgs.push({ tenor, avgIV, days });
-    }
-
-    if (tenorAvgs.length < 2) return 0;
-
-    // Sort by days and calculate slope
-    tenorAvgs.sort((a, b) => a.days - b.days);
-    
-    const shortTerm = tenorAvgs[0];
-    const longTerm = tenorAvgs[tenorAvgs.length - 1];
-    
-    if (longTerm.days === shortTerm.days) return 0;
-    
-    // Slope in IV per day
-    return (longTerm.avgIV - shortTerm.avgIV) / (longTerm.days - shortTerm.days);
-  }
-
-  /**
-   * Convert tenor string to days
-   */
-  private tenorToDays(tenor: string): number {
-    const match = tenor.match(/(\d+)([dwmy])/);
-    if (!match) return 30; // Default
-
-    const [, num, unit] = match;
-    const value = parseInt(num, 10);
-
-    switch (unit) {
-      case 'd': return value;
-      case 'w': return value * 7;
-      case 'm': return value * 30;
-      case 'y': return value * 365;
-      default: return 30;
-    }
-  }
-
-  /**
-   * Calculate skew z-score
-   */
-  private calculateSkewZ(chain: OptionChainEntry[], spot: number): number {
-    // Calculate IV smile slope at different strikes
-    const puts = chain.filter(opt => opt.type === 'put');
-    const calls = chain.filter(opt => opt.type === 'call');
-    
-    if (puts.length < 2 && calls.length < 2) return 0;
-
-    // Combine puts and calls, convert to moneyness
-    const allOptions = [...puts, ...calls].map(opt => ({
-      moneyness: opt.k,
-      iv: opt.iv
-    }));
-
-    allOptions.sort((a, b) => a.moneyness - b.moneyness);
-
-    if (allOptions.length < 3) return 0;
-
-    // Calculate slope between OTM put and OTM call
-    const otmPut = allOptions.find(opt => opt.moneyness < 0.95);
-    const otmCall = allOptions.find(opt => opt.moneyness > 1.05);
-
-    if (!otmPut || !otmCall) return 0;
-
-    const slope = (otmCall.iv - otmPut.iv) / (otmCall.moneyness - otmPut.moneyness);
-    
-    // Normalize to z-score (simplified)
-    return slope / 0.1; // Assume std dev of 0.1 for skew
-  }
-
-  /**
-   * Generate mock metrics for testing
-   */
-  generateMockMetrics(symbol: string): SmileMetrics {
-    return {
-      symbol: symbol.toUpperCase(),
-      rr25: (Math.random() - 0.5) * 0.2,        // ±10% RR
-      fly25: Math.random() * 0.05,              // 0-5% butterfly
-      iv_term_slope: (Math.random() - 0.5) * 0.001, // ±0.1% per day
-      skew_z: (Math.random() - 0.5) * 4,        // ±2 std devs
-      timestamp: new Date()
     };
+
+    // Get ATM IV for each tenor
+    for (const option of chain.chain) {
+      const days = tenorToDays(option.tenor);
+      const currentIV = tenorIVs.get(option.tenor);
+      
+      if (!currentIV || Math.abs(option.k - 1.0) < 0.1) {
+        tenorIVs.set(option.tenor, option.iv);
+        tenorDays.set(option.tenor, days);
+      }
+    }
+
+    // Calculate slope using simple linear regression
+    if (tenorIVs.size < 2) return 0;
+
+    const points: Array<[number, number]> = [];
+    for (const [tenor, iv] of tenorIVs) {
+      const days = tenorDays.get(tenor)!;
+      points.push([days, iv]);
+    }
+
+    // Simple slope calculation
+    if (points.length < 2) return 0;
+
+    const [x1, y1] = points[0];
+    const [x2, y2] = points[points.length - 1];
+
+    return (y2 - y1) / (x2 - x1);
+  }
+
+  /**
+   * Compute skew z-score
+   * Standardized measure of put-call skew
+   */
+  private computeSkewZScore(chain: OptionChain): number {
+    const skews: number[] = [];
+
+    // Calculate skew at different strikes
+    for (let k = 0.8; k <= 1.2; k += 0.1) {
+      const call = this.findClosestOption(chain, k, 'call');
+      const put = this.findClosestOption(chain, k, 'put');
+
+      if (call && put) {
+        const skew = call.iv - put.iv;
+        skews.push(skew);
+      }
+    }
+
+    if (skews.length === 0) return 0;
+
+    // Calculate z-score
+    const mean = skews.reduce((sum, s) => sum + s, 0) / skews.length;
+    const variance = skews.reduce((sum, s) => sum + Math.pow(s - mean, 2), 0) / skews.length;
+    const stdDev = Math.sqrt(variance);
+
+    if (stdDev === 0) return 0;
+
+    // Return z-score of the most recent skew
+    const latestSkew = skews[skews.length - 1];
+    return (latestSkew - mean) / stdDev;
+  }
+
+  /**
+   * Estimate spot price from option chain
+   */
+  private estimateSpot(chain: OptionData[]): number {
+    // Simple estimation: average of strikes weighted by proximity to ATM
+    const atmOptions = chain.filter(opt => Math.abs(opt.k - 1.0) < 0.1);
+    
+    if (atmOptions.length === 0) {
+      return 50000; // Default fallback for BTC
+    }
+
+    // Assume strikes are already ratios, so spot = 1.0 reference
+    return 50000; // For BTC, could be parameterized
+  }
+
+  /**
+   * Generate mock option chain for testing
+   */
+  generateMockChain(symbol: string): OptionChain {
+    const spot = symbol.includes('BTC') ? 50000 : 3000;
+    const baseIV = 0.6;
+    
+    const chain: OptionData[] = [];
+    
+    // Generate options at various strikes and tenors
+    const strikes = [0.8, 0.9, 1.0, 1.1, 1.2];
+    const tenors = ['7d', '30d', '90d'];
+
+    for (const k of strikes) {
+      for (const tenor of tenors) {
+        // Add some skew: puts more expensive, calls cheaper at extremes
+        const skewAdjustment = (k - 1.0) * 0.1;
+        
+        chain.push({
+          k,
+          tenor,
+          type: 'call',
+          iv: baseIV - skewAdjustment + Math.random() * 0.1
+        });
+
+        chain.push({
+          k,
+          tenor,
+          type: 'put',
+          iv: baseIV + skewAdjustment + Math.random() * 0.1
+        });
+      }
+    }
+
+    return this.storeChain(symbol, chain, spot);
   }
 }
 

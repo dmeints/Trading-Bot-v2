@@ -1,153 +1,318 @@
 
 import { logger } from '../utils/logger.js';
 
-interface NewsEvent {
+interface EventRecord {
   id: string;
+  timestamp: number;
   title: string;
   content: string;
-  timestamp: Date;
   source: string;
-  sentiment: number;
+  category: 'news' | 'social' | 'onchain' | 'macro';
+  impact: 'low' | 'medium' | 'high';
+  processed: boolean;
 }
 
 interface EventEmbedding {
-  id: string;
-  text: string;
-  embedding: number[];
-  timestamp: Date;
+  eventId: string;
+  embedding: number[] | string; // Vector or hash
+  summary: string;
+  timestamp: number;
   relevanceScore: number;
 }
 
+interface EventSummary {
+  period: string;
+  totalEvents: number;
+  highImpactEvents: number;
+  categories: Record<string, number>;
+  topEvents: { title: string; impact: string; timestamp: number }[];
+}
+
 class EventsService {
-  private embeddings: EventEmbedding[] = [];
-  private events: NewsEvent[] = [];
-  private maxEmbeddings = 100;
-
+  private events: Map<string, EventRecord> = new Map();
+  private embeddings: Map<string, EventEmbedding> = new Map();
+  private readonly maxEvents = 1000;
+  private readonly maxEmbeddings = 500;
+  
   constructor() {
-    this.initializeWithMockData();
+    this.generateSyntheticEvents();
   }
-
-  private initializeWithMockData() {
-    // Mock news events for testing
-    const mockEvents: NewsEvent[] = [
+  
+  private generateSyntheticEvents(): void {
+    const syntheticEvents = [
       {
-        id: '1',
-        title: 'Bitcoin ETF Approval Expected',
-        content: 'Major financial institutions are pushing for Bitcoin ETF approval, which could drive significant institutional adoption.',
-        timestamp: new Date(),
-        source: 'crypto_news',
-        sentiment: 0.7
+        title: 'Fed Announces Interest Rate Decision',
+        content: 'Federal Reserve maintains current interest rates at 5.25-5.50%',
+        source: 'reuters',
+        category: 'macro' as const,
+        impact: 'high' as const
       },
       {
-        id: '2',
-        title: 'Federal Reserve Rate Decision',
-        content: 'The Fed is expected to maintain current interest rates, which could be positive for risk assets like cryptocurrency.',
-        timestamp: new Date(Date.now() - 3600000),
-        source: 'fed_news',
-        sentiment: 0.3
+        title: 'Bitcoin ETF Inflows Surge',
+        content: 'Spot Bitcoin ETFs see $200M in daily inflows',
+        source: 'coindesk',
+        category: 'news' as const,
+        impact: 'medium' as const
       },
       {
-        id: '3',
-        title: 'Major Exchange Hack Reported',
-        content: 'A smaller cryptocurrency exchange reported a security breach, raising concerns about digital asset custody.',
-        timestamp: new Date(Date.now() - 7200000),
-        source: 'security_alert',
-        sentiment: -0.6
+        title: 'Large Whale Movement Detected',
+        content: '10,000 BTC moved from unknown wallet to Coinbase',
+        source: 'whale_alert',
+        category: 'onchain' as const,
+        impact: 'medium' as const
+      },
+      {
+        title: 'Crypto Twitter Sentiment Turns Bullish',
+        content: 'Social sentiment indicators show increased optimism',
+        source: 'twitter_api',
+        category: 'social' as const,
+        impact: 'low' as const
+      },
+      {
+        title: 'Major Exchange Announces New Features',
+        content: 'Binance launches new institutional trading platform',
+        source: 'binance_blog',
+        category: 'news' as const,
+        impact: 'medium' as const
       }
     ];
-
-    this.events = mockEvents;
-    this.processEventsToEmbeddings();
-  }
-
-  private processEventsToEmbeddings() {
-    // Convert events to embeddings (placeholder implementation)
-    this.embeddings = this.events.map(event => {
-      const embedding = this.createPlaceholderEmbedding(event.title + ' ' + event.content);
-      return {
-        id: event.id,
-        text: event.title,
-        embedding,
-        timestamp: event.timestamp,
-        relevanceScore: Math.abs(event.sentiment)
+    
+    syntheticEvents.forEach((event, index) => {
+      const eventRecord: EventRecord = {
+        id: `event_${Date.now()}_${index}`,
+        timestamp: Date.now() - (index * 60 * 60 * 1000), // Stagger by hours
+        title: event.title,
+        content: event.content,
+        source: event.source,
+        category: event.category,
+        impact: event.impact,
+        processed: false
       };
+      
+      this.events.set(eventRecord.id, eventRecord);
     });
-
-    // Sort by relevance and keep top N
-    this.embeddings.sort((a, b) => b.relevanceScore - a.relevanceScore);
-    this.embeddings = this.embeddings.slice(0, this.maxEmbeddings);
-  }
-
-  private createPlaceholderEmbedding(text: string): number[] {
-    // Placeholder embedding using text characteristics
-    const embedding = new Array(8).fill(0);
     
-    // Simple text-based features
-    embedding[0] = text.toLowerCase().includes('bitcoin') ? 0.8 : 0.1;
-    embedding[1] = text.toLowerCase().includes('ethereum') ? 0.7 : 0.1;
-    embedding[2] = text.toLowerCase().includes('fed') || text.toLowerCase().includes('rate') ? 0.6 : 0.1;
-    embedding[3] = text.toLowerCase().includes('hack') || text.toLowerCase().includes('breach') ? -0.8 : 0.1;
-    embedding[4] = text.toLowerCase().includes('etf') || text.toLowerCase().includes('institutional') ? 0.5 : 0.1;
-    embedding[5] = text.length / 100; // Normalized length
-    embedding[6] = (text.match(/[A-Z]/g) || []).length / text.length; // Caps ratio
-    embedding[7] = Math.sin(Date.now() / 1000000) * 0.1; // Time-based noise
+    // Process initial events
+    this.processUnprocessedEvents();
+  }
+  
+  addEvent(event: Omit<EventRecord, 'id' | 'processed'>): string {
+    const id = `event_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
-    // Normalize to unit length
-    const norm = Math.sqrt(embedding.reduce((sum, val) => sum + val * val, 0));
-    return embedding.map(val => val / (norm || 1));
-  }
-
-  public getEmbeddings(): EventEmbedding[] {
-    return this.embeddings.slice(0, 10); // Return top 10 most recent/relevant
-  }
-
-  public getContextEmbedding(): number[] {
-    if (this.embeddings.length === 0) {
-      return new Array(8).fill(0);
-    }
-
-    // Aggregate embeddings weighted by relevance
-    const aggregated = new Array(8).fill(0);
-    let totalWeight = 0;
-
-    for (const emb of this.embeddings.slice(0, 5)) {
-      const weight = emb.relevanceScore;
-      for (let i = 0; i < 8; i++) {
-        aggregated[i] += emb.embedding[i] * weight;
-      }
-      totalWeight += weight;
-    }
-
-    // Normalize
-    if (totalWeight > 0) {
-      for (let i = 0; i < 8; i++) {
-        aggregated[i] /= totalWeight;
-      }
-    }
-
-    return aggregated;
-  }
-
-  public ingestEvent(event: Omit<NewsEvent, 'id'>): void {
-    const newEvent: NewsEvent = {
-      ...event,
-      id: `event_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    const eventRecord: EventRecord = {
+      id,
+      processed: false,
+      ...event
     };
-
-    this.events.unshift(newEvent);
-    this.events = this.events.slice(0, 200); // Keep last 200 events
     
-    this.processEventsToEmbeddings();
+    this.events.set(id, eventRecord);
     
-    logger.info('New event ingested and processed', { 
-      eventId: newEvent.id, 
-      title: newEvent.title 
+    // Keep rolling window
+    if (this.events.size > this.maxEvents) {
+      const oldestId = Array.from(this.events.keys())[0];
+      this.events.delete(oldestId);
+      this.embeddings.delete(oldestId);
+    }
+    
+    // Process immediately
+    this.processEvent(eventRecord);
+    
+    return id;
+  }
+  
+  private processUnprocessedEvents(): void {
+    const unprocessed = Array.from(this.events.values()).filter(e => !e.processed);
+    
+    unprocessed.forEach(event => {
+      this.processEvent(event);
     });
   }
-
-  public getRecentEvents(limit = 10): NewsEvent[] {
-    return this.events.slice(0, limit);
+  
+  private processEvent(event: EventRecord): void {
+    try {
+      // Generate summary
+      const summary = this.generateSummary(event);
+      
+      // Generate embedding (stub with hash for LLM safety)
+      const embedding = this.generateEmbedding(event);
+      
+      // Calculate relevance score
+      const relevanceScore = this.calculateRelevance(event);
+      
+      const eventEmbedding: EventEmbedding = {
+        eventId: event.id,
+        embedding,
+        summary,
+        timestamp: Date.now(),
+        relevanceScore
+      };
+      
+      this.embeddings.set(event.id, eventEmbedding);
+      
+      // Mark as processed
+      event.processed = true;
+      this.events.set(event.id, event);
+      
+      logger.debug(`Processed event: ${event.title}`, {
+        summary: summary.slice(0, 50),
+        relevanceScore
+      });
+      
+    } catch (error) {
+      logger.error(`Error processing event ${event.id}:`, error);
+    }
+  }
+  
+  private generateSummary(event: EventRecord): string {
+    // LLM-safe summarization (rule-based for now)
+    const title = event.title;
+    const category = event.category.toUpperCase();
+    const impact = event.impact.toUpperCase();
+    
+    // Extract key phrases based on category
+    let keyPhrases: string[] = [];
+    
+    switch (event.category) {
+      case 'macro':
+        keyPhrases = this.extractKeyPhrases(event.content, ['rate', 'fed', 'inflation', 'policy', 'economic']);
+        break;
+      case 'news':
+        keyPhrases = this.extractKeyPhrases(event.content, ['announce', 'launch', 'partnership', 'regulation']);
+        break;
+      case 'onchain':
+        keyPhrases = this.extractKeyPhrases(event.content, ['whale', 'transfer', 'volume', 'address']);
+        break;
+      case 'social':
+        keyPhrases = this.extractKeyPhrases(event.content, ['sentiment', 'bullish', 'bearish', 'trend']);
+        break;
+    }
+    
+    return `[${category}/${impact}] ${title} - Key: ${keyPhrases.join(', ')}`;
+  }
+  
+  private extractKeyPhrases(content: string, keywords: string[]): string[] {
+    const words = content.toLowerCase().split(/\s+/);
+    const found = keywords.filter(keyword => 
+      words.some(word => word.includes(keyword))
+    );
+    
+    return found.length > 0 ? found : ['general'];
+  }
+  
+  private generateEmbedding(event: EventRecord): string {
+    // LLM-safe stub: use content hash instead of actual embeddings
+    const content = `${event.title} ${event.content} ${event.category} ${event.impact}`;
+    
+    // Simple hash function
+    let hash = 0;
+    for (let i = 0; i < content.length; i++) {
+      const char = content.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    
+    // Convert to pseudo-embedding format
+    const hashStr = Math.abs(hash).toString(16).padStart(8, '0');
+    return `embed_${hashStr}_${event.category}_${event.impact}`;
+  }
+  
+  private calculateRelevance(event: EventRecord): number {
+    let score = 0.5; // Base relevance
+    
+    // Impact weighting
+    switch (event.impact) {
+      case 'high': score += 0.4; break;
+      case 'medium': score += 0.2; break;
+      case 'low': score += 0.1; break;
+    }
+    
+    // Category weighting (for crypto trading context)
+    switch (event.category) {
+      case 'macro': score += 0.3; break;
+      case 'news': score += 0.2; break;
+      case 'onchain': score += 0.25; break;
+      case 'social': score += 0.1; break;
+    }
+    
+    // Recency weighting
+    const hoursOld = (Date.now() - event.timestamp) / (1000 * 60 * 60);
+    const recencyFactor = Math.max(0, 1 - hoursOld / 24); // Decay over 24 hours
+    score += recencyFactor * 0.2;
+    
+    return Math.min(1.0, Math.max(0.0, score));
+  }
+  
+  getEmbeddings(limit = 50): EventEmbedding[] {
+    return Array.from(this.embeddings.values())
+      .sort((a, b) => b.relevanceScore - a.relevanceScore)
+      .slice(0, limit);
+  }
+  
+  getEventSummary(hours = 24): EventSummary {
+    const cutoff = Date.now() - hours * 60 * 60 * 1000;
+    const recentEvents = Array.from(this.events.values())
+      .filter(e => e.timestamp > cutoff);
+    
+    const categories = recentEvents.reduce((acc, event) => {
+      acc[event.category] = (acc[event.category] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    
+    const highImpactEvents = recentEvents.filter(e => e.impact === 'high').length;
+    
+    const topEvents = recentEvents
+      .sort((a, b) => {
+        const impactScore = { high: 3, medium: 2, low: 1 };
+        return impactScore[b.impact] - impactScore[a.impact];
+      })
+      .slice(0, 5)
+      .map(e => ({
+        title: e.title,
+        impact: e.impact,
+        timestamp: e.timestamp
+      }));
+    
+    return {
+      period: `${hours}h`,
+      totalEvents: recentEvents.length,
+      highImpactEvents,
+      categories,
+      topEvents
+    };
+  }
+  
+  // Placebo check for event studies
+  runPlaceboTest(eventId: string): { significant: boolean; pValue: number } {
+    try {
+      const event = this.events.get(eventId);
+      if (!event) {
+        return { significant: false, pValue: 1.0 };
+      }
+      
+      // Generate random returns for placebo test
+      const beforeReturns = Array.from({ length: 10 }, () => (Math.random() - 0.5) * 0.02);
+      const afterReturns = Array.from({ length: 10 }, () => (Math.random() - 0.5) * 0.02);
+      
+      const beforeMean = beforeReturns.reduce((a, b) => a + b, 0) / beforeReturns.length;
+      const afterMean = afterReturns.reduce((a, b) => a + b, 0) / afterReturns.length;
+      
+      const difference = Math.abs(afterMean - beforeMean);
+      
+      // Simulate t-test p-value
+      const tStat = difference / 0.01; // Simplified
+      const pValue = Math.max(0.01, Math.min(0.99, Math.exp(-tStat)));
+      
+      return {
+        significant: pValue < 0.05,
+        pValue
+      };
+      
+    } catch (error) {
+      logger.error('Error in placebo test:', error);
+      return { significant: false, pValue: 1.0 };
+    }
   }
 }
 
 export const eventsService = new EventsService();
+export type { EventRecord, EventEmbedding, EventSummary };

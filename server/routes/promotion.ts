@@ -173,3 +173,36 @@ function calculateSPATest(paperPnLs: number[], benchmarkPnLs: number[]) {
 }
 
 export default router;
+import express from 'express';
+import { promotionService } from '../services/promotion.js';
+import { logger } from '../utils/logger.js';
+
+const router = express.Router();
+
+router.get('/status', (req, res) => {
+  try {
+    const status = promotionService.getPromotionStatus();
+    res.json(status);
+  } catch (error) {
+    logger.error('Error getting promotion status:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: String(error)
+    });
+  }
+});
+
+router.post('/run-test', (req, res) => {
+  try {
+    const result = promotionService.runPromotionTest();
+    res.json(result);
+  } catch (error) {
+    logger.error('Error running promotion test:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: String(error)
+    });
+  }
+});
+
+export default router;

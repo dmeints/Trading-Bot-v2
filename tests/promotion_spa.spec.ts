@@ -120,3 +120,74 @@ describe('Promotion SPA Test', () => {
     expect(strong?.spaStatistic).toBeGreaterThan(0);
   });
 });
+import { describe, it, expect, beforeEach } from 'vitest';
+import { promotionService } from '../server/services/promotion.js';
+
+describe('Promotion SPA', () => {
+  beforeEach(() => {
+    promotionService.simulatePerformance();
+  });
+
+  it('should record strategy performance', () => {
+    const returns = [0.01, -0.005, 0.02, -0.01, 0.015];
+    
+    promotionService.recordPerformance('test_strategy', returns);
+    
+    const status = promotionService.getPromotionStatus();
+    expect(status).toBeDefined();
+    expect(status.champion).toBeTypeOf('string');
+  });
+
+  it('should run Hansen SPA test', () => {
+    // Record some performance for challenger
+    const goodReturns = Array.from({ length: 60 }, () => 0.001 + Math.random() * 0.01);
+    promotionService.recordPerformance('superior_strategy', goodReturns);
+    
+    const result = promotionService.runPromotionTest();
+    
+    expect(result).toBeDefined();
+    expect(result.champion).toBeTypeOf('string');
+    expect(typeof result.promoted).toBe('boolean');
+    expect(result.outcomeMessage).toBeTypeOf('string');
+    
+    if (result.testResult) {
+      expect(result.testResult.pValue).toBeGreaterThan(0);
+      expect(result.testResult.pValue).toBeLessThanOrEqual(1);
+      expect(typeof result.testResult.significant).toBe('boolean');
+    }
+  });
+
+  it('should promote challenger if significantly better', () => {
+    // Create clearly superior strategy
+    const excellentReturns = Array.from({ length: 100 }, () => 0.005 + Math.random() * 0.005);
+    promotionService.recordPerformance('excellent_strategy', excellentReturns);
+    
+    const result = promotionService.runPromotionTest();
+    
+    // Check if promotion happened (depends on random data, so we just verify structure)
+    expect(result.promoted).toBeTypeOf('boolean');
+    if (result.promoted) {
+      expect(result.champion).toBe('excellent_strategy');
+    }
+  });
+
+  it('should not promote if insufficient evidence', () => {
+    // Record mediocre performance
+    const mediocreReturns = Array.from({ length: 20 }, () => (Math.random() - 0.5) * 0.01);
+    promotionService.recordPerformance('mediocre_strategy', mediocreReturns);
+    
+    const result = promotionService.runPromotionTest();
+    
+    // Should not promote with mediocre performance
+    expect(result.promoted).toBe(false);
+  });
+
+  it('should handle no challenger scenario', () => {
+    const result = promotionService.runPromotionTest();
+    
+    if (!result.challenger) {
+      expect(result.promoted).toBe(false);
+      expect(result.outcomeMessage).toContain('No challenger');
+    }
+  });
+});

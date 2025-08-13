@@ -200,3 +200,36 @@ function applyNudgeWithBounds(nudge: any) {
 }
 
 export default router;
+import express from 'express';
+import { metaMonitor } from '../services/MetaMonitor.js';
+import { logger } from '../utils/logger.js';
+
+const router = express.Router();
+
+router.get('/quality', (req, res) => {
+  try {
+    const quality = metaMonitor.getQualityMetrics();
+    res.json(quality);
+  } catch (error) {
+    logger.error('Error getting quality metrics:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: String(error)
+    });
+  }
+});
+
+router.post('/apply-nudges', (req, res) => {
+  try {
+    const result = metaMonitor.applyNudges();
+    res.json(result);
+  } catch (error) {
+    logger.error('Error applying nudges:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: String(error)
+    });
+  }
+});
+
+export default router;

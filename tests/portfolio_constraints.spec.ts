@@ -150,3 +150,67 @@ describe('Portfolio Constraints', () => {
     }
   });
 });
+import { describe, it, expect } from 'vitest';
+import { portfolioOptimizer } from '../server/services/portfolio.js';
+
+describe('Portfolio Constraints', () => {
+  it('should optimize portfolio with CVaR constraints', async () => {
+    const constraints = {
+      symbols: ['BTCUSDT', 'ETHUSDT'],
+      cvarBudget: 0.05,
+      volTarget: 0.02
+    };
+    
+    const result = await portfolioOptimizer.optimize(constraints);
+    
+    expect(result).toBeDefined();
+    expect(result.feasible).toBe(true);
+    expect(result.weights).toBeDefined();
+    expect(Object.keys(result.weights)).toEqual(constraints.symbols);
+    
+    // Check weights sum to 1
+    const weightSum = Object.values(result.weights).reduce((a, b) => a + b, 0);
+    expect(Math.abs(weightSum - 1.0)).toBeLessThan(0.01);
+    
+    // Check CVaR constraint
+    expect(result.metrics.cvar95).toBeLessThanOrEqual(constraints.cvarBudget * 1.1);
+  });
+
+  it('should calculate Kelly fractions correctly', async () => {
+    const constraints = {
+      symbols: ['BTCUSDT', 'ETHUSDT', 'ADAUSDT'],
+      cvarBudget: 0.1,
+      volTarget: 0.03
+    };
+    
+    const result = await portfolioOptimizer.optimize(constraints);
+    
+    expect(result.kellyFractions).toBeDefined();
+    expect(Object.keys(result.kellyFractions)).toEqual(constraints.symbols);
+    
+    // Kelly fractions should be reasonable (0-0.5)
+    Object.values(result.kellyFractions).forEach(fraction => {
+      expect(fraction).toBeGreaterThanOrEqual(0);
+      expect(fraction).toBeLessThanOrEqual(0.5);
+    });
+  });
+
+  it('should handle vol targeting', async () => {
+    const lowVolTarget = {
+      symbols: ['BTCUSDT', 'ETHUSDT'],
+      cvarBudget: 0.08,
+      volTarget: 0.01 // Low vol target
+    };
+    
+    const result = await portfolioOptimizer.optimize(lowVolTarget);
+    
+    expect(result.metrics.volatility).toBeLessThanOrEqual(0.015); // Should be close to target
+  });
+
+  it('should provide CVaR scaling for execution', () => {
+    const scale = portfolioOptimizer.getCVaRScale('BTCUSDT', 0.05);
+    
+    expect(scale).toBeGreaterThan(0);
+    expect(scale).toBeLessThanOrEqual(1);
+  });
+});

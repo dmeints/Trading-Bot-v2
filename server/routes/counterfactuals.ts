@@ -27,3 +27,23 @@ router.post('/simulate/:policyId', (req, res) => {
 });
 
 export default router;
+import express from 'express';
+import { counterfactualLogger } from '../services/Counterfactuals.js';
+import { logger } from '../utils/logger.js';
+
+const router = express.Router();
+
+router.get('/summary', (req, res) => {
+  try {
+    const summary = counterfactualLogger.getSummary();
+    res.json(summary);
+  } catch (error) {
+    logger.error('Error getting counterfactuals summary:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: String(error)
+    });
+  }
+});
+
+export default router;

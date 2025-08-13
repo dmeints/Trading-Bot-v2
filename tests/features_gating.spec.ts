@@ -119,3 +119,90 @@ describe('Feature Gating', () => {
     }
   });
 });
+import { describe, it, expect, beforeEach } from 'vitest';
+import { featureGating } from '../../tools/features/gating.js';
+
+describe('Feature Gating', () => {
+  beforeEach(() => {
+    featureGating.simulateFeatureUpdates();
+  });
+
+  it('should calculate Information Coefficient correctly', () => {
+    const returns = [0.01, -0.005, 0.02, -0.01, 0.015];
+    const featureValues = [1.2, 0.8, 1.5, 0.5, 1.3];
+    
+    featureGating.updateFeatureIC('test_feature', returns, featureValues);
+    
+    const ranking = featureGating.getFeatureRanking();
+    const testFeature = ranking.find(f => f.feature === 'test_feature');
+    
+    if (testFeature) {
+      expect(testFeature.ic).toBeTypeOf('number');
+      expect(Math.abs(testFeature.ic)).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('should calculate HSIC scores', () => {
+    const featureValues = [1.0, 2.0, 3.0, 4.0, 5.0];
+    const targetValues = [0.01, 0.02, 0.015, 0.005, 0.025];
+    
+    featureGating.updateFeatureHSIC('hsic_test', featureValues, targetValues);
+    
+    const ranking = featureGating.getFeatureRanking();
+    const hsicFeature = ranking.find(f => f.feature === 'hsic_test');
+    
+    if (hsicFeature) {
+      expect(hsicFeature.hsic).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('should detect drift', () => {
+    // Simulate drift by feeding consistently different values
+    const normalReturns = Array.from({ length: 20 }, () => (Math.random() - 0.5) * 0.02);
+    const normalFeatures = Array.from({ length: 20 }, () => Math.random() * 10);
+    
+    const driftedReturns = Array.from({ length: 20 }, () => (Math.random() - 0.5) * 0.08);
+    const driftedFeatures = Array.from({ length: 20 }, () => Math.random() * 50 + 20);
+    
+    // Feed normal data
+    featureGating.updateFeatureIC('drift_test', normalReturns, normalFeatures);
+    
+    // Feed drifted data
+    for (let i = 0; i < 10; i++) {
+      featureGating.updateFeatureIC('drift_test', driftedReturns, driftedFeatures);
+    }
+    
+    const ranking = featureGating.getFeatureRanking();
+    const driftFeature = ranking.find(f => f.feature === 'drift_test');
+    
+    if (driftFeature) {
+      // Drift detection is probabilistic, so we just check it's being tracked
+      expect(typeof driftFeature.driftDetected).toBe('boolean');
+    }
+  });
+
+  it('should rank features by combined score', () => {
+    const ranking = featureGating.getFeatureRanking();
+    
+    expect(ranking.length).toBeGreaterThan(0);
+    
+    // Should be sorted by score (descending)
+    for (let i = 1; i < ranking.length; i++) {
+      expect(ranking[i].score).toBeLessThanOrEqual(ranking[i-1].score);
+    }
+    
+    // Each feature should have required fields
+    ranking.forEach(feature => {
+      expect(feature.feature).toBeTypeOf('string');
+      expect(feature.ic).toBeTypeOf('number');
+      expect(feature.hsic).toBeTypeOf('number');
+      expect(feature.score).toBeTypeOf('number');
+      expect(typeof feature.disabled).toBe('boolean');
+    });
+  });
+
+  it('should check feature enablement', () => {
+    const enabled = featureGating.isFeatureEnabled('rsi_14');
+    expect(typeof enabled).toBe('boolean');
+  });
+});

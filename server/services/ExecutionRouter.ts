@@ -3,6 +3,8 @@ import { bayesianRouter } from './StrategyRouter.js';
 import { volatilityModels } from './volatility/Models.js';
 import { microstructureFeatures } from './microstructure/Features.js';
 import { riskGuards } from './RiskGuards.js';
+import { executionPlanner } from './execution/Planner.js';
+import { portfolioOptimizer } from './PortfolioOptimizer.js';
 import { logger } from '../utils/logger.js';
 
 interface ExecutionPlan {
@@ -60,7 +62,7 @@ class ExecutionRouter {
       const targetSize = this.calculateSize(signal, volForecast, microData, context);
       
       // Determine execution style based on market conditions
-      const executionStyle = this.chooseExecutionStyle(microData, targetSize);
+      const executionStyle = this.chooseExecutionStyle(microData, targetSize, Math.abs(choice.score) / 0.1);
       
       // Estimate transaction costs
       const estimatedCost = this.estimateCost(targetSize, microData, executionStyle);
@@ -173,23 +175,28 @@ class ExecutionRouter {
     const uncertaintyWidth = Math.max(volForecast.sigmaHAR, volForecast.sigmaGARCH);
     const wStar = context.targetVol || 0.02; // 2% target vol
     
-    // Kelly-lite sizing with uncertainty discount
-    const kellyFraction = Math.min(0.25, sMax * Math.exp(-uncertaintyWidth / wStar));
+    // Uncertainty-scaled sizing: s = s_max * σ(-w/w*)
+    const uncertaintyScale = Math.exp(-uncertaintyWidth / wStar);
+    const uncertaintyScaledSize = sMax * uncertaintyScale;
     
     // Vol targeting adjustment
-    const volTargetScale = wStar / uncertaintyWidth;
+    const volTargetScale = Math.min(2.0, wStar / Math.max(0.001, uncertaintyWidth));
     
     // Microstructure adjustment (reduce size if low liquidity)
     const microScale = microData ? 
       Math.min(1, 1 / (1 + microData.spread_bps / 10)) : 1;
     
-    const finalSize = kellyFraction * volTargetScale * microScale * (signal === 'short' ? -1 : 1);
+    // Apply CVaR budget constraint from portfolio optimizer
+    const cvarBudget = context.cvarBudget || 0.05;
+    const cvarScale = portfolioOptimizer.getCVaRScale(context.symbol || 'BTCUSDT', cvarBudget);
+    
+    const finalSize = uncertaintyScaledSize * volTargetScale * microScale * cvarScale * (signal === 'short' ? -1 : 1);
     
     // Store sizing snapshot
     this.lastSizing = {
       symbol: context.symbol || 'BTCUSDT',
       baseSize: sMax,
-      uncertaintyScale: Math.exp(-uncertaintyWidth / wStar),
+      uncertaintyScale,
       volTargetScale,
       finalSize: Math.abs(finalSize),
       confidence: volForecast.confidence || 0.5,
@@ -199,22 +206,40 @@ class ExecutionRouter {
     return Math.max(-this.maxSize, Math.min(this.maxSize, finalSize));
   }
   
-  private chooseExecutionStyle(microData: any, targetSize: number): ExecutionPlan['executionStyle'] {
-    if (!microData) return 'immediate';
-    
-    const sizeUsd = Math.abs(targetSize * 45000);
-    
-    // Large orders need careful execution
-    if (sizeUsd > 50000) {
-      return microData.micro_vol > 0.01 ? 'vwap' : 'twap';
+  private chooseExecutionStyle(microData: any, targetSize: number, urgency: number): ExecutionPlan['executionStyle'] {
+    try {
+      const marketConditions = {
+        spread_bps: microData?.spread_bps || 10,
+        depth_score: microData?.depth_score || 0.5,
+        micro_vol: microData?.micro_vol || 0.005,
+        volatility_forecast: microData?.volatility_forecast || 0.02
+      };
+      
+      const plan = executionPlanner.planExecution(
+        'BTCUSDT',
+        Math.abs(targetSize),
+        urgency,
+        marketConditions
+      );
+      
+      return plan.style;
+    } catch (error) {
+      logger.warn('Execution planner error, using fallback:', error);
+      
+      const sizeUsd = Math.abs(targetSize * 45000);
+      
+      // Large orders need careful execution
+      if (sizeUsd > 50000) {
+        return microData?.micro_vol > 0.01 ? 'vwap' : 'twap';
+      }
+      
+      // High urgency or good liquidity
+      if (urgency > 0.7 && microData?.spread_bps < 5) {
+        return 'immediate';
+      }
+      
+      return 'pov'; // Participation of volume
     }
-    
-    // High urgency or good liquidity
-    if (microData.spread_bps < 5 && microData.obi < 0.3) {
-      return 'immediate';
-    }
-    
-    return 'pov'; // Participation of volume
   }
   
   private estimateCost(targetSize: number, microData: any, style: string): number {

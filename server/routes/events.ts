@@ -76,3 +76,38 @@ router.post('/ingest', async (req, res) => {
 });
 
 export default router;
+import express from 'express';
+import { eventsService } from '../services/events.js';
+import { logger } from '../utils/logger.js';
+
+const router = express.Router();
+
+router.get('/embeddings', (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 50;
+    const embeddings = eventsService.getEmbeddings(limit);
+    res.json(embeddings);
+  } catch (error) {
+    logger.error('Error getting event embeddings:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: String(error)
+    });
+  }
+});
+
+router.get('/summary', (req, res) => {
+  try {
+    const hours = parseInt(req.query.hours as string) || 24;
+    const summary = eventsService.getEventSummary(hours);
+    res.json(summary);
+  } catch (error) {
+    logger.error('Error getting event summary:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: String(error)
+    });
+  }
+});
+
+export default router;

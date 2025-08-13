@@ -185,12 +185,18 @@ import microstructureRoutes from './routes/microstructure.js';
 import volRoutes from './routes/vol.js';
 import routerRoutes from './routes/router.js';
 import l2Routes from './routes/l2.js';
-import venueRoutes from './routes/venues.js';
+import venuesRouter from './routes/venues.js';
 import { microstructureRouter } from './routes/microstructure.js';
 import { volRouter } from './routes/vol.js';
 import { optionsRouter } from './routes/options.js';
 import { routerRouter } from './routes/router.js';
 import { execRoutes } from './routes/exec.js';
+import execRouter from './routes/exec.js';
+import portfolioRouter from './routes/portfolio.js';
+import promotionRouter from './routes/promotion.js';
+import cfRouter from './routes/counterfactuals.js';
+import metaRouter from './routes/meta.js';
+import eventsRouter from './routes/events.js';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Development bypass function
@@ -1947,10 +1953,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/vol', volRoutes);
   app.use('/api/options', optionsRoutes);
   app.use('/api/l2', l2Routes);
-  app.use('/api/venues', venueRoutes);
+  app.use('/api/venues', venuesRouter);
   app.use('/api/exec', execRoutes);
-  app.use('/api/portfolio', portfolioRoutes);
-  app.use('/api/promotion', promotionRoutes);
+  app.use('/api/portfolio', portfolioRouter);
+  app.use('/api/promotion', promotionRouter);
   app.use('/api/report', reportRoutes);
 
   // Assuming errorRoutes is defined and imported elsewhere if it's intended to be used.
@@ -1985,7 +1991,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/report', reportRoutes);
   app.use('/api/router', routerRoutes);
   app.use('/api/l2', l2Routes);
-  app.use('/api/venues', venueRoutes);
+  app.use('/api/venues', venuesRouter);
 
   // Metrics endpoint
   app.get('/api/metrics', metricsHandler);

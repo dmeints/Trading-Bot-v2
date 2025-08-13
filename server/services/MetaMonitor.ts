@@ -1,4 +1,3 @@
-
 import { logger } from '../utils/logger.js';
 
 export interface QualityMetrics {
@@ -26,6 +25,15 @@ interface PredictionRecord {
   confidence: number;
   actualOutcome: number;
   regime: string;
+}
+
+interface CalibrationMetrics {
+  brier: number;
+  ece: number; // Expected Calibration Error
+  reliability: number;
+  resolution: number;
+  sharpness: number;
+  reliabilityDiagram: { bin: number; frequency: number; accuracy: number; count: number }[];
 }
 
 export class MetaMonitor {
@@ -58,7 +66,7 @@ export class MetaMonitor {
     }
 
     this.tradePnL.push(outcome);
-    
+
     // Mock benchmark returns
     this.benchmarkReturns.hold.push(0.0001); // Modest positive return for hold
     this.benchmarkReturns.vwap.push(0.00005); // Small execution alpha for VWAP
@@ -73,7 +81,7 @@ export class MetaMonitor {
 
   getQuality(): QualityMetrics {
     const completePredictions = this.predictions.filter(p => p.actualOutcome !== 0);
-    
+
     const brierScore = this.computeBrierScore(completePredictions);
     const regretVsHold = this.computeRegret(this.tradePnL, this.benchmarkReturns.hold);
     const regretVsVWAP = this.computeRegret(this.tradePnL, this.benchmarkReturns.vwap);
@@ -132,7 +140,7 @@ export class MetaMonitor {
     };
 
     this.lastNudges = nudges;
-    
+
     logger.info(`[MetaMonitor] Generated nudges: router=${routerPriorDelta.toFixed(4)}, sizing=${sizingCapDelta.toFixed(4)}, reason=${reason}`);
 
     return nudges;
@@ -185,49 +193,94 @@ export class MetaMonitor {
     return Math.max(0, cvar - expectedCVaR);
   }
 
-  private computeCalibrationMetrics(predictions: PredictionRecord[]): { calibration: number; reliability: number; sharpness: number } {
+  private computeCalibrationMetrics(predictions: PredictionRecord[]): CalibrationMetrics {
     if (predictions.length < 10) {
-      return { calibration: 0.5, reliability: 0.5, sharpness: 0.5 };
+      return { 
+        brier: 1.0, 
+        ece: 1.0,
+        reliability: 0, 
+        resolution: 0, 
+        sharpness: 0,
+        reliabilityDiagram: []
+      };
     }
 
-    // Reliability diagram: bin predictions by confidence and check actual frequency
-    const bins = 5;
-    const binSize = 1.0 / bins;
-    const binCounts = new Array(bins).fill(0);
-    const binCorrect = new Array(bins).fill(0);
+    // Calculate Brier Score
+    const brierScore = predictions.reduce((acc, pred) => {
+      const outcome = pred.actualOutcome > 0 ? 1 : 0;
+      const forecastProb = Math.max(0, Math.min(1, pred.confidence));
+      return acc + Math.pow(forecastProb - outcome, 2);
+    }, 0) / predictions.length;
 
-    for (const pred of predictions) {
-      const binIndex = Math.min(bins - 1, Math.floor(pred.confidence / binSize));
-      binCounts[binIndex]++;
-      if (pred.actualOutcome > 0) {
-        binCorrect[binIndex]++;
+    // Create reliability diagram (10 bins)
+    const numBins = 10;
+    const bins = Array.from({ length: numBins }, (_, i) => ({
+      bin: i,
+      predictions: [] as PredictionRecord[],
+      frequency: 0,
+      accuracy: 0,
+      count: 0
+    }));
+
+    // Assign predictions to bins
+    predictions.forEach(pred => {
+      const binIndex = Math.min(numBins - 1, Math.floor(pred.confidence * numBins));
+      bins[binIndex].predictions.push(pred);
+    });
+
+    // Calculate bin statistics
+    bins.forEach(bin => {
+      if (bin.predictions.length > 0) {
+        bin.count = bin.predictions.length;
+        bin.frequency = bin.predictions.reduce((acc, pred) => acc + pred.confidence, 0) / bin.count;
+        bin.accuracy = bin.predictions.reduce((acc, pred) => acc + (pred.actualOutcome > 0 ? 1 : 0), 0) / bin.count;
       }
-    }
+    });
 
-    // Compute reliability (weighted average of |forecast_prob - observed_freq|)
-    let reliabilitySum = 0;
-    let totalWeight = 0;
-    for (let i = 0; i < bins; i++) {
-      if (binCounts[i] > 0) {
-        const forecastProb = (i + 0.5) * binSize;
-        const observedFreq = binCorrect[i] / binCounts[i];
-        const weight = binCounts[i] / predictions.length;
-        reliabilitySum += weight * Math.abs(forecastProb - observedFreq);
-        totalWeight += weight;
+    // Calculate Expected Calibration Error (ECE)
+    const ece = bins.reduce((acc, bin) => {
+      if (bin.count > 0) {
+        const weight = bin.count / predictions.length;
+        return acc + weight * Math.abs(bin.frequency - bin.accuracy);
       }
-    }
-    const reliability = totalWeight > 0 ? 1 - (reliabilitySum / totalWeight) : 0.5;
-
-    // Sharpness: how often predictions are close to 0 or 1 (confident)
-    const sharpnessSum = predictions.reduce((sum, pred) => {
-      return sum + Math.max(Math.abs(pred.confidence - 0.5) - 0.3, 0);
+      return acc;
     }, 0);
-    const sharpness = sharpnessSum / predictions.length;
 
-    // Overall calibration combines reliability and sharpness
-    const calibration = 0.7 * reliability + 0.3 * sharpness;
+    // Calculate reliability, resolution, and sharpness
+    const overallAccuracy = predictions.reduce((acc, pred) => acc + (pred.actualOutcome > 0 ? 1 : 0), 0) / predictions.length;
 
-    return { calibration, reliability, sharpness };
+    let reliability = 0;
+    let resolution = 0;
+
+    bins.forEach(bin => {
+      if (bin.count > 0) {
+        const weight = bin.count / predictions.length;
+        reliability += weight * Math.pow(bin.frequency - bin.accuracy, 2);
+        resolution += weight * Math.pow(bin.accuracy - overallAccuracy, 2);
+      }
+    });
+
+    const sharpness = predictions.reduce((acc, pred) => {
+      return acc + Math.pow(pred.confidence - overallAccuracy, 2);
+    }, 0) / predictions.length;
+
+    const reliabilityDiagram = bins
+      .filter(bin => bin.count > 0)
+      .map(bin => ({
+        bin: bin.bin,
+        frequency: bin.frequency,
+        accuracy: bin.accuracy,
+        count: bin.count
+      }));
+
+    return {
+      brier: brierScore,
+      ece,
+      reliability,
+      resolution,
+      sharpness,
+      reliabilityDiagram
+    };
   }
 
   // Simulate some data for testing
@@ -236,14 +289,14 @@ export class MetaMonitor {
       const prediction = Math.random();
       const confidence = 0.3 + Math.random() * 0.4; // Between 0.3 and 0.7
       const regime = ['bull', 'bear', 'sideways'][Math.floor(Math.random() * 3)];
-      
+
       this.recordPrediction(prediction, confidence, regime);
-      
+
       // Mock outcome that's somewhat correlated with prediction
       const outcome = prediction > 0.5 ? 
         (0.001 + Math.random() * 0.005) : 
         (-0.005 + Math.random() * 0.005);
-      
+
       this.updateOutcome(outcome);
     }
   }

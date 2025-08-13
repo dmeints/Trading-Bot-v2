@@ -15,6 +15,8 @@ interface RiskState {
   isBlocked: boolean;
   blockReason?: string;
   lastReset: number;
+  currentDrawdown?: number; // Added for clarity in state
+  maxDrawdown?: number; // Added for clarity in state
 }
 
 class RiskGuards {
@@ -92,7 +94,7 @@ class RiskGuards {
       const timeSinceBreach = (Date.now() - this.state.lastReset) / (1000 * 60 * 60);
       return {
         allowed: false,
-        reason: `Trading halted due to drawdown breach: ${(this.state.currentEquity / this.state.peakEquity - 1) * 100).toFixed(2)}% (reset in ${(24 - timeSinceBreach).toFixed(1)}h)`
+        reason: `Trading halted due to drawdown breach: ${((this.state.currentEquity / this.state.peakEquity) - 1) * 100).toFixed(2)}% (reset in ${(24 - timeSinceBreach).toFixed(1)}h)`
       };
     }
 
@@ -116,7 +118,7 @@ class RiskGuards {
       this.state.currentDrawdown = Math.max(0, drawdown);
 
       // Update max drawdown
-      this.state.maxDrawdown = Math.max(this.state.maxDrawdown, this.state.currentDrawdown);
+      this.state.maxDrawdown = Math.max(this.state.maxDrawdown ?? 0, this.state.currentDrawdown);
 
       // Check for drawdown breach
       if (this.state.currentDrawdown > this.MAX_DRAWDOWN_PCT && !this.state.isBlocked) {

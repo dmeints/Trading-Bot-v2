@@ -28,7 +28,9 @@
     "start:logged": "node server/index.js 2>&1 | tee -a logs/app.log",
     "triage": "node scripts/triage.js",
     "test:contract": "bash scripts/start_and_test.sh",
-    "ready:check": "node server/bootstrap/dbReady.ts"
+    "ready:check": "node server/bootstrap/dbReady.ts",
+    "troubleshoot": "node scripts/troubleshoot.js",
+    "bundle:release": "node scripts/bundle-release.js"
   },
   "dependencies": {
     "@axe-core/playwright": "^4.10.2",

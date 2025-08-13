@@ -163,7 +163,7 @@ class RiskGuards {
       this.state.peakEquity = newEquity;
     }
 
-    // Check drawdown
+    // Calculate current drawdown
     const drawdown = (this.state.peakEquity - this.state.currentEquity) / this.state.peakEquity;
     this.state.currentDrawdown = Math.max(0, drawdown);
 

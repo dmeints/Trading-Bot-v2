@@ -1,192 +1,122 @@
-tag. Include all necessary functions and modifications based on the intention."
-The edited snippet *is* runnable on its own as a module exporting a router. The issue is that it omits other functionalities that were in the original file. My approach of re-integrating them under the new router structure is the way to make it "complete" in the context of the original file's functionality.
-
-The original file was a module that *registered* routes. The edited snippet is a module that *exports* routes. This is a fundamental structural change.
-
-The most direct interpretation of "combine the changes from the edited snippet into the original code" is that the edited snippet's content defines the *new* way routes are handled. The original file's `registerMarketRoutes` function is completely replaced by the structure shown in the edited snippet.
-
-I will proceed with the structure I outlined above, which integrates all original routes into the new router definition.<replit_final_file>
 import { Router } from 'express';
-import { binanceConnector } from '../connectors/binance.js';
+import { z } from 'zod';
 import { logger } from '../utils/logger.js';
-import { db } from '../db.js';
-import { marketBars } from '../../shared/schema.js';
 
 const router = Router();
 
-let lastOHLCVSync = new Date().toISOString();
+// Market data schema
+const MarketDataSchema = z.object({
+  symbol: z.string().min(1),
+  timeframe: z.string().optional().default('1h'),
+  limit: z.number().optional().default(100)
+});
 
-export function getLastOHLCVSync() {
-  return lastOHLCVSync;
-}
-
-// Map Binance kline data to market_bars format
-function mapKlineToMarketBar(kline: any[], symbol: string, timeframe: string) {
-  const datasetId = `binance_${symbol}_${timeframe}_${Date.now()}`;
-
-  return {
-    symbol,
-    timeframe,
-    timestamp: new Date(kline[0]),
-    open: String(kline[1]),
-    high: String(kline[2]),
-    low: String(kline[3]),
-    close: String(kline[4]),
-    volume: String(kline[5]),
-    provider: 'binance',
-    datasetId,
-    provenance: {
-      provider: 'binance',
-      endpoint: '/klines',
-      fetchedAt: new Date().toISOString(),
-      quotaCost: 1,
-      interval: timeframe,
-    },
-  };
-}
-
-router.get('/ohlcv', async (req, res) => {
+// Get market data
+router.get('/data/:symbol', async (req, res) => {
   try {
-    const { symbol = 'BTCUSDT', timeframe = '1m', limit = 100 } = req.query;
+    const { symbol } = req.params;
+    const { timeframe = '1h', limit = 100 } = req.query;
 
-    logger.info(`Fetching OHLCV for ${symbol} ${timeframe} limit=${limit}`);
-
-    // Fetch from Binance
-    const bars = await binanceConnector.fetchKlines(
-      symbol as string,
-      timeframe as '1m' | '5m' | '1h' | '1d',
-      parseInt(limit as string)
-    );
-
-    // Store to database
-    if (bars.length > 0) {
-      await binanceConnector.storeMarketBars(bars);
-      lastOHLCVSync = new Date().toISOString();
-      logger.info(`Stored ${bars.length} bars to database`);
-    }
-
-    // Return data in expected format
-    res.json({
-      success: true,
-      source: 'binance',
-      data: bars.map(bar => ({
-        timestamp: bar.timestamp.getTime(),
-        open: parseFloat(bar.open),
-        high: parseFloat(bar.high),
-        low: parseFloat(bar.low),
-        close: parseFloat(bar.close),
-        volume: parseFloat(bar.volume)
-      }))
+    const validation = MarketDataSchema.safeParse({
+      symbol,
+      timeframe,
+      limit: Number(limit)
     });
 
-  } catch (error) {
-    logger.error('OHLCV fetch error:', error);
+    if (!validation.success) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid parameters',
+        details: validation.error.errors
+      });
+    }
+
+    // Mock market data response
+    const marketData = {
+      symbol: validation.data.symbol,
+      timeframe: validation.data.timeframe,
+      data: Array.from({ length: validation.data.limit }, (_, i) => ({
+        timestamp: Date.now() - (i * 3600000),
+        open: 50000 + Math.random() * 1000,
+        high: 50500 + Math.random() * 1000,
+        low: 49500 + Math.random() * 1000,
+        close: 50000 + Math.random() * 1000,
+        volume: Math.random() * 1000000
+      }))
+    };
+
+    res.json({
+      success: true,
+      data: marketData
+    });
+
+  } catch (error: any) {
+    logger.error('[MarketRoutes] Error fetching market data', { error: error.message });
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch OHLCV data',
-      message: error instanceof Error ? error.message : 'Unknown error'
+      error: 'Failed to fetch market data'
     });
   }
 });
 
-// Market event templates for simulation
-router.get('/event-templates', async (req, res) => {
+// Get market overview
+router.get('/overview', async (req, res) => {
   try {
-    const templates = [
-      {
-        id: 'fed_rate_decision',
-        name: 'Federal Reserve Rate Decision',
-        description: 'Interest rate announcement causing market volatility',
-        impact: 'high',
-        duration: '2-4 hours',
-        priceEffect: { min: -5, max: 8 }
-      },
-      {
-        id: 'btc_halving',
-        name: 'Bitcoin Halving Event',
-        description: 'Reduction in mining rewards affecting supply',
-        impact: 'extreme',
-        duration: '1-3 months',
-        priceEffect: { min: 10, max: 50 }
-      },
-      {
-        id: 'regulatory_news',
-        name: 'Regulatory Announcement',
-        description: 'Government crypto regulation updates',
-        impact: 'medium',
-        duration: '1-2 days',
-        priceEffect: { min: -10, max: 5 }
-      },
-      {
-        id: 'whale_movement',
-        name: 'Large Wallet Transfer',
-        description: 'Significant cryptocurrency movement detected',
-        impact: 'medium',
-        duration: '30 minutes - 2 hours',
-        priceEffect: { min: -3, max: 2 }
-      },
-      {
-        id: 'exchange_hack',
-        name: 'Exchange Security Incident',
-        description: 'Major exchange reporting security breach',
-        impact: 'high',
-        duration: '1-7 days',
-        priceEffect: { min: -15, max: -2 }
-      }
-    ];
-
-    res.json({ success: true, data: templates, timestamp: new Date().toISOString() });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch event templates' });
-  }
-});
-
-// Order book depth data
-router.get('/depth/:symbol', async (req, res) => {
-  try {
-    const symbol = req.params.symbol || 'BTCUSDT';
-
-    // Get current price from Binance
-    const candles = await binanceConnector.fetchKlines(symbol as string, '1m', 1);
-    const currentPrice = candles[0]?.close || 50000;
-
-    // Generate realistic order book depth
-    const bids = [];
-    const asks = [];
-
-    // Generate bids (below current price)
-    for (let i = 0; i < 20; i++) {
-      const priceLevel = currentPrice * (1 - (i + 1) * 0.001);
-      const size = Math.random() * 10 + 1;
-      bids.push({
-        price: priceLevel,
-        size,
-      });
-    }
-
-    // Generate asks (above current price)
-    for (let i = 0; i < 20; i++) {
-      const priceLevel = currentPrice * (1 + (i + 1) * 0.001);
-      const size = Math.random() * 10 + 1;
-      asks.push({
-        price: priceLevel,
-        size,
-      });
-    }
+    const overview = {
+      totalMarketCap: 2500000000000,
+      btcDominance: 42.5,
+      ethDominance: 18.2,
+      fearGreedIndex: 75,
+      activeTraders: 45230,
+      dailyVolume: 125000000000
+    };
 
     res.json({
       success: true,
-      data: {
-        symbol,
-        bids,
-        asks,
-        timestamp: new Date().toISOString()
-      }
+      data: overview
     });
-  } catch (error) {
-    logger.error('Depth fetch error:', error);
-    res.status(500).json({ error: 'Failed to fetch market depth' });
+
+  } catch (error: any) {
+    logger.error('[MarketRoutes] Error fetching market overview', { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch market overview'
+    });
   }
 });
 
-export default router;
+// Get top movers
+router.get('/movers', async (req, res) => {
+  try {
+    const movers = {
+      gainers: [
+        { symbol: 'BTC', change: 5.2, price: 52000 },
+        { symbol: 'ETH', change: 3.8, price: 3200 },
+        { symbol: 'SOL', change: 7.1, price: 150 }
+      ],
+      losers: [
+        { symbol: 'ADA', change: -2.3, price: 0.45 },
+        { symbol: 'DOT', change: -1.8, price: 7.2 },
+        { symbol: 'LINK', change: -3.1, price: 15.8 }
+      ]
+    };
+
+    res.json({
+      success: true,
+      data: movers
+    });
+
+  } catch (error: any) {
+    logger.error('[MarketRoutes] Error fetching market movers', { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch market movers'
+    });
+  }
+});
+
+export function registerMarketRoutes(app: any) {
+  app.use('/api/market', router);
+}
+
+export { router as marketRoutes };

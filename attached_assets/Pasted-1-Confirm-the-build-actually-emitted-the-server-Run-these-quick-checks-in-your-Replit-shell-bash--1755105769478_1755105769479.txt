@@ -1,0 +1,136 @@
+1) Confirm the build actually emitted the server
+Run these quick checks in your Replit shell:
+
+bash
+Copy
+Edit
+# verify dist exists and the entrypoint is there
+ls -l dist/server/index.js
+
+# sanity on ESM/NodeNext relative imports
+grep -R "from '\.\./" server | grep -v "\.js'" | head -n 20 || echo "no missing .js imports found"
+If index.js is missing or the grep prints lines, fix those imports (add .js on relative server imports) and rebuild.
+
+2) Add the safe defaults env file (copy-paste)
+Create .env.example at the repo root:
+
+ini
+Copy
+Edit
+NODE_ENV=development
+PORT=5000
+DB_URL=postgres://user:pass@localhost:5432/skippy
+MAX_NOTIONAL=250000
+SYMBOL_NOTIONAL_CAP=100000
+# Optional soft toggles
+EXECUTION_ROUTER_ENABLED=true
+STRATEGY_ROUTER_ENABLED=true
+DATA_QUALITY_STRICT=true
+(Keep your real secrets in your Replit env panel; this example just lets others boot dev stubs.)
+
+3) Run the full build & tests (you posted the commands — here’s the exact sequence)
+bash
+Copy
+Edit
+npm ci
+npm run type-check
+npm run build
+npm test
+npm start & disown
+If type-check/build fails, it’s almost always a missing .js extension or a server-only import pulled from client code. Fix and rerun.
+
+4) Hit the APIs and capture a proof bundle
+Run this block; it saves outputs to a file so we can review together:
+
+bash
+Copy
+Edit
+sleep 3
+{
+  echo "=== /api/health ==="
+  curl -s localhost:5000/api/health | jq
+
+  echo "=== /api/budget/status ==="
+  curl -s localhost:5000/api/budget/status | jq
+
+  echo "=== /api/deploy/status ==="
+  curl -s localhost:5000/api/deploy/status | jq
+
+  echo "=== /api/data-quality/stats ==="
+  curl -s localhost:5000/api/data-quality/stats | jq
+
+  echo "=== /api/features/parity ==="
+  curl -s localhost:5000/api/features/parity | jq
+
+  echo "=== /api/audit/latest?limit=1 ==="
+  curl -s "localhost:5000/api/audit/latest?limit=1" | jq
+
+  echo "=== /metrics (first 20 lines) ==="
+  curl -s localhost:5000/metrics | head -20
+} | tee boot_smoke_proof.txt
+5) If any endpoint 404/500s, here’s the fastest fix map
+/api/health fails → check server/routes.ts mounts, and that priceStream, storage, and health handler are imported with .js.
+
+/api/budget/status fails → ensure server/services/Budgeter.ts is exported and the route file is registered in routes.ts.
+
+/api/deploy/status fails → verify BlueGreen.ts export + route registration.
+
+/api/data-quality/stats fails → make sure DataQuality.ts is wired into both market fetch and the route.
+
+/api/features/parity fails → confirm featureStore/index.ts exports parity() and the route is mounted.
+
+/api/audit/latest fails → check middleware/provenance.ts is used in exec/plan routes and shared/schema.ts includes the audit table.
+
+/metrics empty → ensure /metrics route is added and counters (router_decisions_total, exec_blocked_total, etc.) are incremented in code paths.
+
+6) Quick DB hardening (include in this patch if not already)
+Create an index migration (or Drizzle migration) with:
+
+market_bars (symbol, timeframe, timestamp)
+
+l2_logs (venue, symbol, seq)
+
+audits (policyId, ts)
+
+7) Next 30 minutes: prove the “brain” is alive
+If the smoke checks are green, run these to show behavior end-to-end:
+
+bash
+Copy
+Edit
+# Router choose / update / snapshot
+curl -s -X POST localhost:5000/api/router/choose -H 'Content-Type: application/json' \
+  -d '{"context":{"regime":"bull","sigmaHAR":0.02,"obi":0.2}}' | jq
+curl -s -X POST localhost:5000/api/router/update -H 'Content-Type: application/json' \
+  -d '{"policyId":"p_sma","reward":0.004,"context":{"regime":"bull"}}' | jq
+curl -s localhost:5000/api/router/snapshot | jq
+
+# Microstructure / Vol / Options (seed a small chain)
+curl -s localhost:5000/api/microstructure/BTCUSDT | jq
+curl -s 'localhost:5000/api/vol/forecast/BTCUSDT?h=60' | jq
+curl -s -X POST localhost:5000/api/options/chain/BTCUSDT -H 'Content-Type: application/json' \
+  -d '{"chain":[{"k":0.9,"tenor":"7d","type":"call","iv":0.6},{"k":1.1,"tenor":"7d","type":"put","iv":0.7}]}' | jq
+curl -s localhost:5000/api/options/smile/BTCUSDT | jq
+
+# L2 / Venue score / Execution simulate
+curl -s localhost:5000/api/l2/binance/BTCUSDT | jq
+curl -s -X POST localhost:5000/api/venues/score -H 'Content-Type: application/json' \
+  -d '{"symbol":"BTCUSDT","size":0.02}' | jq
+curl -s -X POST localhost:5000/api/exec/simulate -H 'Content-Type: application/json' \
+  -d '{"symbol":"BTCUSDT","size":0.02}' | jq
+
+# Portfolio / Promotion / Reports
+curl -s -X POST localhost:5000/api/portfolio/optimize -H 'Content-Type: application/json' \
+  -d '{"symbols":["BTCUSDT","ETHUSDT"],"cvarBudget":0.05,"volTarget":0.02}' | jq
+curl -s localhost:5000/api/promotion/status | jq
+curl -s 'localhost:5000/api/report/alpha-pnl?window=7d' | jq
+curl -s 'localhost:5000/api/report/risk?window=7d' | jq
+8) What else to layer into THIS patch (so we don’t revisit):
+.env.example (above) committed to repo.
+
+CI script that runs npm ci, npm run type-check, npm run build, npm test on PRs.
+
+Mock providers activate automatically when API keys are missing (so tests don’t hang).
+
+Dev guard on dangerous endpoints (chaos inject, model promote/rollback, flags) — allow only in NODE_ENV=development.
+

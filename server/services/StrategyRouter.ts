@@ -360,3 +360,210 @@ class StrategyRouter {
 }
 
 export const strategyRouter = new StrategyRouter();
+// Bayesian Thompson Sampling Strategy Router
+import { randomNormal } from 'crypto';
+
+interface RouterContext {
+  regime?: string;
+  sigmaHAR?: number;
+  sigmaGARCH?: number;
+  obi?: number;
+  ti?: number;
+  spread_bps?: number;
+  micro_vol?: number;
+  rr25?: number;
+  fly25?: number;
+  skew_z?: number;
+  funding_rate?: number;
+  sentiment?: number;
+  onchain_flow?: number;
+}
+
+interface PolicyChoice {
+  policyId: string;
+  score: number;
+  explorationBonus: number;
+  timestamp: number;
+}
+
+interface PolicyUpdate {
+  policyId: string;
+  reward: number;
+  context: RouterContext;
+  timestamp: number;
+}
+
+interface PolicyStats {
+  policyId: string;
+  meanReward: number;
+  variance: number;
+  count: number;
+  lastUpdate: number;
+}
+
+interface RouterSnapshot {
+  lastChoice: PolicyChoice | null;
+  sampledScores: Record<string, number>;
+  featureVector: number[];
+  timestamp: number;
+}
+
+class BayesianThompsonRouter {
+  private policies = new Map<string, PolicyStats>();
+  private lastChoice: PolicyChoice | null = null;
+  private lastFeatureVector: number[] = [];
+  private lastSampledScores: Record<string, number> = {};
+  
+  private readonly DEFAULT_POLICIES = ['p_sma', 'p_ema', 'p_rsi', 'p_mean_revert', 'p_momentum'];
+  private readonly PRIOR_MEAN = 0.0;
+  private readonly PRIOR_VAR = 0.1;
+  private readonly MIN_VARIANCE = 0.001;
+
+  constructor() {
+    // Initialize default policies
+    for (const policyId of this.DEFAULT_POLICIES) {
+      this.policies.set(policyId, {
+        policyId,
+        meanReward: this.PRIOR_MEAN,
+        variance: this.PRIOR_VAR,
+        count: 0,
+        lastUpdate: 0
+      });
+    }
+  }
+
+  choose(context: RouterContext): PolicyChoice {
+    const featureVector = this.contextToFeatures(context);
+    this.lastFeatureVector = featureVector;
+    
+    const scores: Record<string, number> = {};
+    let bestPolicy = this.DEFAULT_POLICIES[0];
+    let bestScore = -Infinity;
+    
+    // Thompson sampling: sample from posterior for each policy
+    for (const [policyId, stats] of this.policies) {
+      const sampledScore = this.samplePosterior(stats, featureVector);
+      scores[policyId] = sampledScore;
+      
+      if (sampledScore > bestScore) {
+        bestScore = sampledScore;
+        bestPolicy = policyId;
+      }
+    }
+    
+    this.lastSampledScores = scores;
+    
+    // Calculate exploration bonus (uncertainty)
+    const chosenStats = this.policies.get(bestPolicy)!;
+    const explorationBonus = Math.sqrt(chosenStats.variance);
+    
+    const choice: PolicyChoice = {
+      policyId: bestPolicy,
+      score: bestScore,
+      explorationBonus,
+      timestamp: Date.now()
+    };
+    
+    this.lastChoice = choice;
+    return choice;
+  }
+
+  update(update: PolicyUpdate): void {
+    const stats = this.policies.get(update.policyId);
+    if (!stats) {
+      // Add new policy
+      this.policies.set(update.policyId, {
+        policyId: update.policyId,
+        meanReward: update.reward,
+        variance: this.PRIOR_VAR,
+        count: 1,
+        lastUpdate: update.timestamp
+      });
+      return;
+    }
+    
+    // Bayesian update
+    const priorPrec = 1 / stats.variance;
+    const likelihoodPrec = 1 / this.MIN_VARIANCE; // Assume fixed observation noise
+    
+    const posteriorPrec = priorPrec + likelihoodPrec;
+    const posteriorMean = (priorPrec * stats.meanReward + likelihoodPrec * update.reward) / posteriorPrec;
+    const posteriorVar = 1 / posteriorPrec;
+    
+    stats.meanReward = posteriorMean;
+    stats.variance = Math.max(posteriorVar, this.MIN_VARIANCE);
+    stats.count++;
+    stats.lastUpdate = update.timestamp;
+  }
+
+  getSnapshot(): RouterSnapshot {
+    return {
+      lastChoice: this.lastChoice,
+      sampledScores: { ...this.lastSampledScores },
+      featureVector: [...this.lastFeatureVector],
+      timestamp: Date.now()
+    };
+  }
+
+  getAllPolicies(): PolicyStats[] {
+    return Array.from(this.policies.values());
+  }
+
+  private contextToFeatures(context: RouterContext): number[] {
+    // Convert context to feature vector
+    const features: number[] = [];
+    
+    // Regime features (one-hot encoding)
+    features.push(context.regime === 'bull' ? 1 : 0);
+    features.push(context.regime === 'bear' ? 1 : 0);
+    features.push(context.regime === 'sideways' ? 1 : 0);
+    
+    // Volatility features
+    features.push(context.sigmaHAR || 0);
+    features.push(context.sigmaGARCH || 0);
+    
+    // Microstructure features
+    features.push(context.obi || 0);
+    features.push(context.ti || 0);
+    features.push((context.spread_bps || 0) / 100); // Normalize
+    features.push(context.micro_vol || 0);
+    
+    // Options features
+    features.push(context.rr25 || 0);
+    features.push(context.fly25 || 0);
+    features.push(context.skew_z || 0);
+    
+    // Other features
+    features.push(context.funding_rate || 0);
+    features.push((context.sentiment || 0) / 100); // Normalize
+    features.push(context.onchain_flow || 0);
+    
+    return features;
+  }
+
+  private samplePosterior(stats: PolicyStats, features: number[]): number {
+    // Simple linear model: score = mean + feature_effect + noise
+    // In practice, this would be a proper Bayesian linear regression
+    
+    const baseScore = stats.meanReward;
+    
+    // Add feature-based adjustment (simplified)
+    const featureEffect = features.reduce((sum, f, i) => sum + f * 0.1 * Math.sin(i), 0);
+    
+    // Sample from normal distribution
+    const noise = this.sampleNormal(0, Math.sqrt(stats.variance));
+    
+    return baseScore + featureEffect + noise;
+  }
+
+  private sampleNormal(mean: number, std: number): number {
+    // Box-Muller transform
+    const u1 = Math.random();
+    const u2 = Math.random();
+    const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+    return mean + std * z;
+  }
+}
+
+export const strategyRouter = new BayesianThompsonRouter();
+export type { RouterContext, PolicyChoice, PolicyUpdate, RouterSnapshot };

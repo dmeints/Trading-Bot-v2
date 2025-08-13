@@ -186,3 +186,139 @@ class VolatilityModels {
 }
 
 export const volatilityModels = new VolatilityModels();
+// Volatility Models: HAR-RV and GARCH(1,1)
+interface VolForecast {
+  sigmaHAR: number;
+  sigmaGARCH: number;
+  horizon: number;
+  timestamp: number;
+}
+
+interface ReturnData {
+  timestamp: number;
+  return: number;
+  rv: number; // Realized variance
+}
+
+class VolatilityModels {
+  private symbolData = new Map<string, ReturnData[]>();
+  private garchParams = new Map<string, { omega: number; alpha: number; beta: number; sigma2: number }>();
+  
+  private readonly MAX_HISTORY = 1440; // 24 hours of minutes
+
+  addReturn(symbol: string, timestamp: number, price: number, prevPrice: number): void {
+    if (prevPrice <= 0) return;
+    
+    const ret = Math.log(price / prevPrice);
+    const rv = ret * ret; // Squared return as proxy for RV
+    
+    const data = this.getSymbolData(symbol);
+    data.push({ timestamp, return: ret, rv });
+    
+    // Keep only recent data
+    if (data.length > this.MAX_HISTORY) {
+      data.shift();
+    }
+    
+    // Update GARCH parameters
+    this.updateGarch(symbol, ret);
+  }
+
+  forecastVol(symbol: string, horizonMins: number = 60): VolForecast | null {
+    const data = this.symbolData.get(symbol);
+    if (!data || data.length < 50) return null;
+    
+    const sigmaHAR = this.forecastHAR(data, horizonMins);
+    const sigmaGARCH = this.forecastGARCH(symbol, horizonMins);
+    
+    return {
+      sigmaHAR,
+      sigmaGARCH,
+      horizon: horizonMins,
+      timestamp: Date.now()
+    };
+  }
+
+  private getSymbolData(symbol: string): ReturnData[] {
+    if (!this.symbolData.has(symbol)) {
+      this.symbolData.set(symbol, []);
+    }
+    return this.symbolData.get(symbol)!;
+  }
+
+  private forecastHAR(data: ReturnData[], horizonMins: number): number {
+    if (data.length < 22) return 0;
+    
+    // HAR-RV: RV_t = c + β_d * RV_{t-1} + β_w * RV_{t-5:t-1} + β_m * RV_{t-22:t-1}
+    const recent = data.slice(-22);
+    
+    // Daily (last value)
+    const rvDaily = recent[recent.length - 1].rv;
+    
+    // Weekly (last 5 values average)
+    const rvWeekly = recent.slice(-5).reduce((sum, d) => sum + d.rv, 0) / 5;
+    
+    // Monthly (all 22 values average) 
+    const rvMonthly = recent.reduce((sum, d) => sum + d.rv, 0) / recent.length;
+    
+    // Simple HAR coefficients (in practice, these would be estimated)
+    const beta_d = 0.4;
+    const beta_w = 0.3;
+    const beta_m = 0.2;
+    const c = 0.1;
+    
+    const forecastRV = c + beta_d * rvDaily + beta_w * rvWeekly + beta_m * rvMonthly;
+    
+    // Convert to volatility and scale by horizon
+    return Math.sqrt(forecastRV * horizonMins / (24 * 60) * 252);
+  }
+
+  private updateGarch(symbol: string, currentReturn: number): void {
+    if (!this.garchParams.has(symbol)) {
+      // Initialize with typical crypto parameters
+      this.garchParams.set(symbol, {
+        omega: 0.00001,
+        alpha: 0.1,
+        beta: 0.85,
+        sigma2: currentReturn * currentReturn
+      });
+      return;
+    }
+    
+    const params = this.garchParams.get(symbol)!;
+    
+    // GARCH(1,1): σ²_t = ω + α * r²_{t-1} + β * σ²_{t-1}
+    const newSigma2 = params.omega + params.alpha * (currentReturn * currentReturn) + params.beta * params.sigma2;
+    
+    params.sigma2 = Math.max(newSigma2, 0.000001); // Prevent negative variance
+    
+    // Simple online estimation (in practice, use MLE)
+    const decay = 0.99;
+    params.omega *= decay;
+    params.alpha = Math.min(Math.max(params.alpha + 0.0001 * Math.random() - 0.00005, 0.05), 0.3);
+    params.beta = Math.min(Math.max(params.beta + 0.0001 * Math.random() - 0.00005, 0.6), 0.95);
+  }
+
+  private forecastGARCH(symbol: string, horizonMins: number): number {
+    const params = this.garchParams.get(symbol);
+    if (!params) return 0;
+    
+    // Multi-step GARCH forecast (simplified)
+    const steps = Math.max(1, Math.floor(horizonMins / 5)); // 5-min intervals
+    let forecastVar = params.sigma2;
+    
+    // Unconditional variance for long-term forecast
+    const unconditionalVar = params.omega / (1 - params.alpha - params.beta);
+    
+    for (let i = 1; i <= steps; i++) {
+      const weight = Math.pow(params.alpha + params.beta, i - 1);
+      forecastVar = weight * params.sigma2 + (1 - weight) * unconditionalVar;
+    }
+    
+    // Convert to annualized volatility
+    return Math.sqrt(forecastVar * 252 * 24 * 60 / 5); // 5-min intervals to annual
+  }
+}
+
+export const volatilityModels = new VolatilityModels();
+export type { VolForecast };

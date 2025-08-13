@@ -306,3 +306,180 @@ class OptionsSmile {
 }
 
 export const optionsSmile = new OptionsSmile();
+// Options IV Smile: Risk Reversal, Butterfly, Term Slope, Skew Z
+interface OptionQuote {
+  k: number; // Strike ratio (K/S)
+  tenor: string; // e.g., "7d", "30d"
+  type: 'call' | 'put';
+  iv: number; // Implied volatility
+}
+
+interface OptionChain {
+  chain: OptionQuote[];
+  timestamp?: number;
+}
+
+interface SmileMetrics {
+  rr25: number; // 25 delta risk reversal
+  fly25: number; // 25 delta butterfly
+  iv_term_slope: number; // Term structure slope
+  skew_z: number; // Skew z-score
+  timestamp: number;
+}
+
+class OptionsSmile {
+  private chains = new Map<string, OptionChain>();
+  
+  storeChain(symbol: string, chain: OptionQuote[]): void {
+    this.chains.set(symbol, {
+      chain: chain.map(opt => ({
+        ...opt,
+        k: Number(opt.k),
+        iv: Number(opt.iv)
+      })),
+      timestamp: Date.now()
+    });
+  }
+
+  getSmileMetrics(symbol: string): SmileMetrics | null {
+    const chainData = this.chains.get(symbol);
+    if (!chainData || chainData.chain.length === 0) return null;
+
+    const { chain } = chainData;
+    
+    const rr25 = this.calculateRiskReversal(chain);
+    const fly25 = this.calculateButterfly(chain);
+    const iv_term_slope = this.calculateTermSlope(chain);
+    const skew_z = this.calculateSkewZ(chain);
+
+    return {
+      rr25,
+      fly25,
+      iv_term_slope,
+      skew_z,
+      timestamp: Date.now()
+    };
+  }
+
+  private calculateRiskReversal(chain: OptionQuote[]): number {
+    // 25 delta risk reversal = IV(25d call) - IV(25d put)
+    // Approximate 25 delta with strikes around 1.1 (call) and 0.9 (put)
+    
+    const call25d = this.findClosestOption(chain, 1.1, 'call');
+    const put25d = this.findClosestOption(chain, 0.9, 'put');
+    
+    if (!call25d || !put25d) return 0;
+    
+    return call25d.iv - put25d.iv;
+  }
+
+  private calculateButterfly(chain: OptionQuote[]): number {
+    // 25 delta butterfly = (IV(25d call) + IV(25d put)) / 2 - IV(ATM)
+    
+    const call25d = this.findClosestOption(chain, 1.1, 'call');
+    const put25d = this.findClosestOption(chain, 0.9, 'put');
+    const atmOption = this.findClosestOption(chain, 1.0, 'call') || this.findClosestOption(chain, 1.0, 'put');
+    
+    if (!call25d || !put25d || !atmOption) return 0;
+    
+    return (call25d.iv + put25d.iv) / 2 - atmOption.iv;
+  }
+
+  private calculateTermSlope(chain: OptionQuote[]): number {
+    // Term structure slope: IV difference between long and short tenors
+    
+    const shortTenor = chain.filter(opt => this.tenorToDays(opt.tenor) <= 7);
+    const longTenor = chain.filter(opt => this.tenorToDays(opt.tenor) >= 30);
+    
+    if (shortTenor.length === 0 || longTenor.length === 0) return 0;
+    
+    const shortIV = shortTenor.reduce((sum, opt) => sum + opt.iv, 0) / shortTenor.length;
+    const longIV = longTenor.reduce((sum, opt) => sum + opt.iv, 0) / longTenor.length;
+    
+    return longIV - shortIV;
+  }
+
+  private calculateSkewZ(chain: OptionQuote[]): number {
+    // Skew z-score: standardized measure of IV skew
+    
+    if (chain.length < 3) return 0;
+    
+    // Group by tenor, calculate skew for each
+    const tenorGroups = new Map<string, OptionQuote[]>();
+    
+    for (const opt of chain) {
+      if (!tenorGroups.has(opt.tenor)) {
+        tenorGroups.set(opt.tenor, []);
+      }
+      tenorGroups.get(opt.tenor)!.push(opt);
+    }
+    
+    let totalSkew = 0;
+    let count = 0;
+    
+    for (const [tenor, options] of tenorGroups) {
+      if (options.length < 3) continue;
+      
+      // Sort by strike
+      options.sort((a, b) => a.k - b.k);
+      
+      // Simple skew: slope of IV vs log-moneyness
+      const skew = this.calculateIVSlope(options);
+      totalSkew += skew;
+      count++;
+    }
+    
+    if (count === 0) return 0;
+    
+    const avgSkew = totalSkew / count;
+    
+    // Z-score (simplified - in practice, use historical distribution)
+    const historicalMean = -0.1; // Typical negative skew
+    const historicalStd = 0.2;
+    
+    return (avgSkew - historicalMean) / historicalStd;
+  }
+
+  private findClosestOption(chain: OptionQuote[], targetK: number, type: 'call' | 'put'): OptionQuote | null {
+    const filtered = chain.filter(opt => opt.type === type);
+    if (filtered.length === 0) return null;
+    
+    return filtered.reduce((closest, current) => 
+      Math.abs(current.k - targetK) < Math.abs(closest.k - targetK) ? current : closest
+    );
+  }
+
+  private tenorToDays(tenor: string): number {
+    const match = tenor.match(/(\d+)([dw])/);
+    if (!match) return 7; // Default
+    
+    const value = parseInt(match[1]);
+    const unit = match[2];
+    
+    return unit === 'd' ? value : value * 7;
+  }
+
+  private calculateIVSlope(options: OptionQuote[]): number {
+    if (options.length < 2) return 0;
+    
+    // Linear regression of IV vs log(K/S)
+    const n = options.length;
+    let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+    
+    for (const opt of options) {
+      const x = Math.log(opt.k); // log-moneyness
+      const y = opt.iv;
+      
+      sumX += x;
+      sumY += y;
+      sumXY += x * y;
+      sumX2 += x * x;
+    }
+    
+    const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+    return isFinite(slope) ? slope : 0;
+  }
+}
+
+export const optionsSmile = new OptionsSmile();
+export type { OptionQuote, SmileMetrics };

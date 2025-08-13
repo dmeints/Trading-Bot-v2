@@ -295,3 +295,210 @@ class MicrostructureFeatures {
 }
 
 export const microstructureFeatures = new MicrostructureFeatures();
+// Microstructure Features: OBI, Trade Imbalance, Spread, Micro-Vol, Cancel Rate
+import { EventEmitter } from 'events';
+
+interface TradeData {
+  price: number;
+  size: number;
+  side: 'buy' | 'sell';
+  timestamp: number;
+}
+
+interface DepthLevel {
+  price: number;
+  size: number;
+}
+
+interface OrderBookSnapshot {
+  bids: DepthLevel[];
+  asks: DepthLevel[];
+  timestamp: number;
+}
+
+interface MicrostructureSnapshot {
+  symbol: string;
+  obi: number; // Order Book Imbalance
+  ti: number; // Trade Imbalance
+  spread_bps: number; // Spread in basis points
+  micro_vol: number; // Micro volatility (1-5s)
+  cancel_rate: number; // Cancel rate approximation
+  timestamp: number;
+}
+
+class MicrostructureFeatures extends EventEmitter {
+  private symbols = new Map<string, {
+    trades: TradeData[];
+    books: OrderBookSnapshot[];
+    returns: number[];
+    lastPrice: number;
+    lastSnapshot: MicrostructureSnapshot | null;
+  }>();
+
+  private readonly WINDOW_SIZE = 300; // 5 minutes of seconds
+  private readonly TRADE_WINDOW = 100; // Recent trades for TI
+
+  constructor() {
+    super();
+    // Clean old data every minute
+    setInterval(() => this.cleanup(), 60000);
+  }
+
+  addTrade(symbol: string, trade: TradeData): void {
+    const data = this.getSymbolData(symbol);
+    data.trades.push(trade);
+    
+    // Calculate return for micro-vol
+    if (data.lastPrice > 0) {
+      const ret = Math.log(trade.price / data.lastPrice);
+      data.returns.push(ret);
+      if (data.returns.length > this.WINDOW_SIZE) {
+        data.returns.shift();
+      }
+    }
+    data.lastPrice = trade.price;
+
+    // Keep recent trades
+    if (data.trades.length > this.TRADE_WINDOW) {
+      data.trades.shift();
+    }
+  }
+
+  addOrderBook(symbol: string, book: OrderBookSnapshot): void {
+    const data = this.getSymbolData(symbol);
+    data.books.push(book);
+    
+    // Keep recent books
+    if (data.books.length > 20) {
+      data.books.shift();
+    }
+  }
+
+  getSnapshot(symbol: string): MicrostructureSnapshot | null {
+    const data = this.symbols.get(symbol);
+    if (!data || data.books.length === 0) return null;
+
+    const latestBook = data.books[data.books.length - 1];
+    const obi = this.calculateOBI(latestBook);
+    const ti = this.calculateTI(data.trades);
+    const spread_bps = this.calculateSpread(latestBook);
+    const micro_vol = this.calculateMicroVol(data.returns);
+    const cancel_rate = this.calculateCancelRate(data.books);
+
+    const snapshot: MicrostructureSnapshot = {
+      symbol,
+      obi,
+      ti,
+      spread_bps,
+      micro_vol,
+      cancel_rate,
+      timestamp: Date.now()
+    };
+
+    data.lastSnapshot = snapshot;
+    return snapshot;
+  }
+
+  private getSymbolData(symbol: string) {
+    if (!this.symbols.has(symbol)) {
+      this.symbols.set(symbol, {
+        trades: [],
+        books: [],
+        returns: [],
+        lastPrice: 0,
+        lastSnapshot: null
+      });
+    }
+    return this.symbols.get(symbol)!;
+  }
+
+  private calculateOBI(book: OrderBookSnapshot): number {
+    if (book.bids.length === 0 || book.asks.length === 0) return 0;
+    
+    const bidVolume = book.bids.slice(0, 5).reduce((sum, level) => sum + level.size, 0);
+    const askVolume = book.asks.slice(0, 5).reduce((sum, level) => sum + level.size, 0);
+    
+    if (bidVolume + askVolume === 0) return 0;
+    return (bidVolume - askVolume) / (bidVolume + askVolume);
+  }
+
+  private calculateTI(trades: TradeData[]): number {
+    if (trades.length === 0) return 0;
+    
+    const recentTrades = trades.slice(-20); // Last 20 trades
+    let buyVolume = 0;
+    let sellVolume = 0;
+    
+    for (const trade of recentTrades) {
+      if (trade.side === 'buy') {
+        buyVolume += trade.size;
+      } else {
+        sellVolume += trade.size;
+      }
+    }
+    
+    if (buyVolume + sellVolume === 0) return 0;
+    return (buyVolume - sellVolume) / (buyVolume + sellVolume);
+  }
+
+  private calculateSpread(book: OrderBookSnapshot): number {
+    if (book.bids.length === 0 || book.asks.length === 0) return 0;
+    
+    const bestBid = book.bids[0].price;
+    const bestAsk = book.asks[0].price;
+    const midPrice = (bestBid + bestAsk) / 2;
+    
+    if (midPrice === 0) return 0;
+    return ((bestAsk - bestBid) / midPrice) * 10000; // bps
+  }
+
+  private calculateMicroVol(returns: number[]): number {
+    if (returns.length < 2) return 0;
+    
+    // Use last 60 seconds of returns for micro-vol
+    const recentReturns = returns.slice(-60);
+    if (recentReturns.length < 2) return 0;
+    
+    const mean = recentReturns.reduce((sum, r) => sum + r, 0) / recentReturns.length;
+    const variance = recentReturns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / (recentReturns.length - 1);
+    
+    return Math.sqrt(variance * 252 * 24 * 60 * 60); // Annualized
+  }
+
+  private calculateCancelRate(books: OrderBookSnapshot[]): number {
+    if (books.length < 2) return 0;
+    
+    // Approximate cancel rate by order book changes
+    // This is a simplified approximation
+    const recent = books.slice(-10);
+    let changes = 0;
+    
+    for (let i = 1; i < recent.length; i++) {
+      const prev = recent[i - 1];
+      const curr = recent[i];
+      
+      // Count level changes as proxy for cancellations
+      if (prev.bids.length !== curr.bids.length || prev.asks.length !== curr.asks.length) {
+        changes++;
+      }
+    }
+    
+    return recent.length > 1 ? changes / (recent.length - 1) : 0;
+  }
+
+  private cleanup(): void {
+    const cutoff = Date.now() - 5 * 60 * 1000; // 5 minutes ago
+    
+    for (const [symbol, data] of this.symbols.entries()) {
+      data.trades = data.trades.filter(t => t.timestamp > cutoff);
+      data.books = data.books.filter(b => b.timestamp > cutoff);
+      
+      if (data.trades.length === 0 && data.books.length === 0) {
+        this.symbols.delete(symbol);
+      }
+    }
+  }
+}
+
+export const microstructureFeatures = new MicrostructureFeatures();
+export type { MicrostructureSnapshot, TradeData, OrderBookSnapshot };

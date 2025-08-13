@@ -30,7 +30,7 @@ import { insertTradeSchema } from "@shared/schema";
 import { z } from "zod";
 import { analyticsLogger, logTradeEvent, logAIEvent } from "./services/analyticsLogger";
 import { rateLimiters } from "./middleware/rateLimiter";
-import { adminAuth } from "./middleware/adminAuth";
+import { adminAuth } from "./middleware/adminAuth.js";
 import { modelManager } from "./services/modelManager";
 import { tradingWebhookVerifier, marketDataWebhookVerifier, genericWebhookVerifier, captureRawBody, WebhookRequest } from "./middleware/webhookSecurity";
 import { webhookTester } from "./services/webhookTester";
@@ -186,6 +186,11 @@ import volRoutes from './routes/vol.js';
 import routerRoutes from './routes/router.js';
 import l2Routes from './routes/l2.js';
 import venueRoutes from './routes/venues.js';
+import { microstructureRouter } from './routes/microstructure.js';
+import { volRouter } from './routes/vol.js';
+import { optionsRouter } from './routes/options.js';
+import { routerRouter } from './routes/router.js';
+import { execRoutes } from './routes/exec.js';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Development bypass function

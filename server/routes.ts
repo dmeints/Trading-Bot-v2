@@ -164,6 +164,28 @@ import flagsRoutes from './routes/flags.js';
 import routerSnapshotRoutes from './routes/router-snapshot.js';
 import microstructureRoutes from './routes/microstructure.js';
 import volRoutes from './routes/vol.js';
+// Import route modules
+import healthRoutes from './routes/health.js';
+import tradingRoutes from './routes/trading.js';
+import backtestRoutes from './routes/backtestRoutes.js';
+import strategyRouterRoutes from './routes/strategyRouter.js';
+import executionRoutes from './routes/execution.js';
+import portfolioRoutes from './routes/portfolio.js';
+import policyRoutes from './routes/policies.js';
+import auditRoutes from './routes/audit.js';
+import guardsRoutes from './routes/guards.js';
+import provenanceRoutes from './middleware/provenance.js';
+import metricsRoutes from './routes/metrics.js';
+import dataQualityRoutes from './routes/data-quality.js';
+import wsStatusRoutes from './routes/ws-status.js';
+import canaryRoutes from './routes/canary.js';
+import flagsRoutes from './routes/flags.js';
+import routerSnapshotRoutes from './routes/router-snapshot.js';
+import microstructureRoutes from './routes/microstructure.js';
+import volRoutes from './routes/vol.js';
+import router from './routes/router.js';
+import l2 from './routes/l2.js';
+import venues from './routes/venues.js';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Development bypass function
@@ -1919,10 +1941,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Wire strategy router routes
   app.use('/api/health', healthRoutes);
   // Assuming errorRoutes is defined and imported elsewhere if it's intended to be used.
-  // app.use('/api/errors', errorRoutes); 
+  // app.use('/api/errors', errorRoutes);
   app.use('/api/portfolio', portfolioRoutes);
   // Assuming chartDataRoutes is defined and imported elsewhere if it's intended to be used.
-  // app.use('/api/chart-data', chartDataRoutes); 
+  // app.use('/api/chart-data', chartDataRoutes);
   app.use('/api/router', strategyRouterRoutes);
   app.use('/api/events', eventsRoutes);
   app.use('/api/policies', policiesRoutes);
@@ -1949,6 +1971,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/options', optionsRoutes);
   app.use('/api/alpha', alphaRoutes);
   app.use('/api/report', reportRoutes);
+  app.use('/api/router', router);
+  app.use('/api/l2', l2);
+  app.use('/api/venues', venues);
 
   // Metrics endpoint
   app.get('/api/metrics', metricsHandler);

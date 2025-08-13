@@ -1,299 +1,263 @@
+
+/**
+ * Strategy Router - Bayesian Thompson Sampling
+ */
+
 import { logger } from '../utils/logger.js';
 
-// Original Context interface kept for compatibility, but RouterContext is the new standard
-export interface Context {
-  regime?: string;
-  vol?: number;
-  trend?: number;
-  funding?: number;
-  sentiment?: number;
-  eventsEmbedding?: number[];
-}
-
-// New RouterContext with Alpha Pack features
 export interface RouterContext {
-  symbol: string;
-  timestamp: Date;
-  price: number;
-  volume?: number;
-  volatility?: number;
-  features?: any;
-  // Alpha pack features
-  obi?: number;           // Order book imbalance
-  ti?: number;            // Trade imbalance  
-  spread_bps?: number;    // Bid-ask spread
-  micro_vol?: number;     // Micro volatility
-  sigmaHAR?: number;      // HAR-RV forecast
-  sigmaGARCH?: number;    // GARCH forecast
-  rr25?: number;          // 25-delta risk reversal
-  fly25?: number;         // 25-delta butterfly
-  iv_term_slope?: number; // IV term slope
-  skew_z?: number;        // Skew z-score
+  regime?: string;
+  sigmaHAR?: number;
+  sigmaGARCH?: number;
+  obi?: number;
+  ti?: number;
+  spread_bps?: number;
+  micro_vol?: number;
+  rr25?: number;
+  fly25?: number;
+  iv_term_slope?: number;
+  skew_z?: number;
+  funding_rate?: number;
+  sentiment_score?: number;
+  whale_activity?: number;
 }
 
-export interface PolicyPosterior {
-  mean: number;
-  variance: number;
-  alpha: number;  // Beta distribution params for success rate
+export interface PolicyChoice {
+  policyId: string;
+  score: number;
+  explorationBonus: number;
+  confidence: number;
+}
+
+export interface PolicyUpdate {
+  policyId: string;
+  reward: number;
+  context: RouterContext;
+}
+
+interface PolicyStats {
+  alpha: number;
   beta: number;
-  updateCount: number;
+  count: number;
+  sumReward: number;
+  sumRewardSq: number;
 }
 
-export interface ChoiceResult {
-  policyId: string;
-  score: number;
-  explorationBonus: number;
-}
-
-// Placeholder for RouterChoice to align with the provided changes
-export interface RouterChoice {
-  policyId: string;
-  score: number;
-  explorationBonus: number;
-}
-
-export class StrategyRouter {
-  private policies: Map<string, PolicyPosterior> = new Map();
-  private contextWeights: Map<string, number[]> = new Map();
+class StrategyRouter {
+  private policies = new Map<string, PolicyStats>();
+  private lastChoice: PolicyChoice | null = null;
+  private lastContext: RouterContext | null = null;
+  private featureWeights = new Map<string, number>();
 
   constructor() {
-    // Initialize default policies
-    this.initializePolicy('p_sma');
-    this.initializePolicy('p_trend');
-    this.initializePolicy('p_meanrev');
-  }
-
-  private initializePolicy(policyId: string): void {
-    this.policies.set(policyId, {
-      mean: 0.0,
-      variance: 1.0,
-      alpha: 1.0,
-      beta: 1.0,
-      updateCount: 0
-    });
-    // Initialize context weights randomly
-    this.contextWeights.set(policyId, [
-      Math.random() * 0.2 - 0.1, // regime
-      Math.random() * 0.2 - 0.1, // vol
-      Math.random() * 0.2 - 0.1, // trend
-      Math.random() * 0.2 - 0.1, // funding
-      Math.random() * 0.2 - 0.1  // sentiment
-    ]);
-  }
-
-  // Modified choose method to use RouterContext and gather alpha features
-  async choose(baseContext: RouterContext): Promise<RouterChoice> {
-    try {
-      const { symbol } = baseContext;
-
-      // Gather additional context including alpha features
-      const context = await this.gatherContext(baseContext);
-
-      // Sample from posterior for each policy
-      const scores = new Map<string, number>();
-
-      for (const [policyId, posterior] of this.policies.entries()) {
-        const weights = this.contextWeights.get(policyId) || [];
-
-        // Compute expected reward as linear combination of context
-        // Ensure contextVector only uses numeric values from context
-        const contextVector = this.contextToVector(context);
-        
-        const expectedReward = weights.reduce((sum, w, i) => sum + w * (contextVector[i] || 0), 0);
-
-        // Thompson sampling: sample from posterior
-        const sampledMean = this.sampleFromNormal(posterior.mean + expectedReward, Math.sqrt(posterior.variance));
-
-        // Exploration bonus based on uncertainty
-        const explorationBonus = Math.sqrt(posterior.variance) / Math.max(1, posterior.updateCount);
-
-        const score = sampledMean + explorationBonus;
-
-        scores.set(policyId, score);
-
-        logger.info(`[StrategyRouter] Policy ${policyId}: sampledMean=${sampledMean.toFixed(4)}, expReward=${expectedReward.toFixed(4)}, exploration=${explorationBonus.toFixed(4)}, score=${score.toFixed(4)}`);
-      }
-
-      // Find the policy with the highest score
-      let bestPolicy = '';
-      let bestScore = -Infinity;
-      let bestExplorationBonus = 0;
-
-      for (const [policyId, score] of scores.entries()) {
-        if (score > bestScore) {
-          bestScore = score;
-          bestPolicy = policyId;
-          // Retrieve exploration bonus for the best policy (assuming it's stored or re-calculable)
-          const posterior = this.policies.get(policyId);
-          if (posterior) {
-            bestExplorationBonus = Math.sqrt(posterior.variance) / Math.max(1, posterior.updateCount);
-          }
-        }
-      }
-
-      if (!bestPolicy) {
-        // Fallback if no policy is chosen (should not happen with initialization)
-        bestPolicy = 'p_sma';
-        bestScore = 0;
-        bestExplorationBonus = 0;
-        logger.warn(`[StrategyRouter] No policy chosen, defaulting to p_sma.`);
-      }
-
-      logger.info(`[StrategyRouter] Chose policy ${bestPolicy} with score ${bestScore.toFixed(4)}`);
-
-      return {
-        policyId: bestPolicy,
-        score: bestScore,
-        explorationBonus: bestExplorationBonus
-      };
-    } catch (error) {
-      logger.error(`[StrategyRouter] Error in choose method: ${error}`);
-      // Return a default or error choice
-      return { policyId: 'p_sma', score: 0, explorationBonus: 0 };
-    }
-  }
-
-  update(policyId: string, reward: number, context: RouterContext): PolicyPosterior {
-    const posterior = this.policies.get(policyId);
-    if (!posterior) {
-      throw new Error(`Unknown policy: ${policyId}`);
+    // Initialize known policies
+    const defaultPolicies = ['p_sma', 'p_ema', 'p_breakout', 'p_mean_revert', 'p_momentum'];
+    for (const policyId of defaultPolicies) {
+      this.policies.set(policyId, {
+        alpha: 1,
+        beta: 1,
+        count: 0,
+        sumReward: 0,
+        sumRewardSq: 0
+      });
     }
 
-    const contextVector = this.contextToVector(context); // Use the updated context vector
-    const weights = this.contextWeights.get(policyId) || [];
+    // Initialize feature weights
+    this.featureWeights.set('regime_bull', 0.1);
+    this.featureWeights.set('regime_bear', -0.1);
+    this.featureWeights.set('sigmaHAR', -0.2);
+    this.featureWeights.set('obi', 0.3);
+    this.featureWeights.set('spread_bps', -0.1);
+    this.featureWeights.set('rr25', 0.15);
+  }
 
-    // Update posterior using Bayesian learning
-    const priorPrecision = 1.0 / posterior.variance;
-    const likelihood_precision = 1.0; // Assume known noise variance
+  /**
+   * Choose policy using Thompson Sampling with contextual features
+   */
+  choosePolicy(context: RouterContext): PolicyChoice {
+    const featureVector = this.contextToFeatures(context);
+    let bestPolicy = 'p_sma';
+    let bestScore = -Infinity;
+    let bestExploration = 0;
 
-    const newPrecision = priorPrecision + likelihood_precision;
-    const newMean = (priorPrecision * posterior.mean + likelihood_precision * reward) / newPrecision;
-    const newVariance = 1.0 / newPrecision;
+    for (const [policyId, stats] of this.policies) {
+      // Thompson sampling: sample from Beta distribution
+      const sampledMean = this.sampleBeta(stats.alpha, stats.beta);
+      
+      // Add contextual adjustment
+      const contextualScore = this.computeContextualScore(featureVector, policyId);
+      const totalScore = sampledMean + contextualScore;
+      
+      // Exploration bonus based on uncertainty
+      const explorationBonus = Math.sqrt(2 * Math.log(this.getTotalCount()) / Math.max(1, stats.count));
+      const finalScore = totalScore + explorationBonus;
 
-    // Update context weights with simple gradient step
-    const learningRate = 0.01;
-    const prediction = weights.reduce((sum, w, i) => sum + w * (contextVector[i] || 0), 0);
-    const error = reward - prediction;
+      if (finalScore > bestScore) {
+        bestScore = finalScore;
+        bestPolicy = policyId;
+        bestExploration = explorationBonus;
+      }
+    }
 
-    const updatedWeights = weights.map((w, i) => w + learningRate * error * (contextVector[i] || 0));
-    this.contextWeights.set(policyId, updatedWeights);
-
-    // Update Beta parameters for success tracking
-    const newAlpha = posterior.alpha + (reward > 0 ? 1 : 0);
-    const newBeta = posterior.beta + (reward <= 0 ? 1 : 0);
-
-    const updatedPosterior: PolicyPosterior = {
-      mean: newMean,
-      variance: newVariance,
-      alpha: newAlpha,
-      beta: newBeta,
-      updateCount: posterior.updateCount + 1
+    const choice: PolicyChoice = {
+      policyId: bestPolicy,
+      score: bestScore,
+      explorationBonus: bestExploration,
+      confidence: this.getConfidence(bestPolicy)
     };
 
-    this.policies.set(policyId, updatedPosterior);
+    this.lastChoice = choice;
+    this.lastContext = context;
 
-    logger.info(`[StrategyRouter] Updated ${policyId}: mean=${newMean.toFixed(4)}, var=${newVariance.toFixed(4)}, updates=${updatedPosterior.updateCount}`);
+    logger.debug(`[StrategyRouter] Chose ${bestPolicy} with score ${bestScore.toFixed(3)}`);
 
-    return updatedPosterior;
+    return choice;
   }
 
-  getPolicies(): Map<string, PolicyPosterior> {
-    return new Map(this.policies);
-  }
-
-  // Modified contextToVector to handle the extended RouterContext
-  private contextToVector(context: RouterContext): number[] {
-    const baseVector = [
-      this.encodeRegime(context.regime || 'unknown'),
-      context.vol || 0,
-      context.trend || 0,
-      context.funding || 0,
-      context.sentiment || 0,
-      // Alpha pack features
-      context.obi || 0,
-      context.ti || 0,
-      context.spread_bps || 0,
-      context.micro_vol || 0,
-      context.sigmaHAR || 0,
-      context.sigmaGARCH || 0,
-      context.rr25 || 0,
-      context.fly25 || 0,
-      context.iv_term_slope || 0,
-      context.skew_z || 0
-    ];
-
-    // Append events embedding if provided
-    if (context.eventsEmbedding && Array.isArray(context.eventsEmbedding)) {
-      baseVector.push(...context.eventsEmbedding);
+  /**
+   * Update policy performance with observed reward
+   */
+  updatePolicy(update: PolicyUpdate): void {
+    const { policyId, reward, context } = update;
+    
+    if (!this.policies.has(policyId)) {
+      this.policies.set(policyId, { alpha: 1, beta: 1, count: 0, sumReward: 0, sumRewardSq: 0 });
     }
 
-    return baseVector;
-  }
-
-  private encodeRegime(regime: string): number {
-    switch (regime) {
-      case 'bull':
-        return 1;
-      case 'bear':
-        return -1;
-      case 'sideways':
-        return 0;
-      default:
-        return 0; // Default to neutral or unknown
+    const stats = this.policies.get(policyId)!;
+    
+    // Update Beta distribution parameters
+    if (reward > 0) {
+      stats.alpha += reward;
+    } else {
+      stats.beta += Math.abs(reward);
     }
-  }
+    
+    // Update running statistics
+    stats.count += 1;
+    stats.sumReward += reward;
+    stats.sumRewardSq += reward * reward;
 
-  private sampleFromNormal(mean: number, std: number): number {
-    // Box-Muller transform
-    const u1 = Math.random();
-    const u2 = Math.random();
-    const z0 = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-    return mean + std * z0;
-  }
-
-  // Enhanced context gathering with alpha features
-  private async gatherContext(baseContext: RouterContext): Promise<RouterContext> {
-    const context = { ...baseContext, timestamp: new Date(), features: {} };
-
-    try {
-      // Import alpha services dynamically to avoid circular deps
-      // These imports are placeholders. Actual paths might differ based on project structure.
-      const { microstructureFeatures } = await import('../microstructure/Features');
-      const { volatilityModels } = await import('../volatility/Models');
-      const { optionsSmile } = await import('../options/Smile');
-
-      // Get microstructure features
-      const microSnapshot = microstructureFeatures.getSnapshot(context.symbol);
-      if (microSnapshot) {
-        context.obi = microSnapshot.obi;
-        context.ti = microSnapshot.ti;
-        context.spread_bps = microSnapshot.spread_bps;
-        context.micro_vol = microSnapshot.micro_vol;
-      }
-
-      // Get volatility forecasts
-      // Assuming forecastVol takes symbol and time horizon (e.g., 60 minutes)
-      const volForecast = await volatilityModels.forecastVol(context.symbol, 60);
-      context.sigmaHAR = volForecast.sigmaHAR;
-      context.sigmaGARCH = volForecast.sigmaGARCH;
-
-      // Get options smile metrics
-      const smileMetrics = optionsSmile.getSmileMetrics(context.symbol);
-      if (smileMetrics) {
-        context.rr25 = smileMetrics.rr25;
-        context.fly25 = smileMetrics.fly25;
-        context.iv_term_slope = smileMetrics.iv_term_slope;
-        context.skew_z = smileMetrics.skew_z;
-      }
-
-      logger.debug(`[StrategyRouter] Enhanced context for ${context.symbol} with alpha features`);
-
-    } catch (error) {
-      logger.warn(`[StrategyRouter] Error gathering alpha context: ${error}`);
-      // Continue with base context if alpha features fail
+    // Update feature weights using simple gradient
+    const featureVector = this.contextToFeatures(context);
+    const learningRate = 0.01;
+    
+    for (const [feature, value] of featureVector) {
+      const currentWeight = this.featureWeights.get(feature) || 0;
+      const gradient = reward * value;
+      this.featureWeights.set(feature, currentWeight + learningRate * gradient);
     }
 
-    return context;
+    logger.debug(`[StrategyRouter] Updated ${policyId}: α=${stats.alpha.toFixed(2)}, β=${stats.beta.toFixed(2)}, reward=${reward.toFixed(4)}`);
+  }
+
+  /**
+   * Get current router state snapshot
+   */
+  getSnapshot(): any {
+    return {
+      lastChoice: this.lastChoice,
+      lastContext: this.lastContext,
+      policies: Array.from(this.policies.entries()).map(([id, stats]) => ({
+        policyId: id,
+        alpha: stats.alpha,
+        beta: stats.beta,
+        count: stats.count,
+        meanReward: stats.count > 0 ? stats.sumReward / stats.count : 0,
+        confidence: this.getConfidence(id)
+      })),
+      featureWeights: Object.fromEntries(this.featureWeights),
+      totalDecisions: this.getTotalCount()
+    };
+  }
+
+  /**
+   * Convert context to feature vector
+   */
+  private contextToFeatures(context: RouterContext): Map<string, number> {
+    const features = new Map<string, number>();
+    
+    // Regime features
+    features.set('regime_bull', context.regime === 'bull' ? 1 : 0);
+    features.set('regime_bear', context.regime === 'bear' ? 1 : 0);
+    features.set('regime_sideways', context.regime === 'sideways' ? 1 : 0);
+    
+    // Volatility features
+    features.set('sigmaHAR', context.sigmaHAR || 0);
+    features.set('sigmaGARCH', context.sigmaGARCH || 0);
+    features.set('vol_ratio', context.sigmaHAR && context.sigmaGARCH ? context.sigmaHAR / context.sigmaGARCH : 1);
+    
+    // Microstructure features
+    features.set('obi', context.obi || 0);
+    features.set('ti', context.ti || 0);
+    features.set('spread_bps', context.spread_bps || 0);
+    features.set('micro_vol', context.micro_vol || 0);
+    
+    // Options features
+    features.set('rr25', context.rr25 || 0);
+    features.set('fly25', context.fly25 || 0);
+    features.set('iv_term_slope', context.iv_term_slope || 0);
+    features.set('skew_z', context.skew_z || 0);
+    
+    // Other features
+    features.set('funding_rate', context.funding_rate || 0);
+    features.set('sentiment_score', context.sentiment_score || 0);
+    features.set('whale_activity', context.whale_activity || 0);
+    
+    return features;
+  }
+
+  /**
+   * Compute contextual score for policy
+   */
+  private computeContextualScore(features: Map<string, number>, policyId: string): number {
+    let score = 0;
+    
+    for (const [feature, value] of features) {
+      const weight = this.featureWeights.get(feature) || 0;
+      score += weight * value;
+    }
+    
+    // Policy-specific adjustments
+    if (policyId === 'p_breakout' && features.get('obi')! > 0.1) {
+      score += 0.1;
+    }
+    if (policyId === 'p_mean_revert' && Math.abs(features.get('obi')!) < 0.05) {
+      score += 0.1;
+    }
+    
+    return score;
+  }
+
+  /**
+   * Sample from Beta distribution (simplified)
+   */
+  private sampleBeta(alpha: number, beta: number): number {
+    // Simplified beta sampling using ratio of uniforms
+    const x = Math.pow(Math.random(), 1/alpha);
+    const y = Math.pow(Math.random(), 1/beta);
+    return x / (x + y);
+  }
+
+  /**
+   * Get confidence level for policy
+   */
+  private getConfidence(policyId: string): number {
+    const stats = this.policies.get(policyId);
+    if (!stats || stats.count < 2) return 0;
+    
+    // Simple confidence based on count and variance
+    const variance = (stats.sumRewardSq / stats.count) - Math.pow(stats.sumReward / stats.count, 2);
+    const stdError = Math.sqrt(variance / stats.count);
+    
+    return Math.max(0, 1 - stdError);
+  }
+
+  /**
+   * Get total decision count across all policies
+   */
+  private getTotalCount(): number {
+    return Array.from(this.policies.values()).reduce((sum, stats) => sum + stats.count, 0) + 1;
   }
 }
 

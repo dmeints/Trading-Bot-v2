@@ -1,229 +1,195 @@
 
 /**
- * Book Maintainer - Manage snapshot + delta streams per venue
+ * Book Maintainer - Manages L2 books per venue/symbol
  */
 
-import WebSocket from 'ws';
-import axios from 'axios';
-import { EventEmitter } from 'events';
-import { OrderBook, type OrderBookSnapshot, type OrderBookDelta } from './OrderBook';
-import { logger } from '../../utils/logger';
+import { OrderBook, type OrderBookSnapshot, type OrderBookDelta } from './OrderBook.js';
+import { logger } from '../../utils/logger.js';
 
-export interface L2Config {
-  venue: string;
-  symbols: string[];
-  snapshotUrl: string;
-  wsUrl: string;
-  resyncThreshold: number;
+interface VenueConfig {
+  restEndpoint: string;
+  wsEndpoint: string;
+  rateLimit: number;
 }
 
-export class BookMaintainer extends EventEmitter {
+class BookMaintainer {
   private books = new Map<string, OrderBook>();
-  private ws?: WebSocket;
-  private resyncTimeouts = new Map<string, NodeJS.Timeout>();
-  private isConnected = false;
+  private resyncTimers = new Map<string, NodeJS.Timeout>();
+  private venueConfigs = new Map<string, VenueConfig>();
 
-  constructor(private config: L2Config) {
-    super();
+  constructor() {
+    // Initialize venue configurations
+    this.venueConfigs.set('binance', {
+      restEndpoint: 'https://api.binance.com/api/v3/depth',
+      wsEndpoint: 'wss://stream.binance.com:9443/ws',
+      rateLimit: 1200 // per minute
+    });
+    
+    this.venueConfigs.set('coinbase', {
+      restEndpoint: 'https://api.exchange.coinbase.com/products',
+      wsEndpoint: 'wss://ws-feed.exchange.coinbase.com',
+      rateLimit: 10 // per second
+    });
   }
 
-  async initialize(): Promise<void> {
+  /**
+   * Initialize book for venue/symbol
+   */
+  async initializeBook(venue: string, symbol: string): Promise<OrderBook> {
+    const key = `${venue}:${symbol}`;
+    
+    if (this.books.has(key)) {
+      return this.books.get(key)!;
+    }
+
+    const book = new OrderBook(venue, symbol);
+    this.books.set(key, book);
+
+    // Fetch initial snapshot
     try {
-      // Initialize order books
-      for (const symbol of this.config.symbols) {
-        const key = `${this.config.venue}:${symbol}`;
-        this.books.set(key, new OrderBook(symbol, this.config.venue));
-        
-        // Get initial snapshot
-        await this.fetchSnapshot(symbol);
-      }
-
-      // Start WebSocket for deltas
-      await this.connectWebSocket();
+      const snapshot = await this.fetchSnapshot(venue, symbol);
+      book.applySnapshot(snapshot);
       
-      logger.info(`[BookMaintainer] Initialized ${this.config.venue} with ${this.config.symbols.length} symbols`);
+      // Schedule periodic resync
+      this.scheduleResync(venue, symbol);
+      
+      logger.info(`[BookMaintainer] Initialized book for ${key}`);
     } catch (error) {
-      logger.error(`[BookMaintainer] Initialization failed for ${this.config.venue}:`, error);
-      throw error;
-    }
-  }
-
-  private async fetchSnapshot(symbol: string): Promise<void> {
-    try {
-      const url = this.config.snapshotUrl.replace('{symbol}', symbol);
-      const response = await axios.get(url, { timeout: 5000 });
-      
-      const snapshot = this.parseSnapshot(symbol, response.data);
-      const key = `${this.config.venue}:${symbol}`;
-      const book = this.books.get(key);
-      
-      if (book && snapshot) {
-        book.applySnapshot(snapshot);
-        this.emit('snapshot', snapshot);
-        
-        logger.debug(`[BookMaintainer] Snapshot applied for ${this.config.venue}:${symbol} seq=${snapshot.sequence}`);
-      }
-    } catch (error) {
-      logger.error(`[BookMaintainer] Snapshot fetch failed for ${symbol}:`, error);
-    }
-  }
-
-  private async connectWebSocket(): Promise<void> {
-    if (this.ws) {
-      this.ws.close();
+      logger.error(`[BookMaintainer] Failed to initialize book for ${key}:`, error);
     }
 
-    this.ws = new WebSocket(this.config.wsUrl);
-
-    this.ws.on('open', () => {
-      this.isConnected = true;
-      logger.info(`[BookMaintainer] WebSocket connected for ${this.config.venue}`);
-      
-      // Subscribe to symbols
-      for (const symbol of this.config.symbols) {
-        this.subscribeToSymbol(symbol);
-      }
-    });
-
-    this.ws.on('message', (data: Buffer) => {
-      try {
-        const message = JSON.parse(data.toString());
-        this.handleDelta(message);
-      } catch (error) {
-        logger.error('[BookMaintainer] Failed to parse WebSocket message:', error);
-      }
-    });
-
-    this.ws.on('close', () => {
-      this.isConnected = false;
-      logger.warn(`[BookMaintainer] WebSocket closed for ${this.config.venue}, reconnecting...`);
-      setTimeout(() => this.connectWebSocket(), 5000);
-    });
-
-    this.ws.on('error', (error) => {
-      logger.error(`[BookMaintainer] WebSocket error for ${this.config.venue}:`, error);
-    });
+    return book;
   }
 
-  private subscribeToSymbol(symbol: string): void {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-
-    // Binance-style subscription (mock)
-    const subscription = {
-      method: 'SUBSCRIBE',
-      params: [`${symbol.toLowerCase()}@depth`],
-      id: Date.now()
-    };
-
-    this.ws.send(JSON.stringify(subscription));
-  }
-
-  private handleDelta(message: any): void {
-    const delta = this.parseDelta(message);
-    if (!delta) return;
-
-    const key = `${this.config.venue}:${delta.symbol}`;
+  /**
+   * Apply delta update to book
+   */
+  applyDelta(venue: string, symbol: string, delta: OrderBookDelta): void {
+    const key = `${venue}:${symbol}`;
     const book = this.books.get(key);
     
-    if (!book) return;
-
-    const applied = book.applyDelta(delta);
-    
-    if (!applied) {
-      // Sequence gap detected, trigger resync
-      logger.warn(`[BookMaintainer] Sequence gap detected for ${key}, resyncing...`);
-      this.scheduleResync(delta.symbol);
+    if (!book) {
+      logger.warn(`[BookMaintainer] No book found for ${key}, ignoring delta`);
       return;
     }
 
-    this.emit('delta', delta);
-    this.emit('update', book.getSnapshot());
+    const success = book.applyDelta(delta);
+    
+    if (!success) {
+      // Sequence gap detected, trigger resync
+      logger.warn(`[BookMaintainer] Triggering resync for ${key} due to sequence gap`);
+      this.triggerResync(venue, symbol);
+    }
   }
 
-  private scheduleResync(symbol: string): void {
-    const existing = this.resyncTimeouts.get(symbol);
-    if (existing) {
-      clearTimeout(existing);
+  /**
+   * Get book for venue/symbol
+   */
+  getBook(venue: string, symbol: string): OrderBook | null {
+    const key = `${venue}:${symbol}`;
+    return this.books.get(key) || null;
+  }
+
+  /**
+   * Get all active books
+   */
+  getAllBooks(): Map<string, OrderBook> {
+    return new Map(this.books);
+  }
+
+  /**
+   * Fetch snapshot from REST API
+   */
+  private async fetchSnapshot(venue: string, symbol: string): Promise<OrderBookSnapshot> {
+    const config = this.venueConfigs.get(venue);
+    
+    if (!config) {
+      throw new Error(`Unknown venue: ${venue}`);
     }
 
-    const timeout = setTimeout(() => {
-      this.fetchSnapshot(symbol);
-      this.resyncTimeouts.delete(symbol);
-    }, 1000);
+    // Mock implementation - would connect to real APIs
+    const mockSnapshot: OrderBookSnapshot = {
+      venue,
+      symbol,
+      bids: this.generateMockDepth('bid', 10),
+      asks: this.generateMockDepth('ask', 10),
+      seq: Math.floor(Math.random() * 1000000),
+      timestamp: new Date()
+    };
 
-    this.resyncTimeouts.set(symbol, timeout);
+    logger.debug(`[BookMaintainer] Fetched snapshot for ${venue}:${symbol}, seq=${mockSnapshot.seq}`);
+    
+    return mockSnapshot;
   }
 
-  private parseSnapshot(symbol: string, data: any): OrderBookSnapshot | null {
+  /**
+   * Generate mock depth levels
+   */
+  private generateMockDepth(side: 'bid' | 'ask', count: number): Array<{ price: number; size: number }> {
+    const basePrice = 50000; // Mock BTC price
+    const levels: Array<{ price: number; size: number }> = [];
+    
+    for (let i = 0; i < count; i++) {
+      const offset = (i + 1) * 10;
+      const price = side === 'bid' ? basePrice - offset : basePrice + offset;
+      const size = 0.1 + Math.random() * 2;
+      
+      levels.push({ price, size });
+    }
+    
+    return levels;
+  }
+
+  /**
+   * Schedule periodic resync
+   */
+  private scheduleResync(venue: string, symbol: string): void {
+    const key = `${venue}:${symbol}`;
+    const interval = 30000; // 30 seconds
+    
+    // Clear existing timer
+    const existingTimer = this.resyncTimers.get(key);
+    if (existingTimer) {
+      clearInterval(existingTimer);
+    }
+
+    const timer = setInterval(() => {
+      const book = this.books.get(key);
+      if (book && book.needsResync()) {
+        this.triggerResync(venue, symbol);
+      }
+    }, interval);
+
+    this.resyncTimers.set(key, timer);
+  }
+
+  /**
+   * Trigger immediate resync
+   */
+  private async triggerResync(venue: string, symbol: string): Promise<void> {
     try {
-      // Mock Binance format
-      return {
-        symbol,
-        venue: this.config.venue,
-        bids: (data.bids || []).map((b: any) => ({ price: parseFloat(b[0]), size: parseFloat(b[1]) })),
-        asks: (data.asks || []).map((a: any) => ({ price: parseFloat(a[0]), size: parseFloat(a[1]) })),
-        sequence: data.lastUpdateId || Date.now(),
-        timestamp: Date.now()
-      };
+      const snapshot = await this.fetchSnapshot(venue, symbol);
+      const book = this.books.get(`${venue}:${symbol}`);
+      
+      if (book) {
+        book.applySnapshot(snapshot);
+        logger.info(`[BookMaintainer] Resynced ${venue}:${symbol}`);
+      }
     } catch (error) {
-      logger.error('[BookMaintainer] Failed to parse snapshot:', error);
-      return null;
+      logger.error(`[BookMaintainer] Failed to resync ${venue}:${symbol}:`, error);
     }
   }
 
-  private parseDelta(message: any): OrderBookDelta | null {
-    try {
-      // Mock Binance delta format
-      if (!message.data || !message.stream) return null;
-
-      const symbol = message.stream.split('@')[0].toUpperCase();
-      const data = message.data;
-
-      return {
-        symbol,
-        venue: this.config.venue,
-        sequence: data.u || Date.now(),
-        bids: (data.b || []).map((b: any) => ({ price: parseFloat(b[0]), size: parseFloat(b[1]) })),
-        asks: (data.a || []).map((a: any) => ({ price: parseFloat(a[0]), size: parseFloat(a[1]) })),
-        timestamp: Date.now()
-      };
-    } catch (error) {
-      logger.error('[BookMaintainer] Failed to parse delta:', error);
-      return null;
-    }
-  }
-
-  getBook(symbol: string): OrderBook | undefined {
-    const key = `${this.config.venue}:${symbol}`;
-    return this.books.get(key);
-  }
-
-  getAllBooks(): OrderBook[] {
-    return Array.from(this.books.values());
-  }
-
-  isHealthy(): boolean {
-    return this.isConnected && this.books.size > 0;
-  }
-
+  /**
+   * Cleanup resources
+   */
   cleanup(): void {
-    if (this.ws) {
-      this.ws.close();
+    for (const timer of this.resyncTimers.values()) {
+      clearInterval(timer);
     }
-    
-    for (const timeout of this.resyncTimeouts.values()) {
-      clearTimeout(timeout);
-    }
-    
-    this.removeAllListeners();
+    this.resyncTimers.clear();
+    this.books.clear();
   }
 }
 
-// Global maintainers
-export const binanceMaintainer = new BookMaintainer({
-  venue: 'binance',
-  symbols: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'],
-  snapshotUrl: 'https://api.binance.com/api/v3/depth?symbol={symbol}&limit=20',
-  wsUrl: 'wss://stream.binance.com:9443/ws',
-  resyncThreshold: 100
-});
+export const bookMaintainer = new BookMaintainer();

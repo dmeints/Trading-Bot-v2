@@ -1,0 +1,93 @@
+TASK 15 — Budgeter (API Cost & Rate-Limits)
+server/services/Budgeter.ts: track calls/cost/quotas per provider; wrap external requests; cheapest viable fallback.
+
+Route: GET /api/budget/status.
+
+Tests: tests/budgeter_limits.spec.ts.
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/budget/status | jq
+TASK 16 — Blue/Green + Canary Auto-Cutover
+server/services/BlueGreen.ts: SLOs (p95 latency, error rate, router QoS). State machine: candidate→canary(1%)→partial→active (paper only).
+
+Route: GET /api/deploy/status.
+
+Tests: tests/bluegreen_cutover.spec.ts.
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/deploy/status | jq
+TASK 17 — Chaos + Data Quality
+server/services/Chaos.ts (dev-only): ws_flap, api_timeout, l2_gap, depth_spike.
+
+server/services/DataQuality.ts: schema/spike guards for OHLCV & L2; quarantine counters.
+
+Routes:
+
+POST /api/chaos/inject {type}
+
+GET /api/data-quality/stats
+
+Tests: tests/chaos_resilience.spec.ts, tests/data_quality.spec.ts.
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s -X POST localhost:5000/api/chaos/inject -H "Content-Type: application/json" -d '{"type":"l2_gap"}' | jq
+curl -s localhost:5000/api/data-quality/stats | jq
+TASK 18 — Contracts + Feature Store + Provenance
+server/contracts/*.ts (zod) for OHLCV, L2, router I/O, exec I/O; enforce at route boundaries.
+
+server/services/featureStore/index.ts: putFeature, getWindow, parity check (online vs backtest).
+
+server/middleware/provenance.ts: hash(feature window + context + decision) into audit logs.
+
+Routes:
+
+GET /api/features/parity
+
+GET /api/audit/latest?limit=5
+
+Tests: tests/data_contracts.spec.ts, tests/feature_store_parity.spec.ts.
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/features/parity | jq
+curl -s localhost:5000/api/audit/latest?limit=1 | jq '.[0]'
+TASK 19 — Reports & Metrics++
+Routes:
+
+GET /api/report/alpha-pnl?window=7d (per-alpha contribution; leave-one-out ok)
+
+GET /api/report/risk?window=7d (realized vol, CVaR, turnover, slippage)
+
+GET /api/report/venue?window=7d (win-rate, slippage, downtime by venue)
+
+/api/health add: db.latencyMs, ws.clients, router.decisionsLastMin, exec.blockedLastMin, lastOHLCVSync.
+
+/metrics Prometheus counters/gauges: venue_score, l2_resyncs_total, chaos_injections_total, router_decisions_total, exec_blocked_total, price_stream_connected, ohlcv_last_sync_ts_seconds.
+
+Tests: tests/report_rollups.spec.ts.
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s "localhost:5000/api/report/alpha-pnl?window=7d" | jq
+curl -s "localhost:5000/api/report/risk?window=7d" | jq
+curl -s "localhost:5000/api/report/venue?window=7d" | jq
+curl -s localhost:5000/api/health | jq
+curl -s localhost:5000/metrics | head -n 30
+TASK 20 — UI Feeds (API-only ok)
+Ensure JSON endpoints exist for dashboard cards:
+/api/router/snapshot, /api/regime/state, /api/pbt/lineage, /api/promotion/status, /api/guards/state, /api/exec/sizing/last, /api/venues/registry, /api/l2/:venue/:symbol, /api/alpha/registry, /api/alpha/attribution, /api/report/*.
+
+Acceptance: paste at least 5 JSON responses (your choice).

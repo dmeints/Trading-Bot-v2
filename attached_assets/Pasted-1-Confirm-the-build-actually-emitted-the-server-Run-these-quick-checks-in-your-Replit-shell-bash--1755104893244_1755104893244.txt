@@ -1,0 +1,84 @@
+1) Confirm the build actually emitted the server
+Run these quick checks in your Replit shell:
+
+bash
+Copy
+Edit
+# verify dist exists and the entrypoint is there
+ls -l dist/server/index.js
+
+# sanity on ESM/NodeNext relative imports
+grep -R "from '\.\./" server | grep -v "\.js'" | head -n 20 || echo "no missing .js imports found"
+If index.js is missing or the grep prints lines, fix those imports (add .js on relative server imports) and rebuild.
+
+2) Add the safe defaults env file (copy-paste)
+Create .env.example at the repo root:
+
+ini
+Copy
+Edit
+NODE_ENV=development
+PORT=5000
+DB_URL=postgres://user:pass@localhost:5432/skippy
+MAX_NOTIONAL=250000
+SYMBOL_NOTIONAL_CAP=100000
+# Optional soft toggles
+EXECUTION_ROUTER_ENABLED=true
+STRATEGY_ROUTER_ENABLED=true
+DATA_QUALITY_STRICT=true
+(Keep your real secrets in your Replit env panel; this example just lets others boot dev stubs.)
+
+3) Run the full build & tests (you posted the commands — here’s the exact sequence)
+bash
+Copy
+Edit
+npm ci
+npm run type-check
+npm run build
+npm test
+npm start & disown
+If type-check/build fails, it’s almost always a missing .js extension or a server-only import pulled from client code. Fix and rerun.
+
+4) Hit the APIs and capture a proof bundle
+Run this block; it saves outputs to a file so we can review together:
+
+bash
+Copy
+Edit
+sleep 3
+{
+  echo "=== /api/health ==="
+  curl -s localhost:5000/api/health | jq
+
+  echo "=== /api/budget/status ==="
+  curl -s localhost:5000/api/budget/status | jq
+
+  echo "=== /api/deploy/status ==="
+  curl -s localhost:5000/api/deploy/status | jq
+
+  echo "=== /api/data-quality/stats ==="
+  curl -s localhost:5000/api/data-quality/stats | jq
+
+  echo "=== /api/features/parity ==="
+  curl -s localhost:5000/api/features/parity | jq
+
+  echo "=== /api/audit/latest?limit=1 ==="
+  curl -s "localhost:5000/api/audit/latest?limit=1" | jq
+
+  echo "=== /metrics (first 20 lines) ==="
+  curl -s localhost:5000/metrics | head -20
+} | tee boot_smoke_proof.txt
+5) If any endpoint 404/500s, here’s the fastest fix map
+/api/health fails → check server/routes.ts mounts, and that priceStream, storage, and health handler are imported with .js.
+
+/api/budget/status fails → ensure server/services/Budgeter.ts is exported and the route file is registered in routes.ts.
+
+/api/deploy/status fails → verify BlueGreen.ts export + route registration.
+
+/api/data-quality/stats fails → make sure DataQuality.ts is wired into both market fetch and the route.
+
+/api/features/parity fails → confirm featureStore/index.ts exports parity() and the route is mounted.
+
+/api/audit/latest fails → check middleware/provenance.ts is used in exec/plan routes and shared/schema.ts includes the audit table.
+
+/metrics empty → ensure /metrics route is added and counters (router_decisions_total, exec_blocked_total, etc.) are incremented in code paths.

@@ -1,0 +1,355 @@
+You are a build agent. Deliver runnable code, not plans.
+Implement Microstructure & Volatility Alpha Pack and integrate it into the existing stack (router, execution, portfolio, health, tests). Strict TypeScript, minimal deps, modify real files, add tests. After each change:
+
+bash
+Copy
+Edit
+npm ci
+npm run type-check
+npm run build
+npm test
+npm start & sleep 2
+Paste actual logs + curl/jq outputs for each acceptance step. Fix and re-run until green.
+
+TASK 1 — Order-Book & Tape Features (L1/L2)
+Goal: compute real-time microstructure signals and expose them to the StrategyRouter context.
+
+server/services/microstructure/Features.ts
+
+From WS/ticker & any available depth feed, compute (rolling):
+
+OBI (Order-Book Imbalance): 
+(
+𝐵
+−
+𝐴
+)
+/
+(
+𝐵
++
+𝐴
+)
+(B−A)/(B+A) using top-k depth
+
+TI (Trade Imbalance): (buyVol − sellVol)/(buyVol + sellVol)
+
+Spread (bps) and realized micro volatility (1–5s)
+
+Queue/Cancel rate (approx from message counts if available; else stub)
+
+Maintain per-symbol rolling windows (in-memory cache).
+
+Routes:
+
+GET /api/microstructure/:symbol → latest snapshot
+
+Wire: append {obi, ti, spread_bps, micro_vol, cancel_rate} into router context for that symbol.
+
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/microstructure/BTCUSDT | jq
+# Then show a router choice that includes these fields in the context you pass:
+curl -s -X POST localhost:5000/api/router/choose \
+  -H "Content-Type: application/json" \
+  -d '{"context":{"symbol":"BTCUSDT","obi":0.2,"ti":0.15,"spread_bps":3,"micro_vol":0.004}}' | jq
+Tests: tests/microstructure_features.spec.ts (OBI/TI/spread calculations on synthetic depth/tape).
+
+TASK 2 — Volatility Models (HAR-RV + GARCH(1,1))
+Goal: forecast near-term volatility for sizing and portfolio constraints.
+
+server/services/volatility/Models.ts
+
+HAR-RV on realized var built from 1m candles: 
+𝑅
+𝑉
+𝑡
+=
+𝛼
++
+𝛽
+𝑑
+𝑅
+𝑉
+𝑡
+−
+1
++
+𝛽
+𝑤
+𝑅
+𝑉
+‾
+𝑡
+−
+5
+:
+𝑡
+−
+1
++
+𝛽
+𝑚
+𝑅
+𝑉
+‾
+𝑡
+−
+22
+:
+𝑡
+−
+1
+RV 
+t
+​
+ =α+β 
+d
+​
+ RV 
+t−1
+​
+ +β 
+w
+​
+  
+RV
+  
+t−5:t−1
+​
+ +β 
+m
+​
+  
+RV
+  
+t−22:t−1
+​
+ 
+
+GARCH(1,1): 
+𝜎
+𝑡
+2
+=
+𝜔
++
+𝛼
+𝑟
+𝑡
+−
+1
+2
++
+𝛽
+𝜎
+𝑡
+−
+1
+2
+σ 
+t
+2
+​
+ =ω+αr 
+t−1
+2
+​
+ +βσ 
+t−1
+2
+​
+ 
+
+Provide forecastVol(symbol, horizonMins) returning 
+𝜎
+^
+σ
+^
+ .
+
+Routes:
+
+GET /api/vol/forecast/:symbol?h=60 → { sigmaHAR, sigmaGARCH }
+
+Wire:
+
+Execution sizing uses min/max of the two forecasts (or a blend) for vol targeting and Kelly-lite inputs.
+
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s "localhost:5000/api/vol/forecast/BTCUSDT?h=60" | jq
+# Show that ExecutionRouter uses this forecast in the size decision (log or /api/exec/sizing/last)
+curl -s localhost:5000/api/exec/sizing/last | jq
+Tests: tests/vol_models.spec.ts (HAR and GARCH produce sane, positive forecasts on synthetic returns).
+
+TASK 3 — Options/IV Smile & Skew Features (stub ok, math real)
+Goal: ingest IV points (or stub if provider not available) and compute skew/smile metrics for router.
+
+server/services/options/Smile.ts
+
+Provide functions to compute 25-delta risk reversal, butterfly, term slope, skew z-score.
+
+If no live provider: accept uploaded/mock option chain; compute features deterministically.
+
+Routes:
+
+POST /api/options/chain/:symbol → store chain snapshot
+
+GET /api/options/smile/:symbol → derived metrics
+
+Wire: add {rr25, fly25, iv_term_slope, skew_z} to router context when available.
+
+Acceptance:
+
+bash
+Copy
+Edit
+# Submit a small mock chain
+curl -s -X POST localhost:5000/api/options/chain/BTCUSDT \
+  -H "Content-Type: application/json" -d '{"chain":[{"k":0.9,"tenor":"7d","type":"call","iv":0.6}, {"k":1.1,"tenor":"7d","type":"put","iv":0.7}]}' | jq
+curl -s localhost:5000/api/options/smile/BTCUSDT | jq
+Tests: tests/options_smile.spec.ts (sanity on RR/BF/term slope calculations).
+
+TASK 4 — Alpha Integration & Attribution
+Goal: make microstructure + vol + options signals first-class alpha inputs, and track which alpha pays.
+
+server/services/alpha/Registry.ts
+
+Register alphas with metadata: { id, desc, transform(ctx)->signal, weight_init }
+
+Blend into per-policy features (router sees them); log per-trade alpha contribution using Shapley-style marginal attribution on the signal blend (simple leave-one-out acceptable).
+
+Routes:
+
+GET /api/alpha/registry → list
+
+GET /api/alpha/attribution?tradeId=... → contribution report
+
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/alpha/registry | jq
+curl -s "localhost:5000/api/alpha/attribution?tradeId=latest" | jq
+Tests: tests/alpha_attribution.spec.ts (synthetic signals → expected contribution ordering).
+
+TASK 5 — Execution: Impact-aware Planner (TWAP/VWAP/POV)
+Goal: size and schedule orders to minimize slippage under the new forecasts.
+
+server/services/execution/Planner.ts
+
+Use microstructure (spread, depth, micro_vol) and vol forecast to choose style:
+
+Immediate if urgency high and spread tight,
+
+TWAP/VWAP/POV if depth thin or micro_vol high.
+
+Estimate cost: 
+cost
+≈
+𝑘
+⋅
+size
+𝛼
++
+spread
+/
+2
+cost≈k⋅size 
+α
+ +spread/2.
+
+Route:
+
+POST /api/exec/simulate {symbol,size} → plan & cost preview (replaces/extends prior simulate).
+
+Wire:
+
+ExecutionRouter uses Planner outputs when placing paper orders.
+
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s -X POST localhost:5000/api/exec/simulate \
+  -H "Content-Type: application/json" \
+  -d '{"symbol":"BTCUSDT","size":0.02}' | jq
+Tests: tests/execution_planner.spec.ts (style selection changes with spread/depth/micro_vol).
+
+TASK 6 — Router Upgrade: Alpha-aware Thompson Sampling
+Goal: let the router condition on alpha bundle (microstructure, vol, options) & context.
+
+Extend StrategyRouter.ts
+
+Context vector now includes {obi, ti, spread_bps, micro_vol, sigmaHAR, sigmaGARCH, rr25, fly25, ...}.
+
+Posterior update unchanged; log feature vector with each decision for audit.
+
+Route:
+
+GET /api/router/snapshot → last decision, sampled scores, and feature vector.
+
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/router/snapshot | jq
+Tests: tests/router_alpha_aware.spec.ts (synthetic data shows router shifts preference when alpha signals flip).
+
+TASK 7 — Attribution & Reporting in UI (API-only acceptable)
+Goal: surface what’s driving PnL so we can prune dead signals.
+
+Add endpoints (client can consume later):
+
+GET /api/report/alpha-pnl?window=7d → per-alpha PnL contribution
+
+GET /api/report/risk?window=7d → realized vol, CVaR, turnover, slippage
+
+Use existing storage/audit logs; compute rollups server-side.
+
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s "localhost:5000/api/report/alpha-pnl?window=7d" | jq
+curl -s "localhost:5000/api/report/risk?window=7d" | jq
+Tests: tests/report_rollups.spec.ts (rollups on synthetic trades).
+
+TASK 8 — CI Guards: Calibration & Latency Budgets (micro focus)
+Goal: protect micro alpha quality and responsiveness.
+
+Tests:
+
+tests/calibration_perf.spec.ts
+
+Reliability/Brier score for win-prob stays within tolerance on synthetic stream.
+
+p95 latency for /api/microstructure/:symbol < threshold (mock clock/timers).
+
+Wire thresholds via ENV for CI.
+
+Acceptance:
+
+bash
+Copy
+Edit
+npm test -- -t calibration_perf
+FINAL RETURN (paste only)
+Files changed/created
+
+Diffs or full file bodies
+
+Build/test/start logs
+
+curl proofs for each task’s acceptance

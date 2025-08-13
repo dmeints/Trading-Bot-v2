@@ -1,61 +1,17 @@
-/**
- * Structured JSON Logger
- * 
- * Provides structured logging compatible with Replit's logging system
- * One-line-per-event JSON format for better observability
- */
+type Fields = Record<string, unknown>;
 
-interface LogEntry {
-  timestamp: string;
-  level: 'info' | 'warn' | 'error' | 'debug';
-  message: string;
-  requestId?: string;
-  userId?: string;
-  [key: string]: any;
+function ts() {
+  return new Date().toISOString();
 }
 
-class StructuredLogger {
-  private log(level: LogEntry['level'], message: string, meta: Record<string, any> = {}) {
-    const entry: LogEntry = {
-      timestamp: new Date().toISOString(),
-      level,
-      message,
-      ...meta
-    };
-
-    // Output structured JSON to stdout for Replit compatibility
-    console.log(JSON.stringify(entry));
-  }
-
-  info(message: string, meta?: Record<string, any>) {
-    this.log('info', message, meta);
-  }
-
-  warn(message: string, meta?: Record<string, any>) {
-    this.log('warn', message, meta);
-  }
-
-  error(message: string, meta?: Record<string, any>) {
-    this.log('error', message, meta);
-  }
-
-  debug(message: string, meta?: Record<string, any>) {
-    this.log('debug', message, meta);
-  }
-
-  // Helper for request-scoped logging
-  withRequest(requestId: string, userId?: string) {
-    return {
-      info: (message: string, meta?: Record<string, any>) => 
-        this.info(message, { ...meta, requestId, userId }),
-      warn: (message: string, meta?: Record<string, any>) => 
-        this.warn(message, { ...meta, requestId, userId }),
-      error: (message: string, meta?: Record<string, any>) => 
-        this.error(message, { ...meta, requestId, userId }),
-      debug: (message: string, meta?: Record<string, any>) => 
-        this.debug(message, { ...meta, requestId, userId })
-    };
-  }
+function line(level: string, msg: string, fields?: Fields) {
+  const base = { t: ts(), level, msg, ...fields };
+  // Keep it simple and Replit-friendly
+  console.log(JSON.stringify(base));
 }
 
-export const logger = new StructuredLogger();
+export const logger = {
+  info: (msg: string, fields?: Fields) => line('info', msg, fields),
+  warn: (msg: string, fields?: Fields) => line('warn', msg, fields),
+  error: (msg: string, fields?: Fields) => line('error', msg, fields),
+};

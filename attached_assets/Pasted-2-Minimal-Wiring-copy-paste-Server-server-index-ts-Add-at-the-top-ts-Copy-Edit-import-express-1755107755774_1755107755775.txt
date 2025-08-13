@@ -1,0 +1,154 @@
+2) Minimal Wiring (copy/paste)
+Server (server/index.ts)
+Add at the top:
+
+ts
+Copy
+Edit
+import express from 'express';
+import { requestId } from './middleware/requestId';
+import { errorHandler } from './middleware/errorHandler';
+import { notFound } from './middleware/notFound';
+import { bootSanityChecks } from './bootstrap/sanity';
+import { logger } from './utils/logger';
+Early in boot:
+
+ts
+Copy
+Edit
+bootSanityChecks();
+
+const app = express();
+app.use(express.json());
+app.use(requestId);
+
+// ... your routes here ...
+// Example: app.use('/api/health', (_req, res) => res.json({ ok: true, ts: Date.now() }));
+After all routes:
+
+ts
+Copy
+Edit
+app.use(notFound);      // 404 -> AppError
+app.use(errorHandler);  // Any error -> JSON envelope
+When creating the HTTP server:
+
+ts
+Copy
+Edit
+const PORT = Number(process.env.PORT || 5000);
+// Avoid reusePort in dev unless you really need it
+const server = app.listen(PORT, () => {
+  logger.info('server_listening', { port: PORT });
+});
+(If you previously passed { reusePort: true } to listen or server options, remove it to fix sporadic port binding on Replit.)
+
+Also ensure you call server.listen(...) somewhere—your earlier issue suggested httpServer was returned but never listen()ed.
+
+Client (client/src/main.tsx or wherever React root is mounted)
+tsx
+Copy
+Edit
+import { ErrorBoundary } from './components/ErrorBoundary';
+
+// ...
+root.render(
+  <ErrorBoundary>
+    <App />
+  </ErrorBoundary>
+);
+If you have API calls, import and use the fetch helper:
+
+ts
+Copy
+Edit
+import { apiFetch } from './lib/api';
+
+const data = await apiFetch('/api/health');
+3) Run Checks & Smoke
+bash
+Copy
+Edit
+# install if needed
+npm ci
+
+# compile types across workspaces (if using TS project refs)
+npm run type-check
+
+# start the server
+npm start &
+sleep 3
+
+# quick smoke: health + a forced 404
+npm run smoke
+Expected output (shape):
+
+bash
+Copy
+Edit
+GET /api/health 200 {"ok":true,"ts":...}
+GET /api/does-not-exist 404 {"ok":false,"code":"NOT_FOUND",...,"requestId":"..."}
+4) How it “auto‑handles” errors now
+Any thrown/returned error (including rejected promises inside routes) becomes a typed AppError, with:
+
+HTTP mapping (e.g., VALIDATION_FAILED → 422)
+
+Stable JSON envelope ({ ok:false, code, message, requestId, details })
+
+Correlation via x-request-id
+
+Dev mode “details” exposure, production-safe messaging
+
+Missing routes get a consistent 404.
+
+Global unhandledRejection / uncaughtException are logged (so crashes are diagnosable).
+
+Client renders a friendly fallback instead of white‑screening, and preserves the message in dev.
+
+5) Optional: quick “error‑aware” conventions you can apply now
+These tighten things without rewriting the world:
+
+Wrap async routes
+Wherever you define routes, do:
+
+ts
+Copy
+Edit
+import { asyncHandler } from '../middleware/asyncHandler';
+import { AppError } from '../../shared/errors';
+
+router.get('/thing/:id', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const data = await svc.getThing(id);
+  if (!data) throw new AppError('NOT_FOUND', 'Thing not found', { id }, true);
+  res.json({ ok: true, data });
+}));
+Surface validation errors as VALIDATION_FAILED
+If you use Zod/Yup/class‑validator, just throw their error; the toAppError() helper will normalize it.
+
+Return consistent success shape
+Use { ok:true, ... } for successes and the error envelope for failures. This keeps the client dead simple.
+
+6) If Replit still stalls on “mystery failures”
+Add this tiny route to confirm middleware is live:
+
+ts
+Copy
+Edit
+app.get('/api/_throw', (_req, _res) => {
+  throw new AppError('BAD_REQUEST', 'Intentional test error', { why: 'manual' }, true);
+});
+Hitting it should yield a clean 400 JSON with code: "BAD_REQUEST" and a requestId. If it doesn’t, something isn’t wired.
+
+What I’ll do once you upload the ZIP here
+Run this kit in a throwaway branch and diff what changes.
+
+Map and test your ~180 endpoints (I’ll generate a route map).
+
+Patch any route files to adopt asyncHandler automatically.
+
+Stabilize server boot order (config → routes → 404 → error handler).
+
+Clean up any “port reuse” or double‑listen gotchas.
+
+Wire the client to the new error envelope where needed.

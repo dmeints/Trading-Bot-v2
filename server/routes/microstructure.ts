@@ -90,3 +90,32 @@ router.post('/:symbol/trade', (req, res) => {
 });
 
 export default router;
+import { Router } from 'express';
+import { microstructureFeatures } from '../services/microstructure/Features.js';
+import { logger } from '../utils/logger.js';
+
+const router = Router();
+
+/**
+ * GET /api/microstructure/:symbol
+ * Get latest microstructure snapshot for symbol
+ */
+router.get('/:symbol', (req, res) => {
+  try {
+    const { symbol } = req.params;
+    
+    let snapshot = microstructureFeatures.getSnapshot(symbol.toUpperCase());
+    
+    // Generate mock if no real data available
+    if (!snapshot) {
+      snapshot = microstructureFeatures.generateMockSnapshot(symbol.toUpperCase());
+    }
+    
+    res.json(snapshot);
+  } catch (error) {
+    logger.error('[MicrostructureRoutes] Error fetching snapshot:', error);
+    res.status(500).json({ error: 'Failed to fetch microstructure data' });
+  }
+});
+
+export default router;

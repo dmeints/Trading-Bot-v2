@@ -26,3 +26,17 @@
   "include": ["server/**/*", "shared/**/*"],
   "exclude": ["client/**/*", "**/*.spec.ts", "**/*.test.ts"]
 }
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": ".",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "allowImportingTsExtensions": false,
+    "sourceMap": true,
+    "strict": true
+  },
+  "include": ["server/**/*", "shared/**/*"]
+}

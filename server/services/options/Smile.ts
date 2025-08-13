@@ -1,430 +1,226 @@
 
 /**
- * Options Smile Analysis Service
- * Risk reversal, butterfly, and skew analysis
+ * Options IV Smile/Skew Analysis
  */
 
-import { logger } from '../../utils/logger';
+import { logger } from '../../utils/logger.js';
 
-export interface OptionQuote {
-  symbol: string;
-  strike: number;
-  expiry: string;
+export interface OptionChainEntry {
+  k: number;           // Strike ratio (K/S)
+  tenor: string;       // Time to expiry
   type: 'call' | 'put';
-  iv: number;           // Implied volatility
-  price?: number;       // Option price
-  delta?: number;       // Option delta
-  volume?: number;      // Trading volume
+  iv: number;          // Implied volatility
 }
 
 export interface OptionChain {
   symbol: string;
   timestamp: Date;
-  underlying_price: number;
-  options: OptionQuote[];
+  spot: number;
+  chain: OptionChainEntry[];
 }
 
 export interface SmileMetrics {
   symbol: string;
-  timestamp: Date;
-  rr25: number;         // 25-delta risk reversal
-  fly25: number;        // 25-delta butterfly
+  rr25: number;        // 25-delta risk reversal
+  fly25: number;       // 25-delta butterfly
   iv_term_slope: number; // Term structure slope
-  skew_z: number;       // Skew z-score
-  atm_iv: number;       // At-the-money IV
-  iv_smile_curve: Array<{ strike_ratio: number; iv: number }>; // IV smile curve
+  skew_z: number;      // Skew z-score
+  timestamp: Date;
 }
 
 class OptionsSmile {
-  private chains = new Map<string, OptionChain>();
-  private metrics = new Map<string, SmileMetrics>();
+  private chainStore = new Map<string, OptionChain>();
 
   /**
-   * Store option chain and compute smile metrics
+   * Store options chain snapshot
    */
-  storeChain(chain: OptionChain): SmileMetrics {
-    const { symbol } = chain;
-    this.chains.set(symbol, chain);
+  storeChain(symbol: string, chain: OptionChainEntry[], spot: number = 1): void {
+    const chainData: OptionChain = {
+      symbol: symbol.toUpperCase(),
+      timestamp: new Date(),
+      spot,
+      chain
+    };
 
-    // Compute smile metrics
-    const metrics = this.computeSmileMetrics(chain);
-    this.metrics.set(symbol, metrics);
-
-    logger.info(`[OptionsSmile] Updated ${symbol}: RR25=${metrics.rr25.toFixed(3)}, FLY25=${metrics.fly25.toFixed(3)}`);
-
-    return metrics;
+    this.chainStore.set(symbol.toUpperCase(), chainData);
+    logger.debug(`[OptionsSmile] Stored chain for ${symbol} with ${chain.length} options`);
   }
 
   /**
-   * Get smile metrics for symbol
+   * Calculate smile metrics from stored chain
    */
-  getSmileMetrics(symbol: string): SmileMetrics | null {
-    return this.metrics.get(symbol) || null;
-  }
-
-  /**
-   * Compute comprehensive smile metrics
-   */
-  private computeSmileMetrics(chain: OptionChain): SmileMetrics {
-    const { symbol, timestamp, underlying_price, options } = chain;
-
-    // Group options by expiry
-    const expiryGroups = this.groupByExpiry(options);
+  calculateMetrics(symbol: string): SmileMetrics | null {
+    const chainData = this.chainStore.get(symbol.toUpperCase());
     
-    // Use nearest expiry for current metrics
-    const nearestExpiry = this.getNearestExpiry(expiryGroups);
-    const nearOptions = expiryGroups.get(nearestExpiry) || [];
+    if (!chainData || chainData.chain.length === 0) {
+      return null;
+    }
 
-    // Calculate 25-delta risk reversal
-    const rr25 = this.calculate25DeltaRiskReversal(nearOptions, underlying_price);
+    const { chain, spot } = chainData;
 
-    // Calculate 25-delta butterfly
-    const fly25 = this.calculate25DeltaButterfly(nearOptions, underlying_price);
-
-    // Calculate ATM IV
-    const atm_iv = this.calculateATMIV(nearOptions, underlying_price);
-
+    // Calculate 25-delta risk reversal and butterfly
+    const { rr25, fly25 } = this.calculate25DeltaMetrics(chain, spot);
+    
     // Calculate term structure slope
-    const iv_term_slope = this.calculateTermSlope(expiryGroups, underlying_price);
-
+    const iv_term_slope = this.calculateTermSlope(chain);
+    
     // Calculate skew z-score
-    const skew_z = this.calculateSkewZScore(nearOptions, underlying_price);
-
-    // Build IV smile curve
-    const iv_smile_curve = this.buildSmileCurve(nearOptions, underlying_price);
+    const skew_z = this.calculateSkewZ(chain, spot);
 
     return {
-      symbol,
-      timestamp,
+      symbol: symbol.toUpperCase(),
       rr25,
       fly25,
       iv_term_slope,
       skew_z,
-      atm_iv,
-      iv_smile_curve
+      timestamp: new Date()
     };
   }
 
   /**
-   * Calculate 25-delta risk reversal (Call IV - Put IV)
+   * Calculate 25-delta risk reversal and butterfly
    */
-  private calculate25DeltaRiskReversal(options: OptionQuote[], spotPrice: number): number {
-    const call25 = this.findOptionByDelta(options, 0.25, 'call', spotPrice);
-    const put25 = this.findOptionByDelta(options, -0.25, 'put', spotPrice);
+  private calculate25DeltaMetrics(chain: OptionChainEntry[], spot: number): { rr25: number; fly25: number } {
+    // For simplicity, approximate 25-delta strikes as ~0.9 and ~1.1 moneyness
+    const calls = chain.filter(opt => opt.type === 'call');
+    const puts = chain.filter(opt => opt.type === 'put');
 
-    if (!call25 || !put25) {
-      return this.estimateRiskReversal(options, spotPrice);
-    }
+    // Find strikes closest to 25-delta levels
+    const call25 = this.findClosestStrike(calls, 1.1); // OTM call
+    const put25 = this.findClosestStrike(puts, 0.9);   // OTM put
+    const atmCall = this.findClosestStrike(calls, 1.0);
+    const atmPut = this.findClosestStrike(puts, 1.0);
 
-    return call25.iv - put25.iv;
+    // Risk Reversal = IV(Call_25δ) - IV(Put_25δ)
+    const rr25 = (call25?.iv || 0) - (put25?.iv || 0);
+
+    // Butterfly = (IV(Call_25δ) + IV(Put_25δ))/2 - IV(ATM)
+    const avgOTM = ((call25?.iv || 0) + (put25?.iv || 0)) / 2;
+    const atmIV = ((atmCall?.iv || 0) + (atmPut?.iv || 0)) / 2;
+    const fly25 = avgOTM - atmIV;
+
+    return { rr25, fly25 };
   }
 
   /**
-   * Calculate 25-delta butterfly spread
+   * Find option closest to target moneyness
    */
-  private calculate25DeltaButterfly(options: OptionQuote[], spotPrice: number): number {
-    const call25 = this.findOptionByDelta(options, 0.25, 'call', spotPrice);
-    const put25 = this.findOptionByDelta(options, -0.25, 'put', spotPrice);
-    const atmCall = this.findATMOption(options, 'call', spotPrice);
-    const atmPut = this.findATMOption(options, 'put', spotPrice);
+  private findClosestStrike(options: OptionChainEntry[], targetK: number): OptionChainEntry | null {
+    if (options.length === 0) return null;
 
-    if (!call25 || !put25 || !atmCall || !atmPut) {
-      return this.estimateButterfly(options, spotPrice);
+    let closest = options[0];
+    let minDiff = Math.abs(closest.k - targetK);
+
+    for (const option of options) {
+      const diff = Math.abs(option.k - targetK);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closest = option;
+      }
     }
 
-    const wingIV = (call25.iv + put25.iv) / 2;
-    const atmIV = (atmCall.iv + atmPut.iv) / 2;
-
-    return wingIV - atmIV;
-  }
-
-  /**
-   * Calculate at-the-money implied volatility
-   */
-  private calculateATMIV(options: OptionQuote[], spotPrice: number): number {
-    const atmCall = this.findATMOption(options, 'call', spotPrice);
-    const atmPut = this.findATMOption(options, 'put', spotPrice);
-
-    if (atmCall && atmPut) {
-      return (atmCall.iv + atmPut.iv) / 2;
-    } else if (atmCall) {
-      return atmCall.iv;
-    } else if (atmPut) {
-      return atmPut.iv;
-    }
-
-    // Fallback: average all IVs
-    const allIVs = options.map(opt => opt.iv).filter(iv => iv > 0);
-    return allIVs.length > 0 ? allIVs.reduce((sum, iv) => sum + iv, 0) / allIVs.length : 0.2;
+    return closest;
   }
 
   /**
    * Calculate term structure slope
    */
-  private calculateTermSlope(expiryGroups: Map<string, OptionQuote[]>, spotPrice: number): number {
-    if (expiryGroups.size < 2) return 0;
+  private calculateTermSlope(chain: OptionChainEntry[]): number {
+    // Group by tenor and calculate average IV
+    const tenorIVs = new Map<string, number[]>();
+    
+    for (const option of chain) {
+      if (!tenorIVs.has(option.tenor)) {
+        tenorIVs.set(option.tenor, []);
+      }
+      tenorIVs.get(option.tenor)!.push(option.iv);
+    }
 
-    const expiries = Array.from(expiryGroups.keys()).sort();
-    const nearExpiry = expiries[0];
-    const farExpiry = expiries[expiries.length - 1];
+    const tenorAvgs: Array<{ tenor: string; avgIV: number; days: number }> = [];
+    
+    for (const [tenor, ivs] of tenorIVs) {
+      const avgIV = ivs.reduce((sum, iv) => sum + iv, 0) / ivs.length;
+      const days = this.tenorToDays(tenor);
+      tenorAvgs.push({ tenor, avgIV, days });
+    }
 
-    const nearATM = this.calculateATMIV(expiryGroups.get(nearExpiry) || [], spotPrice);
-    const farATM = this.calculateATMIV(expiryGroups.get(farExpiry) || [], spotPrice);
+    if (tenorAvgs.length < 2) return 0;
 
-    // Days to expiry (simplified)
-    const nearDays = this.getDaysToExpiry(nearExpiry);
-    const farDays = this.getDaysToExpiry(farExpiry);
+    // Sort by days and calculate slope
+    tenorAvgs.sort((a, b) => a.days - b.days);
+    
+    const shortTerm = tenorAvgs[0];
+    const longTerm = tenorAvgs[tenorAvgs.length - 1];
+    
+    if (longTerm.days === shortTerm.days) return 0;
+    
+    // Slope in IV per day
+    return (longTerm.avgIV - shortTerm.avgIV) / (longTerm.days - shortTerm.days);
+  }
 
-    if (farDays <= nearDays) return 0;
+  /**
+   * Convert tenor string to days
+   */
+  private tenorToDays(tenor: string): number {
+    const match = tenor.match(/(\d+)([dwmy])/);
+    if (!match) return 30; // Default
 
-    // Slope per day
-    return (farATM - nearATM) / (farDays - nearDays);
+    const [, num, unit] = match;
+    const value = parseInt(num, 10);
+
+    switch (unit) {
+      case 'd': return value;
+      case 'w': return value * 7;
+      case 'm': return value * 30;
+      case 'y': return value * 365;
+      default: return 30;
+    }
   }
 
   /**
    * Calculate skew z-score
    */
-  private calculateSkewZScore(options: OptionQuote[], spotPrice: number): number {
-    // Get IVs for OTM puts and calls
-    const otmPuts = options.filter(opt => opt.type === 'put' && opt.strike < spotPrice * 0.95);
-    const otmCalls = options.filter(opt => opt.type === 'call' && opt.strike > spotPrice * 1.05);
-
-    if (otmPuts.length === 0 || otmCalls.length === 0) return 0;
-
-    const putIVs = otmPuts.map(opt => opt.iv);
-    const callIVs = otmCalls.map(opt => opt.iv);
-
-    const avgPutIV = putIVs.reduce((sum, iv) => sum + iv, 0) / putIVs.length;
-    const avgCallIV = callIVs.reduce((sum, iv) => sum + iv, 0) / callIVs.length;
-
-    // Simple skew measure (put IV - call IV)
-    const skew = avgPutIV - avgCallIV;
-
-    // Normalize to z-score (using historical average of 0.05, std of 0.02)
-    return (skew - 0.05) / 0.02;
-  }
-
-  /**
-   * Build IV smile curve
-   */
-  private buildSmileCurve(options: OptionQuote[], spotPrice: number): Array<{ strike_ratio: number; iv: number }> {
-    const curve: Array<{ strike_ratio: number; iv: number }> = [];
-
-    // Sort options by strike
-    const sortedOptions = options
-      .filter(opt => opt.iv > 0)
-      .sort((a, b) => a.strike - b.strike);
-
-    for (const option of sortedOptions) {
-      const strike_ratio = option.strike / spotPrice;
-      if (strike_ratio >= 0.7 && strike_ratio <= 1.3) { // Focus on +/-30% strikes
-        curve.push({ strike_ratio, iv: option.iv });
-      }
-    }
-
-    return curve;
-  }
-
-  /**
-   * Find option closest to target delta
-   */
-  private findOptionByDelta(options: OptionQuote[], targetDelta: number, type: 'call' | 'put', spotPrice: number): OptionQuote | null {
-    const filtered = options.filter(opt => opt.type === type && opt.delta !== undefined);
+  private calculateSkewZ(chain: OptionChainEntry[], spot: number): number {
+    // Calculate IV smile slope at different strikes
+    const puts = chain.filter(opt => opt.type === 'put');
+    const calls = chain.filter(opt => opt.type === 'call');
     
-    if (filtered.length === 0) {
-      // Fallback: estimate by moneyness
-      return this.findOptionByMoneyness(options, targetDelta, type, spotPrice);
-    }
+    if (puts.length < 2 && calls.length < 2) return 0;
 
-    let best: OptionQuote | null = null;
-    let minDiff = Infinity;
+    // Combine puts and calls, convert to moneyness
+    const allOptions = [...puts, ...calls].map(opt => ({
+      moneyness: opt.k,
+      iv: opt.iv
+    }));
 
-    for (const option of filtered) {
-      const diff = Math.abs(option.delta! - targetDelta);
-      if (diff < minDiff) {
-        minDiff = diff;
-        best = option;
-      }
-    }
+    allOptions.sort((a, b) => a.moneyness - b.moneyness);
 
-    return best;
-  }
+    if (allOptions.length < 3) return 0;
 
-  /**
-   * Find option by moneyness (fallback when delta not available)
-   */
-  private findOptionByMoneyness(options: OptionQuote[], targetDelta: number, type: 'call' | 'put', spotPrice: number): OptionQuote | null {
-    // Rough delta approximation by moneyness
-    let targetMoneyness: number;
+    // Calculate slope between OTM put and OTM call
+    const otmPut = allOptions.find(opt => opt.moneyness < 0.95);
+    const otmCall = allOptions.find(opt => opt.moneyness > 1.05);
+
+    if (!otmPut || !otmCall) return 0;
+
+    const slope = (otmCall.iv - otmPut.iv) / (otmCall.moneyness - otmPut.moneyness);
     
-    if (type === 'call' && targetDelta > 0) {
-      targetMoneyness = 1 + (0.5 - targetDelta) * 0.4; // Rough approximation
-    } else if (type === 'put' && targetDelta < 0) {
-      targetMoneyness = 1 - (0.5 + targetDelta) * 0.4; // Rough approximation
-    } else {
-      return null;
-    }
-
-    const filtered = options.filter(opt => opt.type === type);
-    let best: OptionQuote | null = null;
-    let minDiff = Infinity;
-
-    for (const option of filtered) {
-      const moneyness = option.strike / spotPrice;
-      const diff = Math.abs(moneyness - targetMoneyness);
-      if (diff < minDiff) {
-        minDiff = diff;
-        best = option;
-      }
-    }
-
-    return best;
+    // Normalize to z-score (simplified)
+    return slope / 0.1; // Assume std dev of 0.1 for skew
   }
 
   /**
-   * Find at-the-money option
+   * Generate mock metrics for testing
    */
-  private findATMOption(options: OptionQuote[], type: 'call' | 'put', spotPrice: number): OptionQuote | null {
-    const filtered = options.filter(opt => opt.type === type);
-    
-    let best: OptionQuote | null = null;
-    let minDiff = Infinity;
-
-    for (const option of filtered) {
-      const diff = Math.abs(option.strike - spotPrice);
-      if (diff < minDiff) {
-        minDiff = diff;
-        best = option;
-      }
-    }
-
-    return best;
-  }
-
-  /**
-   * Group options by expiry
-   */
-  private groupByExpiry(options: OptionQuote[]): Map<string, OptionQuote[]> {
-    const groups = new Map<string, OptionQuote[]>();
-
-    for (const option of options) {
-      if (!groups.has(option.expiry)) {
-        groups.set(option.expiry, []);
-      }
-      groups.get(option.expiry)!.push(option);
-    }
-
-    return groups;
-  }
-
-  /**
-   * Get nearest expiry
-   */
-  private getNearestExpiry(expiryGroups: Map<string, OptionQuote[]>): string {
-    const expiries = Array.from(expiryGroups.keys()).sort();
-    return expiries[0];
-  }
-
-  /**
-   * Get days to expiry
-   */
-  private getDaysToExpiry(expiry: string): number {
-    const expiryDate = new Date(expiry);
-    const now = new Date();
-    return Math.max(1, (expiryDate.getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
-  }
-
-  /**
-   * Estimate risk reversal when exact strikes not available
-   */
-  private estimateRiskReversal(options: OptionQuote[], spotPrice: number): number {
-    const otmCalls = options.filter(opt => opt.type === 'call' && opt.strike > spotPrice);
-    const otmPuts = options.filter(opt => opt.type === 'put' && opt.strike < spotPrice);
-
-    if (otmCalls.length === 0 || otmPuts.length === 0) return 0;
-
-    const avgCallIV = otmCalls.reduce((sum, opt) => sum + opt.iv, 0) / otmCalls.length;
-    const avgPutIV = otmPuts.reduce((sum, opt) => sum + opt.iv, 0) / otmPuts.length;
-
-    return avgCallIV - avgPutIV;
-  }
-
-  /**
-   * Estimate butterfly when exact strikes not available
-   */
-  private estimateButterfly(options: OptionQuote[], spotPrice: number): number {
-    const atmOptions = options.filter(opt => Math.abs(opt.strike - spotPrice) / spotPrice < 0.05);
-    const wingOptions = options.filter(opt => Math.abs(opt.strike - spotPrice) / spotPrice > 0.15);
-
-    if (atmOptions.length === 0 || wingOptions.length === 0) return 0;
-
-    const atmIV = atmOptions.reduce((sum, opt) => sum + opt.iv, 0) / atmOptions.length;
-    const wingIV = wingOptions.reduce((sum, opt) => sum + opt.iv, 0) / wingOptions.length;
-
-    return wingIV - atmIV;
-  }
-
-  /**
-   * Generate mock option chain for testing
-   */
-  generateMockChain(symbol: string, spotPrice: number = 50000): OptionChain {
-    const options: OptionQuote[] = [];
-    const expiry = '2024-12-31';
-    
-    // Generate strikes around spot price
-    const strikes = [];
-    for (let i = 0.8; i <= 1.2; i += 0.05) {
-      strikes.push(spotPrice * i);
-    }
-
-    for (const strike of strikes) {
-      const moneyness = strike / spotPrice;
-      
-      // Mock IV smile (higher for OTM options)
-      const baseIV = 0.6;
-      const smile = Math.abs(moneyness - 1) * 0.3; // Smile effect
-      const iv = baseIV + smile;
-
-      // Add call
-      options.push({
-        symbol,
-        strike,
-        expiry,
-        type: 'call',
-        iv,
-        delta: this.estimateDelta(moneyness, 'call')
-      });
-
-      // Add put
-      options.push({
-        symbol,
-        strike,
-        expiry,
-        type: 'put',
-        iv: iv + 0.05, // Put skew
-        delta: this.estimateDelta(moneyness, 'put')
-      });
-    }
-
+  generateMockMetrics(symbol: string): SmileMetrics {
     return {
-      symbol,
-      timestamp: new Date(),
-      underlying_price: spotPrice,
-      options
+      symbol: symbol.toUpperCase(),
+      rr25: (Math.random() - 0.5) * 0.2,        // ±10% RR
+      fly25: Math.random() * 0.05,              // 0-5% butterfly
+      iv_term_slope: (Math.random() - 0.5) * 0.001, // ±0.1% per day
+      skew_z: (Math.random() - 0.5) * 4,        // ±2 std devs
+      timestamp: new Date()
     };
-  }
-
-  /**
-   * Estimate delta from moneyness
-   */
-  private estimateDelta(moneyness: number, type: 'call' | 'put'): number {
-    // Rough Black-Scholes delta approximation
-    const d1 = Math.log(moneyness) / 0.2; // Assume 20% vol, simplified
-    const delta = type === 'call' ? 
-      0.5 + 0.4 * Math.tanh(d1) : 
-      -0.5 + 0.4 * Math.tanh(d1);
-    
-    return Math.max(-1, Math.min(1, delta));
   }
 }
 

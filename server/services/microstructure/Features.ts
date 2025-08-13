@@ -4,8 +4,8 @@
  * Computes real-time order book and trade imbalance signals
  */
 
-import { logger } from '../../utils/logger';
-import { fastPath } from './FastPath';
+import { logger } from '../../utils/logger.js';
+import { fastPath } from './FastPath.js';
 
 export interface MicrostructureSnapshot {
   symbol: string;

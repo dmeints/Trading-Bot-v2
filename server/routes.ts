@@ -1918,9 +1918,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Wire strategy router routes
   app.use('/api/health', healthRoutes);
-  app.use('/api/errors', errorRoutes); // Assuming errorRoutes is defined elsewhere
+  // Assuming errorRoutes is defined and imported elsewhere if it's intended to be used.
+  // app.use('/api/errors', errorRoutes); 
   app.use('/api/portfolio', portfolioRoutes);
-  app.use('/api/chart-data', chartDataRoutes); // Assuming chartDataRoutes is defined elsewhere
+  // Assuming chartDataRoutes is defined and imported elsewhere if it's intended to be used.
+  // app.use('/api/chart-data', chartDataRoutes); 
   app.use('/api/router', strategyRouterRoutes);
   app.use('/api/events', eventsRoutes);
   app.use('/api/policies', policiesRoutes);

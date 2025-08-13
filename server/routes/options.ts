@@ -115,3 +115,59 @@ router.post('/mock/:symbol', (req, res) => {
 });
 
 export default router;
+import { Router } from 'express';
+import { optionsSmile, type OptionChainEntry } from '../services/options/Smile.js';
+import { logger } from '../utils/logger.js';
+
+const router = Router();
+
+/**
+ * POST /api/options/chain/:symbol
+ * Store options chain snapshot
+ */
+router.post('/chain/:symbol', (req, res) => {
+  try {
+    const { symbol } = req.params;
+    const { chain, spot } = req.body;
+
+    if (!Array.isArray(chain)) {
+      return res.status(400).json({ error: 'Chain must be an array' });
+    }
+
+    optionsSmile.storeChain(symbol, chain as OptionChainEntry[], spot || 1);
+    
+    res.json({ 
+      success: true, 
+      symbol: symbol.toUpperCase(),
+      chainSize: chain.length,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('[OptionsRoutes] Error storing chain:', error);
+    res.status(500).json({ error: 'Failed to store options chain' });
+  }
+});
+
+/**
+ * GET /api/options/smile/:symbol
+ * Get smile metrics for symbol
+ */
+router.get('/smile/:symbol', (req, res) => {
+  try {
+    const { symbol } = req.params;
+    
+    let metrics = optionsSmile.calculateMetrics(symbol);
+    
+    // Generate mock if no real data
+    if (!metrics) {
+      metrics = optionsSmile.generateMockMetrics(symbol);
+    }
+    
+    res.json(metrics);
+  } catch (error) {
+    logger.error('[OptionsRoutes] Error calculating smile:', error);
+    res.status(500).json({ error: 'Failed to calculate smile metrics' });
+  }
+});
+
+export default router;

@@ -1,0 +1,5 @@
+=== /api/health ===
+jq not found, raw output:
+=== /api/guards/state ===
+=== /api/budget/status ===
+=== /metrics (first 20 lines) ===

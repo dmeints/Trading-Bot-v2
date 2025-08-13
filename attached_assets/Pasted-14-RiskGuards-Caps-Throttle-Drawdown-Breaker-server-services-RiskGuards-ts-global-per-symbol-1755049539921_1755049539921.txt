@@ -1,0 +1,136 @@
+14) RiskGuards — Caps, Throttle, Drawdown Breaker
+server/services/RiskGuards.ts: global & per-symbol notional caps, orders/min throttle, rolling max-DD breaker with timed reset.
+
+Route: GET /api/guards/state
+
+Integrated in ExecutionRouter.execute(); blocked → {blocked:true,reason}.
+
+Proof:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/guards/state | jq
+# Attempt an excessive order and show block reason
+Tests: tests/risk_guards.spec.ts.
+
+15) Budgeter — API Cost & Rate Limits
+server/services/Budgeter.ts: track calls/cost/quotas per provider; wrap external requests; choose cheapest viable source.
+
+Route: GET /api/budget/status
+
+Proof:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/budget/status | jq
+Tests: tests/budgeter_limits.spec.ts.
+
+16) Blue/Green + Canary Auto-Cutover
+server/services/BlueGreen.ts: SLOs (p95 latency, error rate, router QoS). State machine: candidate→canary(1%)→partial→active.
+
+Route: GET /api/deploy/status
+
+Proof:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/deploy/status | jq
+Tests: tests/bluegreen_cutover.spec.ts.
+
+17) Chaos Injection & Data Quality
+server/services/Chaos.ts: ws_flap, api_timeout, l2_gap, depth_spike (dev only).
+
+server/services/DataQuality.ts: schema/spike guards for OHLCV & L2; quarantine counts.
+
+Routes:
+
+POST /api/chaos/inject {type}
+
+GET /api/data-quality/stats
+
+Proof:
+
+bash
+Copy
+Edit
+curl -s -X POST localhost:5000/api/chaos/inject -H "Content-Type: application/json" -d '{"type":"l2_gap"}' | jq
+curl -s localhost:5000/api/data-quality/stats | jq
+Tests: tests/chaos_resilience.spec.ts, tests/data_quality.spec.ts.
+
+18) Contracts + Provenance + Feature Store Parity
+server/contracts/*.ts (zod) for OHLCV, L2, router I/O, exec I/O.
+
+server/services/featureStore/index.ts: putFeature, getWindow, parity check (online vs backtest).
+
+server/middleware/provenance.ts: hash(feature window + context + decision) into audit logs.
+
+Routes:
+
+GET /api/features/parity
+
+GET /api/audit/latest?limit=5
+
+Proof:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/features/parity | jq
+curl -s localhost:5000/api/audit/latest?limit=1 | jq '.[0]'
+Tests: tests/data_contracts.spec.ts, tests/feature_store_parity.spec.ts.
+
+19) Reports & Metrics++
+Routes:
+
+GET /api/report/alpha-pnl?window=7d (per-alpha contribution, leave-one-out/SHAP-lite)
+
+GET /api/report/risk?window=7d (realized vol, CVaR, turnover, slippage)
+
+GET /api/report/venue?window=7d (win-rate, slippage, downtime by venue)
+
+/api/health add: db.latencyMs, ws.clients, router.decisionsLastMin, exec.blockedLastMin, lastOHLCVSync.
+
+/metrics Prometheus: venue_score, l2_resyncs_total, chaos_injections_total, router_decisions_total, exec_blocked_total, price_stream_connected, ohlcv_last_sync_ts_seconds.
+
+Proof:
+
+bash
+Copy
+Edit
+curl -s "localhost:5000/api/report/alpha-pnl?window=7d" | jq
+curl -s "localhost:5000/api/report/risk?window=7d" | jq
+curl -s "localhost:5000/api/report/venue?window=7d" | jq
+curl -s localhost:5000/api/health | jq
+curl -s localhost:5000/metrics | head -n 30
+Tests: tests/report_rollups.spec.ts.
+
+20) UI Feed (API-only ok for this PR)
+Provide the JSON endpoints used by cards:
+/api/router/snapshot, /api/regime/state, /api/pbt/lineage, /api/promotion/status, /api/guards/state, /api/exec/sizing/last, /api/venues/registry, /api/l2/:venue/:symbol, /api/alpha/registry, /api/alpha/attribution, /api/report/*.
+
+Proof: paste at least 5 JSON responses (your choice).
+
+FINAL RETURN (paste only)
+List of files changed/created
+
+Diffs or full file bodies for all new/updated files
+
+Logs from type-check, build, test, start
+
+curl/jq proofs for every task above
+
+Pitfalls to avoid (bake fixes in now)
+ESM + NodeNext: all relative server imports must end with .js after build.
+
+Bounded queues on WS/L2; coalesce deltas; resync on gaps.
+
+Budgeter: wrap all external calls.
+
+Dev-only endpoints (chaos, flags, model mutate) behind a guard.
+
+DB indices: (symbol,timeframe,timestamp) for bars; (venue,symbol,seq) for L2; (policyId,ts) for audits.
+
+No lookahead: purged CV + embargo; enforce via CI tests.

@@ -1,0 +1,295 @@
+You are a build agent. Deliver runnable code, not plans.
+Finalize Stevie with cross-venue routing, L2 ingestion, fast-path microstructure, budgets, blue/green, chaos, registry/rollback, contracts/provenance, dashboards, tests.
+Rules: TypeScript strict; minimal deps; modify real files; add tests per task. After changes run:
+
+bash
+Copy
+Edit
+npm ci
+npm run type-check
+npm run build
+npm test
+npm start & sleep 2
+Paste actual logs and curl/jq outputs for each Acceptance. If anything fails, fix and re-run until green.
+
+TASK 1 — Cross-Venue Smart Router (multi-exchange)
+Goal: choose venue per order using latency, spread, depth, fee, and failure risk.
+
+Create server/services/venues/VenueRegistry.ts
+
+Track per-venue metrics: latencyMs, spread_bps, topDepth, feeBps, reliabilityScore, rateRemaining.
+
+Update from existing WS/REST pings and L2 data (Task 2).
+
+Create server/services/venues/SmartVenueRouter.ts
+
+scoreVenue(symbol, size) = weighted blend of (tight spread, deep book, low fee, low latency, high reliability).
+
+chooseVenue(symbol, size) returns { venue, score, reasons }.
+
+Wire into ExecutionRouter.execute() so paper orders include venue selection (just for audit now).
+
+Routes:
+
+GET /api/venues/registry → latest venue metrics.
+
+POST /api/venues/score {symbol,size} → score details.
+
+Acceptance
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/venues/registry | jq '.[0:3]'
+curl -s -X POST localhost:5000/api/venues/score -H "Content-Type: application/json" \
+  -d '{"symbol":"BTCUSDT","size":0.02}' | jq
+Tests: tests/venues_router.spec.ts (lower spread/higher depth → higher score; reliability penalty works).
+
+TASK 2 — True L2 Depth Ingestion (snapshot + delta)
+Goal: maintain accurate order book state with snapshot + incremental updates per venue.
+
+Create server/services/l2/OrderBook.ts
+
+In-memory price→size maps for bids/asks; sequence numbers; best bid/ask; top-K depth aggregates.
+
+Create server/services/l2/BookMaintainer.ts
+
+Per venue: snapshot fetch (REST) + delta apply (WS). Handle gaps: resync on seq mismatch.
+
+Integrate with MarketData: emit consolidated top-K and book imbalance to Microstructure Features.
+
+Routes:
+
+GET /api/l2/:venue/:symbol → snapshot of top-K + seq.
+
+Acceptance
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/l2/binance/BTCUSDT | jq '.bids[0], .asks[0], .seq'
+Tests: tests/l2_reconciliation.spec.ts (apply deltas, gap triggers resync, top-K correct).
+
+TASK 3 — Microstructure Fast Path (Rust→WASM)
+Goal: sub-millisecond OBI/TI/spread/micro-vol over sliding windows.
+
+Create fastpath/micro/src/lib.rs
+
+Export functions: obi, ti, spread_bps, micro_vol, roll_update.
+
+Build to WASM (via wasm-pack or simple wasm32-unknown-unknown target) and load in Node using WebAssembly.instantiate.
+
+Create server/services/microstructure/FastPath.ts that wraps WASM.
+
+Wire Features.ts to call fast path when available; fallback to TS if wasm init fails.
+
+Acceptance
+
+bash
+Copy
+Edit
+# Show a log proving WASM initialized and a curl calling the microstructure endpoint
+curl -s localhost:5000/api/microstructure/BTCUSDT | jq
+Tests: tests/micro_wasm.spec.ts (numeric parity between TS and WASM within tolerance).
+
+TASK 4 — API Cost & Rate-Limit Budgeter
+Goal: never exceed provider quotas or cost budgets; prefer cheapest viable source.
+
+Create server/services/Budgeter.ts
+
+Track per-provider: calls, costUSD, rateRemaining, resetAt.
+
+Provide request(provider, kind, fn) that enforces limits (defer/deny/fallback).
+
+Wrap external API calls (Binance/Deribit/Coingecko) via Budgeter.
+
+Routes: GET /api/budget/status.
+
+Acceptance
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/budget/status | jq
+Tests: tests/budgeter_limits.spec.ts (hit limits → fallback/defer happens).
+
+TASK 5 — Blue/Green + Canary Auto-Cutover
+Goal: run blue and green stacks, cut over automatically using SLOs.
+
+Create server/services/BlueGreen.ts
+
+Track per-stack: p95Latency, errorRate, routerQoS (avg score vs realized reward), health.
+
+State machine: candidate → canary (1% paper weight) → partial (10–25%) → active.
+
+Integrate with flags to publish which stack ExecutionRouter uses (paper only).
+
+Routes: GET /api/deploy/status.
+
+Acceptance
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/deploy/status | jq
+Tests: tests/bluegreen_cutover.spec.ts (synthetic metrics → cutover after threshold window).
+
+TASK 6 — Chaos Injection (resilience)
+Goal: verify graceful degradation: WS flaps, API timeouts, bogus L2 deltas.
+
+Create server/services/Chaos.ts
+
+Types: ws_flap, api_timeout, l2_gap, depth_spike.
+
+Route: POST /api/chaos/inject {type} → triggers one-shot fault (dev only).
+
+Guard: ensure DataQuality + BookMaintainer handle spikes/gaps.
+
+Acceptance
+
+bash
+Copy
+Edit
+curl -s -X POST localhost:5000/api/chaos/inject -H "Content-Type: application/json" \
+  -d '{"type":"l2_gap"}' | jq
+Tests: tests/chaos_resilience.spec.ts (systems recover; health remains ok).
+
+TASK 7 — Model Registry & Rollback
+Goal: version router/policies; quick rollback on regression.
+
+Create server/services/modelRegistry.ts
+
+register(meta), promote(id), rollback(id), getCurrent().
+
+Persist in DB with timestamps and metrics (Sharpe, CVaR, calibration).
+
+Routes:
+
+GET /api/models
+
+POST /api/models/promote {id}
+
+POST /api/models/rollback {id}
+
+Acceptance
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/models | jq
+Tests: tests/model_registry.spec.ts (promote+rollback update getCurrent()).
+
+TASK 8 — Feature Store Parity & Data Contracts
+Goal: prevent leakage, enforce schemas.
+
+Feature Store: server/services/featureStore/index.ts
+
+putFeature, getWindow, parity check (online vs backtest).
+
+Contracts: server/contracts/*.ts (zod) for OHLCV, L2, router I/O, execution I/O.
+
+Routes:
+
+GET /api/features/parity
+
+GET /api/audit/latest?limit=5 → ensure provenance hashes present.
+
+Acceptance
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/features/parity | jq
+curl -s localhost:5000/api/audit/latest?limit=1 | jq '.[0].provenance'
+Tests: tests/feature_store_parity.spec.ts, tests/data_contracts.spec.ts.
+
+TASK 9 — Meta-Monitor + Calibration Enforcer
+Goal: self-tune priors and sizing caps, enforce probability calibration.
+
+MetaMonitor: already created—extend with:
+
+reliability curve + Brier score targets; if miscalibrated, propose bounded routerPriorDelta and sizingCapDelta.
+
+Routes:
+
+GET /api/meta/quality
+
+POST /api/meta/apply-nudges {}
+
+Acceptance
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/meta/quality | jq
+curl -s -X POST localhost:5000/api/meta/apply-nudges -d '{}' | jq
+Tests: tests/meta_monitor.spec.ts (nudges bounded; calibration improves on synthetic).
+
+TASK 10 — Reporting & Metrics++ (Ops view)
+Goal: make operating Stevie trivial.
+
+Reports:
+
+GET /api/report/alpha-pnl?window=7d
+
+GET /api/report/risk?window=7d
+
+GET /api/report/venue?window=7d (win-rate, slippage, downtime by venue)
+
+Metrics: /metrics Prometheus counters/gauges:
+
+venue_score, l2_resyncs_total, chaos_injections_total, router_decisions_total, exec_blocked_total, price_stream_connected, ohlcv_last_sync_ts_seconds.
+
+Acceptance
+
+bash
+Copy
+Edit
+curl -s "localhost:5000/api/report/venue?window=7d" | jq
+curl -s localhost:5000/metrics | head -n 25
+Tests: tests/report_rollups.spec.ts (venue rollups sane on synthetic data).
+
+TASK 11 — UI Endpoints (API-only ok)
+Goal: surface everything for dashboards (front-end optional for this PR).
+
+Provide API readouts used by cards:
+
+/api/router/snapshot, /api/regime/state, /api/pbt/lineage, /api/promotion/status,
+
+/api/guards/state, /api/exec/sizing/last, /api/venues/registry, /api/l2/:venue/:symbol,
+
+/api/alpha/registry, /api/alpha/attribution, /api/report/*.
+
+Acceptance
+
+bash
+Copy
+Edit
+# Paste at least 5 JSON dumps used by UI, your choice:
+curl -s localhost:5000/api/router/snapshot | jq
+curl -s localhost:5000/api/guards/state | jq
+curl -s localhost:5000/api/venues/registry | jq
+curl -s localhost:5000/api/promotion/status | jq
+curl -s localhost:5000/api/alpha/registry | jq
+FINAL RETURN (paste only)
+List of files changed/created
+
+Diffs or file contents for all new/updated files
+
+Logs from type-check, build, test, start
+
+curl/jq proofs for each task’s Acceptance
+
+Notes & Pitfalls to handle now
+
+NodeNext/ESM imports: use .js in relative server imports after build; ensure tsconfig.server.json emits to dist.
+
+Backpressure: L2 deltas can flood; use bounded queues, coalesce updates, resync on seq gaps.
+
+Budgeter guard: never call external APIs outside Budgeter; add unit tags to metric names.
+
+Security: dev endpoints (chaos, flags, model mutate) should be behind a simple auth gate or dev-only guard.
+
+DB indices: add composite indices on (symbol,timeframe,timestamp) for bars and (venue,symbol,seq) for L2 logs.
+
+This patch makes Stevie venue-aware, depth-aware, and latency-aware, with a fast microstructure path, self-tuning brains, and production-grade SRE rails.

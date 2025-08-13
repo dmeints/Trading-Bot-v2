@@ -1,6 +1,10 @@
 import express from "express";
 // @ts-ignore - Missing type definitions
 import compression from "compression";
+import { requestId } from "./middleware/requestId.js";
+import { errorHandler } from "./middleware/errorHandler.js";
+import { notFound } from "./middleware/notFound.js";
+import { bootSanityChecks } from "./bootstrap/sanity.js";
 import { setupVite, serveStatic } from "./vite.js";
 import { notFoundHandler, errorHandler } from "./utils/errorHandler.js";
 import { registerRoutes } from "./routes.js";
@@ -22,7 +26,11 @@ import { bookMaintainer } from './services/l2/BookMaintainer.js';
 
 const app = express();
 
+// Boot sanity checks
+bootSanityChecks();
+
 app.use((compression as any)());
+app.use(requestId);
 
 // Request ID middleware for tracking
 app.use((req: any, res, next) => {
@@ -94,10 +102,10 @@ app.use((req, res, next) => {
   }
 
   // 404 handler for unknown routes (after frontend routing)
-  app.use(notFoundHandler as any);
+  app.use(notFound);
 
   // Global error handler
-  app.use(errorHandler as any);
+  app.use(errorHandler);
 
   // ALWAYS serve the app on the port specified in the environment variable PORT
   // Other ports are firewalled. Default to 5000 if not specified.

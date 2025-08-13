@@ -1,20 +1,20 @@
 
-import { Router } from 'express';
-import { portfolioOptimizer } from '../services/portfolio.js';
-import { OptimizationRequestSchema } from '../contracts/portfolio.js';
-import { logger } from '../utils/logger.js';
+import express from 'express';
+import { PortfolioOptimizer } from '../services/PortfolioOptimizer.js';
 
-const router = Router();
+const router = express.Router();
+const optimizer = new PortfolioOptimizer();
 
-router.post('/optimize', (req, res) => {
+// POST /api/portfolio/optimize
+router.post('/optimize', async (req, res) => {
   try {
-    const request = OptimizationRequestSchema.parse(req.body);
-    const result = portfolioOptimizer.optimize(request);
-    res.json(result);
+    const { symbols, cvarBudget, volTarget } = req.body;
+    const allocation = await optimizer.optimize(symbols, cvarBudget, volTarget);
+    res.json(allocation);
   } catch (error) {
-    logger.error('[Portfolio] Optimize error:', error);
-    res.status(400).json({ error: 'Invalid optimization request' });
+    res.status(500).json({ error: String(error) });
   }
 });
 
+export { router as portfolioRouter };
 export default router;

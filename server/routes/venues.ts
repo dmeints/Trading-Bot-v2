@@ -1,8 +1,3 @@
-
-/**
- * Venue Registry and Smart Routing API Routes
- */
-
 import { Router } from 'express';
 import { venueRegistry } from '../services/venues/VenueRegistry.js';
 import { smartVenueRouter, type RoutingContext } from '../services/venues/SmartVenueRouter.js';

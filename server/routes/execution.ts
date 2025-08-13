@@ -55,23 +55,13 @@ router.post('/route', async (req, res) => {
  */
 router.post('/simulate', async (req, res) => {
   try {
-    const { symbol, size, urgency = 0.5 } = req.body;
-
-    if (!symbol || !size) {
-      return res.status(400).json({ error: 'Missing symbol or size' });
-    }
-
-    const plan = await executionPlanner.createPlan(
-      symbol.toUpperCase(),
-      parseFloat(size),
-      parseFloat(urgency)
-    );
-
-    res.json(plan);
+    const { symbol, size } = req.body;
+    const simulation = await executionRouter.simulate(symbol.toUpperCase(), parseFloat(size));
+    res.json(simulation);
 
   } catch (error) {
     logger.error('[Execution] Error simulating execution:', error);
-    res.status(500).json({ error: 'Failed to simulate execution' });
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to simulate execution' });
   }
 });
 
@@ -79,7 +69,7 @@ router.post('/simulate', async (req, res) => {
  * GET /api/exec/sizing/last
  * Get last execution plan for debugging
  */
-router.get('/sizing/last', (req, res) => {
+router.get('/sizing/last', async (req, res) => {
   try {
     const lastPlan = executionPlanner.getLastPlan();
 
@@ -91,7 +81,7 @@ router.get('/sizing/last', (req, res) => {
 
   } catch (error) {
     logger.error('[Execution] Error getting last sizing:', error);
-    res.status(500).json({ error: 'Failed to get last sizing' });
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to get last sizing' });
   }
 });
 

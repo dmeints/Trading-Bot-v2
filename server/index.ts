@@ -1,23 +1,23 @@
 import express from "express";
 // @ts-ignore - Missing type definitions
 import compression from "compression";
-import { setupVite, serveStatic } from "./vite";
-import { notFoundHandler, errorHandler } from "./utils/errorHandler";
-import { registerRoutes } from "./routes";
-import { env } from "./config/env";
-import { logger } from "./utils/logger";
-import { createTradingConformalPredictor } from './brain/conformal';
-import stevieCore from './routes/stevieCore';
-import metaBrainRouter from './routes/metaBrain';
-import scenarioCoverageRouter from './routes/scenarioCoverage';
-import conformalTuningRouter from './routes/conformalTuning';
+import { setupVite, serveStatic } from "./vite.js";
+import { notFoundHandler, errorHandler } from "./utils/errorHandler.js";
+import { registerRoutes } from "./routes.js";
+import { env } from "./config/env.js";
+import { logger } from "./utils/logger.js";
+import { createTradingConformalPredictor } from './brain/conformal.js';
+import stevieCore from './routes/stevieCore.js';
+import metaBrainRouter from './routes/metaBrain.js';
+import scenarioCoverageRouter from './routes/scenarioCoverage.js';
+import conformalTuningRouter from './routes/conformalTuning.js';
 
 // Import routes
-import healthRoutes from './routes/health';
-import { registerTradingRoutes } from './routes/trading';
-import { portfolioRouter } from './routes/portfolio';
-import errorRoutes from './routes/errors';
-import chartDataRoutes from './routes/chart-data';
+import healthRoutes from './routes/health.js';
+import { registerTradingRoutes } from './routes/trading.js';
+import { portfolioRouter } from './routes/portfolio.js';
+import errorRoutes from './routes/errors.js';
+import chartDataRoutes from './routes/chart-data.js';
 
 const app = express();
 
@@ -129,7 +129,7 @@ app.use('/api/scenarios', scenarioCoverageRouter);
 app.use('/api/conformal-tuning', conformalTuningRouter);
 
 // Mount other routers
-import burninDashboardRouter from './routes/burninDashboard';
+import burninDashboardRouter from './routes/burninDashboard.js';
 
 // Add burn-in dashboard routes
 app.use('/api/burnin-dashboard', burninDashboardRouter);

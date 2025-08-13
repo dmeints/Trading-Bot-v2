@@ -1,72 +1,38 @@
+import express from 'express';
+import { StrategyRouter } from '../services/StrategyRouter.js';
 
-import { Router } from 'express';
-import { strategyRouter } from '../services/StrategyRouter.js';
-import { ContextSchema, UpdateRequestSchema } from '../contracts/routerIO.js';
-import { logger } from '../utils/logger.js';
+const router = express.Router();
+const strategyRouter = new StrategyRouter();
 
-const router = Router();
-
-/**
- * POST /api/router/choose
- * Choose policy using Bayesian Thompson Sampling
- */
-router.post('/choose', (req, res) => {
+// POST /api/router/choose - Choose strategy based on context
+router.post('/choose', async (req, res) => {
   try {
-    const context = ContextSchema.parse(req.body.context || req.body || {});
-    
-    const choice = strategyRouter.choose(context);
-    
-    res.json({
-      policyId: choice.policyId,
-      score: choice.score,
-      explorationBonus: choice.explorationBonus,
-      confidence: choice.confidence
-    });
+    const { context } = req.body;
+    const choice = await strategyRouter.choose(context);
+    res.json(choice);
   } catch (error) {
-    logger.error('[RouterRoutes] Error choosing policy:', error);
-    res.status(500).json({ error: 'Failed to choose policy' });
+    res.status(500).json({ error: String(error) });
   }
 });
 
-/**
- * POST /api/router/update
- * Update policy performance with reward
- */
-router.post('/update', (req, res) => {
+// POST /api/router/update - Update strategy with reward
+router.post('/update', async (req, res) => {
   try {
-    const { policyId, reward, context } = UpdateRequestSchema.parse(req.body);
-    
-    const posterior = strategyRouter.update(policyId, reward, context);
-    
-    res.json({
-      success: true,
-      policyId,
-      posterior: {
-        alpha: posterior.alpha,
-        beta: posterior.beta,
-        count: posterior.count,
-        mean: posterior.mean,
-        variance: posterior.variance,
-        updateCount: posterior.updateCount
-      }
-    });
+    const { policyId, reward, context } = req.body;
+    await strategyRouter.update(policyId, reward, context);
+    res.json({ success: true });
   } catch (error) {
-    logger.error('[RouterRoutes] Error updating policy:', error);
-    res.status(500).json({ error: 'Failed to update policy' });
+    res.status(500).json({ error: String(error) });
   }
 });
 
-/**
- * GET /api/router/policies
- * Get all policies and their posteriors
- */
-router.get('/policies', (req, res) => {
+// GET /api/router/snapshot - Get current router state
+router.get('/snapshot', async (req, res) => {
   try {
-    const policies = Object.fromEntries(strategyRouter.getPolicies());
-    res.json(policies);
+    const snapshot = await strategyRouter.snapshot();
+    res.json(snapshot);
   } catch (error) {
-    logger.error('[RouterRoutes] Error getting policies:', error);
-    res.status(500).json({ error: 'Failed to get policies' });
+    res.status(500).json({ error: String(error) });
   }
 });
 

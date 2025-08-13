@@ -1933,13 +1933,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }
 
   // Wire strategy router routes
-  app.use('/api/health', healthRoutes);
+  registerHealthRoutes(app);
+  registerTradingRoutes(app);
+
+  // Register critical endpoints
+  app.use('/api/router', routerRoutes);
+  app.use('/api/microstructure', microstructureRoutes);
+  app.use('/api/vol', volRoutes);
+  app.use('/api/options', optionsRoutes);
+  app.use('/api/l2', l2Routes);
+  app.use('/api/venues', venueRoutes);
+  app.use('/api/exec', execRoutes);
+  app.use('/api/portfolio', portfolioRoutes);
+  app.use('/api/promotion', promotionRoutes);
+  app.use('/api/report', reportRoutes);
+
   // Assuming errorRoutes is defined and imported elsewhere if it's intended to be used.
   // app.use('/api/errors', errorRoutes);
-  app.use('/api/portfolio', portfolioRoutes);
   // Assuming chartDataRoutes is defined and imported elsewhere if it's intended to be used.
   // app.use('/api/chart-data', chartDataRoutes);
-  app.use('/api/router', routerRoutes);
+  app.use('/api/router', strategyRouterRoutes);
   app.use('/api/events', eventsRoutes);
   app.use('/api/policies', policiesRoutes);
 

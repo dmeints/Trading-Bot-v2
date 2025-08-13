@@ -1,0 +1,529 @@
+You are a build agent. Deliver runnable code, not plans.
+Finalize Skippy/Stevie into a runnable, provable stack: fix server build/ESM, then implement and smoke-test microstructure features, vol models, options smile, Bayesian router, L2 depth, venue scoring, execution planner + sizing (CVaR/vol targeting), portfolio optimizer, feature gating, promotion via SPA, counterfactuals, meta-monitor, events embeddings (stub ok), risk guards, budgeter, blue/green, chaos, data quality, contracts + feature store + provenance, reports, health/metrics.
+Rules:
+
+Strict TypeScript, NodeNext ESM; all relative server imports end with .js after build.
+
+Minimal deps. Modify real files. Add unit/integration tests for each task.
+
+Use dev stubs/mocks if live keys not present (never block the run).
+
+After each task-set, run and paste the outputs:
+
+bash
+Copy
+Edit
+npm ci
+npm run type-check
+npm run build
+npm test
+npm start & sleep 2
+For every task, paste the exact curl/jq proofs specified. If anything fails, fix and re-run until all GREEN.
+
+Return only: list of files changed/created, diffs or file bodies, build/test/start logs, and curl outputs.
+
+TASK 0 — Build/Run Sanity (prod + dev)
+Add tsconfig.server.json (server-only emit):
+
+json
+Copy
+Edit
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": ".",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "allowImportingTsExtensions": true,
+    "sourceMap": true,
+    "strict": true
+  },
+  "include": ["server/**/*", "shared/**/*"]
+}
+Ensure every relative import in server/** ends with .js (fix any stragglers).
+
+Confirm package.json scripts (add if missing):
+
+json
+Copy
+Edit
+{
+  "scripts": {
+    "build:server": "tsc -p tsconfig.server.json",
+    "build": "npm run build:server && vite build",
+    "start": "node dist/server/index.js",
+    "type-check": "tsc -p tsconfig.server.json --noEmit && tsc --noEmit"
+  }
+}
+.replit deploy: build = ["npm","run","build"], run = ["npm","run","start"]. Dev run remains npm run dev.
+
+Acceptance:
+
+bash
+Copy
+Edit
+npm ci && npm run type-check && npm run build && npm start & sleep 2
+curl -s http://localhost:5000/api/health | jq
+TASK 1 — Microstructure Features (OBI/TI/Spread/Micro-Vol/Cancel)
+server/services/microstructure/Features.ts: rolling per-symbol OBI, trade imbalance, spread (bps), micro-vol (1–5s), cancel rate (approximate if feed limited).
+
+Route: GET /api/microstructure/:symbol → latest snapshot.
+
+Append these fields to router context when present.
+
+Tests: tests/microstructure_features.spec.ts (OBI/TI/spread/micro-vol on synthetic depth/tape).
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/microstructure/BTCUSDT | jq
+curl -s -X POST localhost:5000/api/router/choose \
+  -H "Content-Type: application/json" \
+  -d '{"context":{"symbol":"BTCUSDT","obi":0.2,"ti":0.1,"spread_bps":3,"micro_vol":0.004}}' | jq
+TASK 2 — Volatility Models (HAR-RV + GARCH(1,1))
+server/services/volatility/Models.ts:
+
+HAR-RV on realized variance from 1m returns.
+
+GARCH(1,1): 
+𝜎
+𝑡
+2
+=
+𝜔
++
+𝛼
+𝑟
+𝑡
+−
+1
+2
++
+𝛽
+𝜎
+𝑡
+−
+1
+2
+σ 
+t
+2
+​
+ =ω+αr 
+t−1
+2
+​
+ +βσ 
+t−1
+2
+​
+ .
+
+forecastVol(symbol, horizonMins) returns { sigmaHAR, sigmaGARCH }.
+
+Route: GET /api/vol/forecast/:symbol?h=60.
+
+Tests: tests/vol_models.spec.ts (positive, sane forecasts on synthetic returns).
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s "localhost:5000/api/vol/forecast/BTCUSDT?h=60" | jq
+TASK 3 — Options IV Smile/Skew (math real; provider stub ok)
+server/services/options/Smile.ts: 25Δ risk reversal, butterfly, term slope, skew z from a supplied chain.
+
+Routes:
+
+POST /api/options/chain/:symbol → store chain snapshot
+
+GET /api/options/smile/:symbol → derived metrics
+
+Add {rr25, fly25, iv_term_slope, skew_z} into router context when present.
+
+Tests: tests/options_smile.spec.ts.
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s -X POST localhost:5000/api/options/chain/BTCUSDT \
+  -H "Content-Type: application/json" \
+  -d '{"chain":[{"k":0.9,"tenor":"7d","type":"call","iv":0.6},{"k":1.1,"tenor":"7d","type":"put","iv":0.7}]}' | jq
+curl -s localhost:5000/api/options/smile/BTCUSDT | jq
+TASK 4 — Context Router (Bayesian Thompson Sampling)
+server/services/StrategyRouter.ts: Bayesian linear TS over policies using context vector (regime, vol forecasts, microstructure, options metrics, funding/basis, sentiment/on-chain as available).
+
+Routes:
+
+POST /api/router/choose {context} → {policyId, score, explorationBonus}
+
+POST /api/router/update {policyId, reward, context}
+
+GET /api/router/snapshot → last choice + sampled scores + feature vector
+
+Tests: tests/router_ts.spec.ts (converges to better policy on synthetic).
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s -X POST localhost:5000/api/router/choose -H "Content-Type: application/json" \
+  -d '{"context":{"regime":"bull","sigmaHAR":0.02,"obi":0.2,"rr25":0.1}}' | jq
+curl -s -X POST localhost:5000/api/router/update -H "Content-Type: application/json" \
+  -d '{"policyId":"p_sma","reward":0.004,"context":{"regime":"bull"}}' | jq
+curl -s localhost:5000/api/router/snapshot | jq
+TASK 5 — L2 Depth (Snapshot + Delta Reconciliation)
+server/services/l2/OrderBook.ts: in-memory book (price→size maps), best bid/ask, top-K aggregates, sequence tracking.
+
+server/services/l2/BookMaintainer.ts: per venue & symbol → snapshot via REST + apply WS deltas; resync on seq gaps.
+
+Route: GET /api/l2/:venue/:symbol → { bids, asks, seq, ts }.
+
+Feed top-K aggregates to Microstructure features.
+
+Tests: tests/l2_reconciliation.spec.ts.
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/l2/binance/BTCUSDT | jq '.bids[0], .asks[0], .seq'
+TASK 6 — Cross-Venue Smart Router
+server/services/venues/VenueRegistry.ts: latency, spread_bps, topDepth, feeBps, reliability, rateRemaining.
+
+server/services/venues/SmartVenueRouter.ts: scoreVenue/chooseVenue per symbol & size.
+
+Routes:
+
+GET /api/venues/registry
+
+POST /api/venues/score {symbol,size} → {venue,score,reasons}
+
+Include chosen venue in Execution audit (paper).
+
+Tests: tests/venues_router.spec.ts.
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/venues/registry | jq '.[0:3]'
+curl -s -X POST localhost:5000/api/venues/score -H "Content-Type: application/json" \
+  -d '{"symbol":"BTCUSDT","size":0.02}' | jq
+TASK 7 — Execution: Uncertainty-Scaled Sizing + Impact-Aware Planner
+server/services/ExecutionRouter.ts:
+
+plan(context) → router choose → signal (long/flat/target).
+
+size(signal, uncertaintyWidth) with 
+𝑠
+=
+𝑠
+max
+⁡
+⋅
+𝜎
+(
+−
+𝑤
+/
+𝑤
+\*
+)
+s=s 
+max
+​
+ ⋅σ(−w/w 
+\*
+ ) and vol targeting using vol forecasts; apply CVaR budget via portfolio.ts.
+
+Use server/services/execution/Planner.ts for Immediate/TWAP/VWAP/POV based on spread/depth/micro-vol & urgency; cost 
+𝑘
+⋅
+size
+𝛼
++
+spread
+/
+2
+k⋅size 
+α
+ +spread/2.
+
+execute(plan) → paper order; persist execution record.
+
+Routes:
+
+POST /api/exec/simulate {symbol,size} → plan & cost preview
+
+POST /api/exec/plan-and-execute {symbol} → execution record
+
+GET /api/exec/sizing/last → last sizing snapshot
+
+Tests: tests/execution_planner.spec.ts.
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s -X POST localhost:5000/api/exec/simulate -H "Content-Type: application/json" \
+  -d '{"symbol":"BTCUSDT","size":0.02}' | jq
+curl -s -X POST localhost:5000/api/exec/plan-and-execute -H "Content-Type: application/json" \
+  -d '{"symbol":"BTCUSDT"}' | jq
+curl -s localhost:5000/api/exec/sizing/last | jq
+TASK 8 — Portfolio: CVaR Budget + Vol Targeting + Kelly-lite
+server/services/portfolio.ts: estimate vol/CVaR (historical sim); solve weights with projected gradient so 
+∑
+𝑤
+𝑖
+CVaR
+𝑖
+≤
+𝐵
+∑w 
+i
+​
+ CVaR 
+i
+​
+ ≤B, portfolio vol ≈ target 
+𝜎
+∗
+σ 
+∗
+ . Provide Kelly-lite advisory 
+𝑓
+≈
+𝜅
+𝜇
+/
+𝜎
+2
+f≈κμ/σ 
+2
+  (clipped).
+
+Route: POST /api/portfolio/optimize {symbols,cvarBudget,volTarget}.
+
+Tests: tests/portfolio_constraints.spec.ts.
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s -X POST localhost:5000/api/portfolio/optimize \
+  -H "Content-Type: application/json" \
+  -d '{"symbols":["BTCUSDT","ETHUSDT"],"cvarBudget":0.05,"volTarget":0.02}' | jq
+TASK 9 — Feature Gating (IC + HSIC-lite + Drift)
+tools/features/gating.ts: EWMA IC; HSIC-lite (RBF batches); Page–Hinkley/BOCPD drift; auto-disable bottom decile weekly.
+
+Route: GET /api/features/ranking → [ { feature, ic, hsic, score, disabled } ].
+
+Tests: tests/features_gating.spec.ts.
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/features/ranking | jq '.[0:5]'
+TASK 10 — Promotion (Champion/Challenger via SPA)
+server/services/promotion.ts: Hansen SPA (or Deflated Sharpe) on OOS paper PnL; promote if 
+𝑝
+<
+0.05
+p<0.05.
+
+Route: GET /api/promotion/status.
+
+Tests: tests/promotion_spa.spec.ts.
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/promotion/status | jq
+TASK 11 — Off-Policy Learning (Doubly-Robust)
+server/services/Counterfactuals.ts: log shadow actions; DR estimator; summary by policy & regime.
+
+Route: GET /api/cf/summary.
+
+Tests: tests/cf_dr.spec.ts.
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/cf/summary | jq
+TASK 12 — Meta-Monitor (Calibration + Nudges)
+server/services/MetaMonitor.ts: reliability diagrams, Brier/ECE; compute bounded nudges {routerPriorDelta, sizingCapDelta}.
+
+Routes:
+
+GET /api/meta/quality
+
+POST /api/meta/apply-nudges {}
+
+Tests: tests/meta_monitor.spec.ts.
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/meta/quality | jq
+curl -s -X POST localhost:5000/api/meta/apply-nudges -H "Content-Type: application/json" -d '{}' | jq
+TASK 13 — Events → Embeddings (LLM-safe, stub ok)
+server/services/events.ts: summarize → embed (or stub hash) → expose for router context; placebo checks for event studies.
+
+Route: GET /api/events/embeddings.
+
+Tests: tests/events_embed.spec.ts.
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/events/embeddings | jq '.[0]'
+TASK 14 — RiskGuards (Caps, Throttle, Drawdown Breaker)
+server/services/RiskGuards.ts: global/per-symbol notional caps, orders/min throttle, rolling max-DD breaker with timed reset; enforce in ExecutionRouter.execute().
+
+Route: GET /api/guards/state.
+
+Tests: tests/risk_guards.spec.ts.
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/guards/state | jq
+# Try to exceed caps and show a blocked response with reason
+TASK 15 — Budgeter (API Cost & Rate-Limits)
+server/services/Budgeter.ts: track calls/cost/quotas per provider; wrap external requests; cheapest viable fallback.
+
+Route: GET /api/budget/status.
+
+Tests: tests/budgeter_limits.spec.ts.
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/budget/status | jq
+TASK 16 — Blue/Green + Canary Auto-Cutover
+server/services/BlueGreen.ts: SLOs (p95 latency, error rate, router QoS). State machine: candidate→canary(1%)→partial→active (paper only).
+
+Route: GET /api/deploy/status.
+
+Tests: tests/bluegreen_cutover.spec.ts.
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/deploy/status | jq
+TASK 17 — Chaos + Data Quality
+server/services/Chaos.ts (dev-only): ws_flap, api_timeout, l2_gap, depth_spike.
+
+server/services/DataQuality.ts: schema/spike guards for OHLCV & L2; quarantine counters.
+
+Routes:
+
+POST /api/chaos/inject {type}
+
+GET /api/data-quality/stats
+
+Tests: tests/chaos_resilience.spec.ts, tests/data_quality.spec.ts.
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s -X POST localhost:5000/api/chaos/inject -H "Content-Type: application/json" -d '{"type":"l2_gap"}' | jq
+curl -s localhost:5000/api/data-quality/stats | jq
+TASK 18 — Contracts + Feature Store + Provenance
+server/contracts/*.ts (zod) for OHLCV, L2, router I/O, exec I/O; enforce at route boundaries.
+
+server/services/featureStore/index.ts: putFeature, getWindow, parity check (online vs backtest).
+
+server/middleware/provenance.ts: hash(feature window + context + decision) into audit logs.
+
+Routes:
+
+GET /api/features/parity
+
+GET /api/audit/latest?limit=5
+
+Tests: tests/data_contracts.spec.ts, tests/feature_store_parity.spec.ts.
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s localhost:5000/api/features/parity | jq
+curl -s localhost:5000/api/audit/latest?limit=1 | jq '.[0]'
+TASK 19 — Reports & Metrics++
+Routes:
+
+GET /api/report/alpha-pnl?window=7d (per-alpha contribution; leave-one-out ok)
+
+GET /api/report/risk?window=7d (realized vol, CVaR, turnover, slippage)
+
+GET /api/report/venue?window=7d (win-rate, slippage, downtime by venue)
+
+/api/health add: db.latencyMs, ws.clients, router.decisionsLastMin, exec.blockedLastMin, lastOHLCVSync.
+
+/metrics Prometheus counters/gauges: venue_score, l2_resyncs_total, chaos_injections_total, router_decisions_total, exec_blocked_total, price_stream_connected, ohlcv_last_sync_ts_seconds.
+
+Tests: tests/report_rollups.spec.ts.
+Acceptance:
+
+bash
+Copy
+Edit
+curl -s "localhost:5000/api/report/alpha-pnl?window=7d" | jq
+curl -s "localhost:5000/api/report/risk?window=7d" | jq
+curl -s "localhost:5000/api/report/venue?window=7d" | jq
+curl -s localhost:5000/api/health | jq
+curl -s localhost:5000/metrics | head -n 30
+TASK 20 — UI Feeds (API-only ok)
+Ensure JSON endpoints exist for dashboard cards:
+/api/router/snapshot, /api/regime/state, /api/pbt/lineage, /api/promotion/status, /api/guards/state, /api/exec/sizing/last, /api/venues/registry, /api/l2/:venue/:symbol, /api/alpha/registry, /api/alpha/attribution, /api/report/*.
+
+Acceptance: paste at least 5 JSON responses (your choice).
+
+FINAL RETURN (paste only)
+List of files changed/created
+
+Diffs or full file bodies
+
+Logs from type-check, build, test, start
+
+All required curl/jq proofs
+
+Tiny “extras” to include in this same patch
+.env.example with safe defaults (dev stubs on by default):
+
+ini
+Copy
+Edit
+NODE_ENV=development
+PORT=5000
+DB_URL=postgres://user:pass@localhost:5432/skippy
+MAX_NOTIONAL=250000
+SYMBOL_NOTIONAL_CAP=100000
+DB indices migrations:
+
+market_bars(symbol,timeframe,timestamp)
+
+l2_logs(venue,symbol,seq)
+
+audits(policyId,ts)
+
+Mock providers that auto-activate if keys missing (Binance/Deribit/news).
+
+CI workflow: run npm ci, npm run type-check, npm run build, npm test on PR; artifact the curl proofs from a smoke job (or mark as optional if networking blocked).
+
+Dev guard for dangerous routes** (chaos, model promote/rollback, flags).

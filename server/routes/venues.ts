@@ -1,98 +1,90 @@
+
 import { Router } from 'express';
 import { venueRegistry } from '../services/venues/VenueRegistry.js';
-import { smartVenueRouter, type RoutingContext } from '../services/venues/SmartVenueRouter.js';
+import { smartVenueRouter } from '../services/venues/SmartVenueRouter.js';
 import { logger } from '../utils/logger.js';
 
 const router = Router();
 
-/**
- * GET /api/venues/registry
- * Get all venues with current metrics
- */
+// GET /api/venues/registry - Get all venue metrics
 router.get('/registry', (req, res) => {
   try {
     const venues = venueRegistry.getAllVenues();
     res.json(venues);
   } catch (error) {
-    logger.error('[VenueRoutes] Error getting registry:', error);
-    res.status(500).json({ error: 'Failed to get venue registry' });
+    logger.error('Venue registry error:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-/**
- * POST /api/venues/score
- * Score venues for symbol/size combination
- */
+// GET /api/venues/:venue - Get specific venue metrics
+router.get('/:venue', (req, res) => {
+  try {
+    const { venue } = req.params;
+    const metrics = venueRegistry.getVenue(venue);
+    
+    if (!metrics) {
+      return res.status(404).json({ error: 'Venue not found' });
+    }
+
+    res.json(metrics);
+  } catch (error) {
+    logger.error('Venue lookup error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/venues/score - Score venues for trading request
 router.post('/score', (req, res) => {
+  try {
+    const { symbol, size, urgency, maxLatency, minDepth } = req.body;
+    
+    if (!symbol || typeof size !== 'number') {
+      return res.status(400).json({ error: 'symbol and size required' });
+    }
+
+    const request = { symbol, size, urgency, maxLatency, minDepth };
+    const chosen = smartVenueRouter.chooseVenue(request);
+    
+    if (!chosen) {
+      return res.status(404).json({ error: 'No suitable venues found' });
+    }
+
+    res.json(chosen);
+  } catch (error) {
+    logger.error('Venue scoring error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/venues/recommendations - Get routing recommendations
+router.post('/recommendations', (req, res) => {
   try {
     const { symbol, size } = req.body;
     
     if (!symbol || typeof size !== 'number') {
-      return res.status(400).json({ error: 'Missing symbol or size' });
+      return res.status(400).json({ error: 'symbol and size required' });
     }
 
-    const scores = venueRegistry.scoreVenues(symbol, size);
-    res.json(scores);
+    const recommendations = smartVenueRouter.getRecommendations(symbol, size);
+    res.json(recommendations);
   } catch (error) {
-    logger.error('[VenueRoutes] Error scoring venues:', error);
-    res.status(500).json({ error: 'Failed to score venues' });
+    logger.error('Venue recommendations error:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-/**
- * POST /api/venues/select
- * Select best venue using smart routing
- */
-router.post('/select', (req, res) => {
+// PUT /api/venues/:venue/metrics - Update venue metrics
+router.put('/:venue/metrics', (req, res) => {
   try {
-    const context: RoutingContext = req.body;
+    const { venue } = req.params;
+    const updates = req.body;
     
-    if (!context.symbol || typeof context.size !== 'number') {
-      return res.status(400).json({ error: 'Missing symbol or size' });
-    }
-
-    // Set defaults
-    context.urgency = context.urgency || 'medium';
-
-    const selection = smartVenueRouter.selectVenue(context);
-    res.json(selection);
+    venueRegistry.updateVenue(venue, updates);
+    res.json({ success: true, venue });
   } catch (error) {
-    logger.error('[VenueRoutes] Error selecting venue:', error);
-    res.status(500).json({ error: 'Failed to select venue' });
-  }
-});
-
-/**
- * POST /api/venues/outcome
- * Record execution outcome for learning
- */
-router.post('/outcome', (req, res) => {
-  try {
-    const { venue, symbol, success, latency } = req.body;
-    
-    if (!venue || !symbol || typeof success !== 'boolean') {
-      return res.status(400).json({ error: 'Missing venue, symbol, or success' });
-    }
-
-    smartVenueRouter.recordOutcome(venue, symbol, success, latency);
-    res.json({ success: true });
-  } catch (error) {
-    logger.error('[VenueRoutes] Error recording outcome:', error);
-    res.status(500).json({ error: 'Failed to record outcome' });
-  }
-});
-
-/**
- * GET /api/venues/stats
- * Get routing statistics
- */
-router.get('/stats', (req, res) => {
-  try {
-    const stats = smartVenueRouter.getRoutingStats();
-    res.json(stats);
-  } catch (error) {
-    logger.error('[VenueRoutes] Error getting stats:', error);
-    res.status(500).json({ error: 'Failed to get routing stats' });
+    logger.error('Venue update error:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

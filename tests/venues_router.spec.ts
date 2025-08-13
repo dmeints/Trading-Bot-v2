@@ -69,3 +69,168 @@ describe('Venue Router', () => {
     expect(binanceScore).toBeGreaterThan(coinbaseScore);
   });
 });
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { VenueRegistry } from '../server/services/venues/VenueRegistry.js';
+import { SmartVenueRouter } from '../server/services/venues/SmartVenueRouter.js';
+
+describe('Venue Registry', () => {
+  let registry: VenueRegistry;
+
+  beforeEach(() => {
+    registry = new VenueRegistry();
+  });
+
+  afterEach(() => {
+    registry.destroy();
+  });
+
+  it('should initialize with default venues', () => {
+    const venues = registry.getAllVenues();
+    expect(venues.length).toBeGreaterThan(0);
+    
+    const binance = registry.getVenue('binance');
+    expect(binance).toBeDefined();
+    expect(binance?.latency).toBeGreaterThan(0);
+    expect(binance?.spread_bps).toBeGreaterThan(0);
+    expect(binance?.reliability).toBeGreaterThan(0.8);
+  });
+
+  it('should update venue metrics', () => {
+    const originalMetrics = registry.getVenue('binance')!;
+    const originalLatency = originalMetrics.latency;
+
+    registry.updateVenue('binance', { latency: 999 });
+
+    const updatedMetrics = registry.getVenue('binance')!;
+    expect(updatedMetrics.latency).toBe(999);
+    expect(updatedMetrics.lastUpdate).toBeGreaterThan(originalMetrics.lastUpdate);
+  });
+
+  it('should handle venue degradation', () => {
+    const originalMetrics = registry.getVenue('binance')!;
+    const originalReliability = originalMetrics.reliability;
+
+    registry.markDegraded('binance', 'test degradation');
+
+    const degradedMetrics = registry.getVenue('binance')!;
+    expect(degradedMetrics.reliability).toBeLessThan(originalReliability);
+    expect(degradedMetrics.latency).toBeGreaterThan(originalMetrics.latency);
+  });
+});
+
+describe('Smart Venue Router', () => {
+  let registry: VenueRegistry;
+  let router: SmartVenueRouter;
+
+  beforeEach(() => {
+    registry = new VenueRegistry();
+    router = new SmartVenueRouter(registry);
+  });
+
+  afterEach(() => {
+    registry.destroy();
+  });
+
+  it('should score venues correctly', () => {
+    const request = {
+      symbol: 'BTCUSDT',
+      size: 1.0
+    };
+
+    const scores = router.scoreAllVenues(request);
+    
+    expect(scores.length).toBeGreaterThan(0);
+    expect(scores[0].score).toBeGreaterThanOrEqual(scores[1]?.score || 0);
+    
+    for (const score of scores) {
+      expect(score.venue).toBeDefined();
+      expect(typeof score.score).toBe('number');
+      expect(score.reasons).toBeInstanceOf(Array);
+      expect(score.metrics).toBeDefined();
+    }
+  });
+
+  it('should choose best venue', () => {
+    const request = {
+      symbol: 'BTCUSDT',
+      size: 0.5
+    };
+
+    const choice = router.chooseVenue(request);
+    
+    expect(choice).toBeDefined();
+    expect(choice?.venue).toBeDefined();
+    expect(choice?.score).toBeGreaterThan(0);
+    expect(choice?.reasons.length).toBeGreaterThan(0);
+  });
+
+  it('should adjust scoring for urgency', () => {
+    const baseRequest = {
+      symbol: 'BTCUSDT',
+      size: 1.0
+    };
+
+    const urgentRequest = {
+      ...baseRequest,
+      urgency: 'high' as const
+    };
+
+    const baseScores = router.scoreAllVenues(baseRequest);
+    const urgentScores = router.scoreAllVenues(urgentRequest);
+
+    // Urgent requests should potentially reorder venues based on latency
+    expect(urgentScores.length).toBe(baseScores.length);
+    
+    // Find low-latency venue in urgent scores
+    const lowLatencyVenue = urgentScores.find(s => s.metrics.latency < 60);
+    expect(lowLatencyVenue).toBeDefined();
+  });
+
+  it('should penalize insufficient depth', () => {
+    const largeRequest = {
+      symbol: 'BTCUSDT',
+      size: 100.0 // Very large order
+    };
+
+    const scores = router.scoreAllVenues(largeRequest);
+    
+    // Should penalize venues with insufficient depth
+    for (const score of scores) {
+      if (score.metrics.topDepth < 1000000) { // $1M threshold
+        expect(score.reasons.some(r => r.includes('depth'))).toBe(true);
+      }
+    }
+  });
+
+  it('should provide routing recommendations', () => {
+    const recommendations = router.getRecommendations('BTCUSDT', 1.0);
+
+    expect(recommendations.primary).toBeDefined();
+    expect(recommendations.alternatives).toBeInstanceOf(Array);
+    expect(recommendations.warnings).toBeInstanceOf(Array);
+
+    if (recommendations.primary) {
+      expect(recommendations.primary.venue).toBeDefined();
+      expect(recommendations.primary.score).toBeGreaterThan(0);
+    }
+
+    expect(recommendations.alternatives.length).toBeLessThanOrEqual(3);
+  });
+
+  it('should handle BTC-specific routing', () => {
+    const btcRequest = {
+      symbol: 'BTCUSDT',
+      size: 1.0
+    };
+
+    const scores = router.scoreAllVenues(btcRequest);
+    
+    // Major exchanges should get bonus for BTC
+    const majorExchanges = ['binance', 'coinbase', 'kraken'];
+    const majorScore = scores.find(s => majorExchanges.includes(s.venue));
+    
+    if (majorScore) {
+      expect(majorScore.reasons.some(r => r.includes('BTC major exchange'))).toBe(true);
+    }
+  });
+});

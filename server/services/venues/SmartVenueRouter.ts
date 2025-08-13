@@ -1,204 +1,172 @@
-
 /**
  * Smart Venue Router - Intelligent venue selection
  */
 
-import { venueRegistry, type VenueScore } from './VenueRegistry.js';
+import { VenueRegistry, VenueMetrics, venueRegistry } from './VenueRegistry.js';
 import { logger } from '../../utils/logger.js';
 
-export interface VenueSelection {
+interface VenueScore {
   venue: string;
   score: number;
   reasons: string[];
-  fallbacks: string[];
-  confidence: number;
+  metrics: VenueMetrics;
 }
 
-export interface RoutingContext {
+interface RoutingRequest {
   symbol: string;
   size: number;
-  urgency: 'low' | 'medium' | 'high';
-  maxSpreadBps?: number;
-  minDepthUsd?: number;
-  preferredVenues?: string[];
-  blacklistedVenues?: string[];
+  urgency?: 'low' | 'medium' | 'high';
+  maxLatency?: number;
+  minDepth?: number;
 }
 
-class SmartVenueRouter {
-  private routingHistory = new Map<string, Array<{ venue: string; success: boolean; timestamp: Date }>>();
+export class SmartVenueRouter {
+  constructor(private registry: VenueRegistry) {}
 
-  /**
-   * Select best venue for execution
-   */
-  selectVenue(context: RoutingContext): VenueSelection {
-    const { symbol, size, urgency, maxSpreadBps, minDepthUsd, preferredVenues, blacklistedVenues } = context;
-    
-    // Get scored venues
-    let scores = venueRegistry.scoreVenues(symbol, size);
-    
-    // Apply filters
-    scores = this.applyFilters(scores, {
-      maxSpreadBps,
-      minDepthUsd,
-      preferredVenues,
-      blacklistedVenues,
-      urgency
-    });
+  scoreVenue(venue: VenueMetrics, request: RoutingRequest): VenueScore {
+    const reasons: string[] = [];
+    let score = 100; // Start with perfect score
+
+    // Latency penalty
+    const latencyPenalty = Math.max(0, venue.latency - 50) * 0.5;
+    score -= latencyPenalty;
+    if (latencyPenalty > 0) {
+      reasons.push(`latency penalty: -${latencyPenalty.toFixed(1)}`);
+    }
+
+    // Spread penalty
+    const spreadPenalty = venue.spread_bps * 2;
+    score -= spreadPenalty;
+    reasons.push(`spread penalty: -${spreadPenalty.toFixed(1)}`);
+
+    // Fee penalty
+    const feePenalty = venue.feeBps * 0.5;
+    score -= feePenalty;
+    reasons.push(`fee penalty: -${feePenalty.toFixed(1)}`);
+
+    // Reliability bonus
+    const reliabilityBonus = (venue.reliability - 0.9) * 100;
+    score += reliabilityBonus;
+    if (reliabilityBonus !== 0) {
+      reasons.push(`reliability: ${reliabilityBonus > 0 ? '+' : ''}${reliabilityBonus.toFixed(1)}`);
+    }
+
+    // Depth adequacy
+    const depthRatio = venue.topDepth / (request.size * 50000); // Assume $50k per unit
+    if (depthRatio < 1) {
+      const depthPenalty = (1 - depthRatio) * 50;
+      score -= depthPenalty;
+      reasons.push(`insufficient depth: -${depthPenalty.toFixed(1)}`);
+    } else if (depthRatio > 2) {
+      const depthBonus = Math.min(10, (depthRatio - 2) * 5);
+      score += depthBonus;
+      reasons.push(`excellent depth: +${depthBonus.toFixed(1)}`);
+    }
+
+    // Rate limit consideration
+    if (venue.rateRemaining < 100) {
+      const ratePenalty = (100 - venue.rateRemaining) * 0.1;
+      score -= ratePenalty;
+      reasons.push(`rate limit: -${ratePenalty.toFixed(1)}`);
+    }
+
+    // Urgency adjustments
+    if (request.urgency === 'high') {
+      // Prioritize latency and reliability for urgent trades
+      const urgencyAdjustment = (50 - venue.latency) * 0.2 + (venue.reliability - 0.9) * 50;
+      score += urgencyAdjustment;
+      if (urgencyAdjustment !== 0) {
+        reasons.push(`urgency adjustment: ${urgencyAdjustment > 0 ? '+' : ''}${urgencyAdjustment.toFixed(1)}`);
+      }
+    } else if (request.urgency === 'low') {
+      // Prioritize cost for non-urgent trades
+      const costAdjustment = -(venue.feeBps + venue.spread_bps) * 0.3;
+      score += costAdjustment;
+      reasons.push(`cost optimization: ${costAdjustment.toFixed(1)}`);
+    }
+
+    // Symbol-specific adjustments
+    if (request.symbol.includes('BTC')) {
+      // BTC usually has better liquidity on major exchanges
+      if (['binance', 'coinbase', 'kraken'].includes(venue.venue)) {
+        score += 5;
+        reasons.push(`BTC major exchange bonus: +5`);
+      }
+    }
+
+    return {
+      venue: venue.venue,
+      score: Math.max(0, score),
+      reasons,
+      metrics: venue
+    };
+  }
+
+  scoreAllVenues(request: RoutingRequest): VenueScore[] {
+    const venues = this.registry.getAllVenues();
+    const scores = venues
+      .map(venue => this.scoreVenue(venue, request))
+      .sort((a, b) => b.score - a.score);
+
+    logger.debug(`Scored ${scores.length} venues for ${request.symbol} size ${request.size}`);
+    return scores;
+  }
+
+  chooseVenue(request: RoutingRequest): VenueScore | null {
+    const scores = this.scoreAllVenues(request);
 
     if (scores.length === 0) {
-      throw new Error('No suitable venues found');
+      logger.error('No venues available for routing');
+      return null;
+    }
+
+    const chosen = scores[0];
+
+    // Apply minimum score threshold
+    if (chosen.score < 20) {
+      logger.warn(`Best venue ${chosen.venue} has low score ${chosen.score}, execution may be suboptimal`);
+    }
+
+    logger.info(`Chose venue ${chosen.venue} with score ${chosen.score.toFixed(1)} for ${request.symbol}`);
+    return chosen;
+  }
+
+  // Get routing recommendations
+  getRecommendations(symbol: string, size: number): {
+    primary: VenueScore | null;
+    alternatives: VenueScore[];
+    warnings: string[];
+  } {
+    const request: RoutingRequest = { symbol, size };
+    const scores = this.scoreAllVenues(request);
+    const warnings: string[] = [];
+
+    if (scores.length === 0) {
+      warnings.push('No venues available');
+      return { primary: null, alternatives: [], warnings };
     }
 
     const primary = scores[0];
-    const fallbacks = scores.slice(1, 4).map(s => s.venue);
-    const confidence = this.calculateConfidence(primary, scores);
+    const alternatives = scores.slice(1, 4); // Top 3 alternatives
 
-    const selection: VenueSelection = {
-      venue: primary.venue,
-      score: primary.score,
-      reasons: primary.reasons,
-      fallbacks,
-      confidence
-    };
-
-    logger.debug(`[SmartVenueRouter] Selected ${primary.venue} for ${symbol} (${size}), score=${primary.score.toFixed(1)}`);
-
-    return selection;
-  }
-
-  /**
-   * Record execution outcome for learning
-   */
-  recordOutcome(venue: string, symbol: string, success: boolean, actualLatency?: number): void {
-    const key = `${venue}:${symbol}`;
-    
-    if (!this.routingHistory.has(key)) {
-      this.routingHistory.set(key, []);
+    // Generate warnings
+    if (primary.score < 50) {
+      warnings.push('Primary venue has suboptimal conditions');
     }
 
-    const history = this.routingHistory.get(key)!;
-    history.push({
-      venue,
-      success,
-      timestamp: new Date()
-    });
-
-    // Keep only last 100 outcomes
-    if (history.length > 100) {
-      history.shift();
+    const avgReliability = scores.reduce((sum, s) => sum + s.metrics.reliability, 0) / scores.length;
+    if (avgReliability < 0.9) {
+      warnings.push('Market conditions appear degraded across venues');
     }
 
-    // Update venue metrics
-    if (actualLatency) {
-      venueRegistry.recordPerformance(venue, actualLatency, success);
+    const totalDepth = scores.reduce((sum, s) => sum + s.metrics.topDepth, 0);
+    const requiredDepth = size * 50000; // Estimate
+    if (totalDepth < requiredDepth * 2) {
+      warnings.push('Limited liquidity available for this order size');
     }
 
-    logger.debug(`[SmartVenueRouter] Recorded outcome for ${venue}: success=${success}`);
-  }
-
-  /**
-   * Get venue routing statistics
-   */
-  getRoutingStats(): any {
-    const stats: any = {};
-    
-    for (const [key, history] of this.routingHistory) {
-      const [venue, symbol] = key.split(':');
-      const successRate = history.filter(h => h.success).length / history.length;
-      const recentOutcomes = history.slice(-20);
-      const recentSuccessRate = recentOutcomes.filter(h => h.success).length / recentOutcomes.length;
-      
-      if (!stats[venue]) {
-        stats[venue] = {};
-      }
-      
-      stats[venue][symbol] = {
-        totalOrders: history.length,
-        successRate,
-        recentSuccessRate,
-        lastUsed: history[history.length - 1]?.timestamp
-      };
-    }
-    
-    return stats;
-  }
-
-  /**
-   * Apply filtering logic to venue scores
-   */
-  private applyFilters(scores: VenueScore[], filters: {
-    maxSpreadBps?: number;
-    minDepthUsd?: number;
-    preferredVenues?: string[];
-    blacklistedVenues?: string[];
-    urgency: string;
-  }): VenueScore[] {
-    let filtered = [...scores];
-
-    // Filter by spread
-    if (filters.maxSpreadBps) {
-      filtered = filtered.filter(s => s.metrics.spreadBps <= filters.maxSpreadBps!);
-    }
-
-    // Filter by depth
-    if (filters.minDepthUsd) {
-      filtered = filtered.filter(s => s.metrics.topDepthUsd >= filters.minDepthUsd!);
-    }
-
-    // Apply blacklist
-    if (filters.blacklistedVenues) {
-      filtered = filtered.filter(s => !filters.blacklistedVenues!.includes(s.venue));
-    }
-
-    // Filter by rate limits for urgent orders
-    if (filters.urgency === 'high') {
-      filtered = filtered.filter(s => s.metrics.rateRemaining > 5);
-    }
-
-    // Boost preferred venues
-    if (filters.preferredVenues) {
-      for (const score of filtered) {
-        if (filters.preferredVenues.includes(score.venue)) {
-          score.score += 10;
-          score.reasons.push('Preferred venue');
-        }
-      }
-    }
-
-    // Re-sort after filtering and boosting
-    filtered.sort((a, b) => b.score - a.score);
-
-    return filtered;
-  }
-
-  /**
-   * Calculate confidence in venue selection
-   */
-  private calculateConfidence(primary: VenueScore, allScores: VenueScore[]): number {
-    if (allScores.length < 2) {
-      return 0.5; // Low confidence with only one option
-    }
-
-    const scoreDiff = primary.score - allScores[1].score;
-    const maxPossibleDiff = 100;
-    
-    // Base confidence on score separation
-    let confidence = Math.min(1, scoreDiff / (maxPossibleDiff * 0.3));
-    
-    // Adjust based on reliability
-    confidence *= primary.metrics.reliability;
-    
-    // Adjust based on recent performance
-    const venueKey = primary.venue;
-    const history = this.routingHistory.get(venueKey);
-    
-    if (history && history.length > 5) {
-      const recentSuccess = history.slice(-10).filter(h => h.success).length / Math.min(10, history.length);
-      confidence *= recentSuccess;
-    }
-
-    return Math.max(0.1, Math.min(1, confidence));
+    return { primary, alternatives, warnings };
   }
 }
 
-export const smartVenueRouter = new SmartVenueRouter();
+export const smartVenueRouter = new SmartVenueRouter(venueRegistry);

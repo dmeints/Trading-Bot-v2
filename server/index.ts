@@ -18,6 +18,7 @@ import { registerTradingRoutes } from './routes/trading.js';
 import { portfolioRouter } from './routes/portfolio.js';
 import errorRoutes from './routes/errors.js';
 import chartDataRoutes from './routes/chart-data.js';
+import { bookMaintainer } from './services/l2/BookMaintainer.js';
 
 const app = express();
 
@@ -116,6 +117,10 @@ app.use((req, res, next) => {
     } catch (error) {
       logger.error('[Server] Failed to initialize price streaming:', { error: String(error) });
     }
+
+    // Initialize L2 book maintenance
+    await bookMaintainer.initializeAll();
+    logger.info('L2 book maintainer initialized');
   });
 })();
 

@@ -183,9 +183,9 @@ import flagsRoutes from './routes/flags.js';
 import routerSnapshotRoutes from './routes/router-snapshot.js';
 import microstructureRoutes from './routes/microstructure.js';
 import volRoutes from './routes/vol.js';
-import router from './routes/router.js';
-import l2 from './routes/l2.js';
-import venues from './routes/venues.js';
+import routerRoutes from './routes/router.js';
+import l2Routes from './routes/l2.js';
+import venueRoutes from './routes/venues.js';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Development bypass function
@@ -563,7 +563,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Manual X API override endpoint (admin only, for testing)
-  app.get('/api/admin/sentiment/:symbol/force', rateLimiters.admin, adminAuth, xApiManualOverride, async (req: any, res: any) => {
+  app.get('/api/admin/sentiment/:symbol/force', rateLimiters.admin, adminAuth, xApiManualOverride, async (req: any, res) => {
     try {
       const { symbol } = req.params;
       const analyzer = new SentimentAnalyzer();
@@ -918,7 +918,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         regime: 'sideways',
         type: 'scalp',
         risk: 'medium',
-        source: 'trading-webhook',
+        source: 'webhook-trading',
         pnl: data.pnl || 0,
         latencyMs: 0,
         signalStrength: 0.8,
@@ -1628,16 +1628,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       res.json({
-        status: "healthy",
+        status: 'ok',
         timestamp: new Date().toISOString(),
-        uptime: process.uptime(),
-        environment: env.NODE_ENV,
-        services: {
-          database: "connected",
-          api: "operational",
-          priceStream: priceStreamStatus,
-          lastOHLCVSync: getLastOHLCVSync()
-        }
+        version: '1.0.0',
+        router: 'active'
       });
     } catch (error) {
       console.error('Health check error:', error);
@@ -1945,7 +1939,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/portfolio', portfolioRoutes);
   // Assuming chartDataRoutes is defined and imported elsewhere if it's intended to be used.
   // app.use('/api/chart-data', chartDataRoutes);
-  app.use('/api/router', strategyRouterRoutes);
+  app.use('/api/router', routerRoutes);
   app.use('/api/events', eventsRoutes);
   app.use('/api/policies', policiesRoutes);
 
@@ -1971,9 +1965,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/options', optionsRoutes);
   app.use('/api/alpha', alphaRoutes);
   app.use('/api/report', reportRoutes);
-  app.use('/api/router', router);
-  app.use('/api/l2', l2);
-  app.use('/api/venues', venues);
+  app.use('/api/router', routerRoutes);
+  app.use('/api/l2', l2Routes);
+  app.use('/api/venues', venueRoutes);
 
   // Metrics endpoint
   app.get('/api/metrics', metricsHandler);
